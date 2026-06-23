@@ -149,7 +149,14 @@ async function runAll(): Promise<void> {
 discord.once(Events.ClientReady, async (client) => {
 	console.log(`logged in as ${client.user.tag}`)
 	try {
-		await client.application.commands.set([setupCommand.toJSON(), syncCommand.toJSON()])
+		const commands = [setupCommand.toJSON(), syncCommand.toJSON()]
+		if (config.devGuildId) {
+			// Guild-scoped commands appear instantly; clear the global set to avoid duplicates.
+			await client.application.commands.set(commands, config.devGuildId)
+			await client.application.commands.set([])
+		} else {
+			await client.application.commands.set(commands)
+		}
 	} catch (err) {
 		console.error("failed to register slash commands", err)
 	}

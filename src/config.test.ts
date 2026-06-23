@@ -25,7 +25,14 @@ describe("loadConfig", () => {
 			linkPageUrl: "https://unison.boidu.dev/link",
 			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
+			devGuildId: null,
 		})
+	})
+
+	it("carries DEV_GUILD_ID when set, for instant per-guild command registration", () => {
+		const env = completeEnv()
+		env.DEV_GUILD_ID = "123456789012345678"
+		expect(loadConfig(env).devGuildId).toBe("123456789012345678")
 	})
 })
 
