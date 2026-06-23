@@ -1,0 +1,20 @@
+{
+	"title": "Bohemian Rhapsody (Official Video Remastered)",
+	"author": "Queen Official",
+	"durationSec": 367,
+	"videoThumbnails": [
+		{
+			"url": "https://i.ytimg.com/vi/fJ9rUzIMcZQ/maxresdefault.jpg",
+			"width": 1280,
+			"height": 720
+		},
+		{
+			"url": "https://i.ytimg.com/vi/fJ9rUzIMcZQ/hqdefault.jpg",
+			"width": 480,
+			"height": 360
+		}
+	],
+	"album": null,
+	"artist": null,
+	"albumArtThumbnails": []
+}
