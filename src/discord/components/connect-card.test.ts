@@ -1,5 +1,5 @@
 import { PALETTE } from "@/config"
-import { connectButtonLabel } from "@/copy/strings"
+import { connectButtonLabel, connectHeading, connectPerk } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { ButtonStyle, MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
@@ -64,6 +64,10 @@ function texts(container: ContainerBuilder): TextNode[] {
 	return collect(container).filter((n): n is TextNode => n.type === 10)
 }
 
+function separators(container: ContainerBuilder): ComponentNode[] {
+	return collect(container).filter((n) => n.type === 14)
+}
+
 const linkPageUrl = "https://link.example.com/abc"
 
 describe("connect card", () => {
@@ -87,6 +91,19 @@ describe("connect card", () => {
 			.map((t) => t.content)
 			.join("\n")
 		expect(content.length).toBeGreaterThan(0)
+	})
+
+	it("leads with the heading and includes the perk line", () => {
+		const content = texts(buildConnectCard({ linkPageUrl }).components[0] as ContainerBuilder)
+			.map((t) => t.content)
+			.join("\n")
+		expect(content).toContain(connectHeading)
+		expect(content).toContain(connectPerk)
+	})
+
+	it("has a divider separating the heading from the body", () => {
+		const found = separators(buildConnectCard({ linkPageUrl }).components[0] as ContainerBuilder)
+		expect(found.length).toBeGreaterThanOrEqual(1)
 	})
 
 	it("has no thumbnail", () => {

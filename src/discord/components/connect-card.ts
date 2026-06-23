@@ -1,11 +1,12 @@
 import { PALETTE } from "@/config"
-import { connectButtonLabel, connectPromptBody } from "@/copy/strings"
+import { connectButtonLabel, connectHeading, connectPerk, connectPromptBody } from "@/copy/strings"
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
 	ContainerBuilder,
 	MessageFlags,
+	SeparatorBuilder,
 	TextDisplayBuilder,
 } from "discord.js"
 
@@ -17,7 +18,12 @@ export interface CardPayload {
 export function buildConnectCard(opts: { linkPageUrl: string }): CardPayload {
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
-		.addTextDisplayComponents(new TextDisplayBuilder().setContent(connectPromptBody))
+		.addTextDisplayComponents(new TextDisplayBuilder().setContent(connectHeading))
+		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+		.addTextDisplayComponents(
+			new TextDisplayBuilder().setContent(connectPromptBody),
+			new TextDisplayBuilder().setContent(connectPerk)
+		)
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()

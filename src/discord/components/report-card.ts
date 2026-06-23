@@ -3,6 +3,8 @@ import {
 	blockedMetadataFallback,
 	reportAddToBoardButtonLabel,
 	reportFixItMyselfButtonLabel,
+	reportHeading,
+	reportHelp,
 	selfFixInstructions,
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
@@ -13,6 +15,7 @@ import {
 	ContainerBuilder,
 	MessageFlags,
 	SectionBuilder,
+	SeparatorBuilder,
 	TextDisplayBuilder,
 	ThumbnailBuilder,
 } from "discord.js"
@@ -32,16 +35,19 @@ export interface ReportCardOptions {
 }
 
 function addMetaContent(container: ContainerBuilder, meta: ReportMeta): void {
-	const summary = `${meta.title}\n${meta.artist}`
+	const summary = `**${meta.title}**\n${meta.artist}`
 	if (meta.albumArtUrl !== null && meta.albumArtUrl !== "") {
 		container.addSectionComponents(
 			new SectionBuilder()
 				.addTextDisplayComponents(new TextDisplayBuilder().setContent(summary))
 				.setThumbnailAccessory(new ThumbnailBuilder().setURL(meta.albumArtUrl))
 		)
-		return
+	} else {
+		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(summary))
 	}
-	container.addTextDisplayComponents(new TextDisplayBuilder().setContent(summary))
+	container
+		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+		.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportHelp))
 }
 
 function addBlockedContent(container: ContainerBuilder): void {
@@ -52,7 +58,10 @@ function addBlockedContent(container: ContainerBuilder): void {
 }
 
 export function buildReportCard(opts: ReportCardOptions): CardPayload {
-	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
+	const container = new ContainerBuilder()
+		.setAccentColor(PALETTE.betterLyricsRed)
+		.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportHeading))
+		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 
 	if (opts.meta !== null) {
 		addMetaContent(container, opts.meta)

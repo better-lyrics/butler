@@ -41,7 +41,7 @@ export interface ReportDeps {
  * Build the composer deep link with every param Better Lyrics sends (title, artist,
  * album, duration, videoId). videoId alone is enough; the rest prefill the composer.
  */
-function composerLink(base: string, videoId: string, meta: TrackMeta | null): string {
+export function composerLink(base: string, videoId: string, meta: TrackMeta | null): string {
 	const params = new URLSearchParams()
 	if (meta) {
 		params.set("title", meta.title)

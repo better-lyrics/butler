@@ -1,5 +1,5 @@
 import { PALETTE } from "@/config"
-import { tierLabel } from "@/copy/strings"
+import { promotionHeadline } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
@@ -54,46 +54,77 @@ function texts(container: ContainerBuilder): TextNode[] {
 	return collect(container).filter((n): n is TextNode => n.type === 10)
 }
 
+function separators(container: ContainerBuilder): ComponentNode[] {
+	return collect(container).filter((n) => n.type === 14)
+}
+
+function textBlob(container: ContainerBuilder): string {
+	return texts(container)
+		.map((t) => t.content)
+		.join("\n")
+}
+
 const opts = {
-	displayName: "Sofia",
+	discordId: "111222333444555666",
 	avatarUrl: "https://avatar.example.com/sofia.png",
-	tier: "rank-1",
-	rank: 3,
-	submissionCount: 42,
+	tier: "legendary",
+	rank: 1,
+	submissionCount: 248,
 	totalUpvotes: 1234,
 }
 
 describe("promotion card", () => {
-	const payload = buildPromotionCard(opts)
-	const container = payload.components[0] as ContainerBuilder
+	describe("happy paths", () => {
+		const payload = buildPromotionCard(opts)
+		const container = payload.components[0] as ContainerBuilder
 
-	it("text content names the curator", () => {
-		const content = texts(container)
-			.map((t) => t.content)
-			.join("\n")
-		expect(content).toContain(opts.displayName)
+		it("pings the curator with a discord mention", () => {
+			expect(textBlob(container)).toContain(`<@${opts.discordId}>`)
+		})
+		it("uses the tier-specific headline", () => {
+			expect(textBlob(container)).toContain(
+				promotionHeadline({ discordId: opts.discordId, tier: opts.tier })
+			)
+		})
+		it("shows a stats line with the rank and formatted counts", () => {
+			const blob = textBlob(container)
+			expect(blob).toContain("Rank #1")
+			expect(blob).toContain("248 submissions")
+			expect(blob).toContain("1,234 upvotes")
+		})
+		it("renders the avatar as a thumbnail", () => {
+			const thumbs = thumbnails(container)
+			expect(thumbs).toHaveLength(1)
+			expect(thumbs[0]?.media.url).toBe(opts.avatarUrl)
+		})
+		it("separates the headline from the stats with a divider", () => {
+			expect(separators(container).length).toBeGreaterThanOrEqual(1)
+		})
+		it("sets the accent color", () => {
+			expect(rootJson(container).accent_color).toBe(PALETTE.betterLyricsRed)
+		})
+		it("flags are non-ephemeral components v2", () => {
+			expect(payload.flags).toBe(MessageFlags.IsComponentsV2)
+		})
 	})
-	it("text content shows the tier label", () => {
-		const content = texts(container)
-			.map((t) => t.content)
-			.join("\n")
-		expect(content).toContain(tierLabel(opts.tier))
+
+	describe("per-tier headlines", () => {
+		for (const tier of ["legendary", "grandmaster", "master", "elite", "lyricist"]) {
+			it(`renders the ${tier} headline`, () => {
+				const container = buildPromotionCard({ ...opts, tier }).components[0] as ContainerBuilder
+				expect(textBlob(container)).toContain(
+					promotionHeadline({ discordId: opts.discordId, tier })
+				)
+			})
+		}
 	})
-	it("text content shows the rank", () => {
-		const content = texts(container)
-			.map((t) => t.content)
-			.join("\n")
-		expect(content).toContain(String(opts.rank))
-	})
-	it("renders the avatar as a thumbnail", () => {
-		const thumbs = thumbnails(container)
-		expect(thumbs).toHaveLength(1)
-		expect(thumbs[0]?.media.url).toBe(opts.avatarUrl)
-	})
-	it("sets the accent color", () => {
-		expect(rootJson(container).accent_color).toBe(PALETTE.betterLyricsRed)
-	})
-	it("flags are non-ephemeral components v2", () => {
-		expect(payload.flags).toBe(MessageFlags.IsComponentsV2)
+
+	describe("edge cases", () => {
+		it("falls back to a plain headline when no avatar is available", () => {
+			const container = buildPromotionCard({ ...opts, avatarUrl: "" })
+				.components[0] as ContainerBuilder
+			expect(thumbnails(container)).toHaveLength(0)
+			expect(textBlob(container)).toContain(`<@${opts.discordId}>`)
+		})
 	})
 })

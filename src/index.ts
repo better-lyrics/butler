@@ -3,6 +3,7 @@ import { type GuildConfig, getGuildConfig, listGuildConfigs } from "@/db/guild-c
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
+import { handlePreview, previewCommand } from "@/discord/commands/preview"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
@@ -111,7 +112,7 @@ async function runSyncForGuild(gc: GuildConfig): Promise<SyncResult | null> {
 				if (!channel?.isTextBased() || !channel.isSendable()) return
 				const member = await guild.members.fetch(promo.discordId).catch(() => null)
 				const card = buildPromotionCard({
-					displayName: promo.entry.displayName,
+					discordId: promo.discordId,
 					avatarUrl: member?.displayAvatarURL() ?? "",
 					tier: promo.tier,
 					rank: promo.entry.rank,
@@ -152,7 +153,11 @@ discord.once(Events.ClientReady, async (client) => {
 		const commands = [setupCommand.toJSON(), syncCommand.toJSON()]
 		if (config.devGuildId) {
 			// Guild-scoped commands appear instantly; clear the global set to avoid duplicates.
-			await client.application.commands.set(commands, config.devGuildId)
+			// /preview is a dev-only tool, so it ships only to the dev guild.
+			await client.application.commands.set(
+				[...commands, previewCommand.toJSON()],
+				config.devGuildId
+			)
 			await client.application.commands.set([])
 		} else {
 			await client.application.commands.set(commands)
@@ -181,6 +186,14 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		handleSync(interaction, { pool, runSyncForGuild }).catch((err) =>
 			console.error("sync handler failed", err)
 		)
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "preview") {
+		handlePreview(interaction, {
+			linkPageUrl: config.linkPageUrl,
+			composerBaseUrl: config.composerBaseUrl,
+			fetchMeta,
+		}).catch((err) => console.error("preview handler failed", err))
 		return
 	}
 	if (interaction.isButton()) {

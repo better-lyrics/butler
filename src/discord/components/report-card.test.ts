@@ -3,6 +3,8 @@ import {
 	blockedMetadataFallback,
 	reportAddToBoardButtonLabel,
 	reportFixItMyselfButtonLabel,
+	reportHeading,
+	reportHelp,
 } from "@/copy/strings"
 import { decodeCustomId } from "@/interactions/custom-id"
 import type { ContainerBuilder } from "discord.js"
@@ -69,6 +71,10 @@ function texts(container: ContainerBuilder): TextNode[] {
 	return collect(container).filter((n): n is TextNode => n.type === 10)
 }
 
+function separators(container: ContainerBuilder): ComponentNode[] {
+	return collect(container).filter((n) => n.type === 14)
+}
+
 const composerUrl = "https://composer.example.com/v/dQw4w9WgXcQ"
 const videoId = "dQw4w9WgXcQ"
 const posterId = "disc-poster-1"
@@ -116,6 +122,16 @@ describe("report card", () => {
 			expect(content).toContain(meta.title)
 			expect(content).toContain(meta.artist)
 		})
+		it("leads with the heading and includes the help line", () => {
+			const content = texts(container)
+				.map((t) => t.content)
+				.join("\n")
+			expect(content).toContain(reportHeading)
+			expect(content).toContain(reportHelp)
+		})
+		it("has dividers structuring the card", () => {
+			expect(separators(container).length).toBeGreaterThanOrEqual(1)
+		})
 		it("flags are non-ephemeral components v2", () => {
 			expect(payload.flags).toBe(MessageFlags.IsComponentsV2)
 		})
@@ -157,10 +173,11 @@ describe("report card", () => {
 			expect(fix?.url).toBe(composerUrl)
 			expect(fix?.label).toBe(reportFixItMyselfButtonLabel)
 		})
-		it("shows the blocked-metadata fallback copy", () => {
+		it("shows the heading and the blocked-metadata fallback copy", () => {
 			const content = texts(container)
 				.map((t) => t.content)
 				.join("\n")
+			expect(content).toContain(reportHeading)
 			expect(content).toContain(blockedMetadataFallback)
 		})
 		it("has no thumbnail", () => {
