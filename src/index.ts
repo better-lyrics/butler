@@ -4,11 +4,12 @@ import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
+import { handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
-import { runSync } from "@/roles/sync"
+import { type SyncResult, runSync } from "@/roles/sync"
 import { createUnisonClient } from "@/unison/client"
 import { createYoutubeiSource, fetchTrackMeta } from "@/ytm/metadata"
 import {
@@ -67,7 +68,7 @@ async function handleMessage(message: Message): Promise<void> {
 	})
 }
 
-async function runSyncForGuild(gc: GuildConfig): Promise<void> {
+async function runSyncForGuild(gc: GuildConfig): Promise<SyncResult | null> {
 	try {
 		const guild = await discord.guilds.fetch(gc.guildId)
 		const botHighest = guild.members.me?.roles.highest.position ?? 0
@@ -81,7 +82,7 @@ async function runSyncForGuild(gc: GuildConfig): Promise<void> {
 			assertRoleHierarchy(botHighest, managedPositions)
 		} catch (err) {
 			console.error(`sync skipped for guild ${gc.guildId}: hierarchy guard failed`, err)
-			return
+			return null
 		}
 
 		const applier = createRoleApplier(guild, gc.roleIds)
@@ -125,13 +126,15 @@ async function runSyncForGuild(gc: GuildConfig): Promise<void> {
 
 		if (result.skipped) {
 			console.warn(`sync skipped for guild ${gc.guildId}: empty desired set`)
-			return
+		} else {
+			console.log(
+				`sync done for guild ${gc.guildId}: granted=${result.granted} removed=${result.removed} announced=${result.announced}`
+			)
 		}
-		console.log(
-			`sync done for guild ${gc.guildId}: granted=${result.granted} removed=${result.removed} announced=${result.announced}`
-		)
+		return result
 	} catch (err) {
 		console.error(`sync failed for guild ${gc.guildId}`, err)
+		return null
 	}
 }
 
@@ -146,7 +149,7 @@ async function runAll(): Promise<void> {
 discord.once(Events.ClientReady, async (client) => {
 	console.log(`logged in as ${client.user.tag}`)
 	try {
-		await client.application.commands.set([setupCommand.toJSON()])
+		await client.application.commands.set([setupCommand.toJSON(), syncCommand.toJSON()])
 	} catch (err) {
 		console.error("failed to register slash commands", err)
 	}
@@ -164,6 +167,12 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 	if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
 		handleSetup(interaction, { pool, linkPageUrl: config.linkPageUrl }).catch((err) =>
 			console.error("setup handler failed", err)
+		)
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "sync") {
+		handleSync(interaction, { pool, runSyncForGuild }).catch((err) =>
+			console.error("sync handler failed", err)
 		)
 		return
 	}
