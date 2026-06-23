@@ -29,21 +29,20 @@ const botSecret = "super-secret"
 
 describe("createUnisonClient getLeaderboard", () => {
 	it("issues a GET to the leaderboard users endpoint and parses curators", async () => {
-		const payload = {
-			curators: [
-				{
-					keyId: "key-1",
-					reputation: 100,
-					score: 42,
-					submissionCount: 7,
-					totalUpvotes: 30,
-					fulfilledCount: 5,
-					fulfilledDemand: 12,
-					rank: 1,
-					displayName: "Alice",
-				},
-			],
-		}
+		const curators = [
+			{
+				keyId: "key-1",
+				reputation: 100,
+				score: 42,
+				submissionCount: 7,
+				totalUpvotes: 30,
+				fulfilledCount: 5,
+				fulfilledDemand: 12,
+				rank: 1,
+				displayName: "Alice",
+			},
+		]
+		const payload = { success: true, data: { curators } }
 		const { fn, calls } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
@@ -52,7 +51,7 @@ describe("createUnisonClient getLeaderboard", () => {
 		expect(calls).toHaveLength(1)
 		expect(calls[0]?.url).toBe("https://unison.test/api/leaderboard/users")
 		expect(calls[0]?.method).toBe("GET")
-		expect(result).toEqual(payload.curators)
+		expect(result).toEqual(curators)
 	})
 
 	it("throws on a non-ok response so a failed fetch never strips every role", async () => {

@@ -32,7 +32,8 @@ export interface UnisonClient {
 }
 
 interface LeaderboardResponse {
-	curators: LeaderboardEntry[]
+	success: boolean
+	data: { curators: LeaderboardEntry[] }
 }
 
 interface BotLinksResponse {
@@ -68,7 +69,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				throw new Error(`Unison leaderboard fetch failed: ${res.status}`)
 			}
 			const json = (await res.json()) as LeaderboardResponse
-			return json.curators
+			return json.data.curators
 		},
 
 		async getBotLinks() {
