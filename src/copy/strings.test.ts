@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { promotionHeadline, promotionStats, tierLabel } from "./strings"
+import {
+	promotionHeadline,
+	promotionStats,
+	reportHelp,
+	selfFixInstructions,
+	tierLabel,
+} from "./strings"
 
 const discordId = "111222333444555666"
 const mention = `<@${discordId}>`
@@ -44,6 +50,21 @@ describe("promotionHeadline", () => {
 			expect(line).toContain(mention)
 			expect(line).toContain(tierLabel("wizard"))
 		})
+	})
+})
+
+describe("self-fix copy", () => {
+	it("names Composer as a proper noun, never 'the composer'", () => {
+		for (const line of [reportHelp, selfFixInstructions]) {
+			expect(line).toContain("Composer")
+			expect(line.toLowerCase()).not.toContain("the composer")
+		}
+	})
+
+	it("walks the user from Composer to the Unison upload button", () => {
+		expect(selfFixInstructions).toContain("Composer")
+		expect(selfFixInstructions).toContain("YouTube Music")
+		expect(selfFixInstructions).toContain("Submit lyrics with Unison")
 	})
 })
 

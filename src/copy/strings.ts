@@ -22,7 +22,7 @@ export const connectButtonLabel = "Link Better Lyrics"
 export const reportHeading = "**These lyrics look off**"
 
 export const reportHelp =
-	"Add it to the request board so a curator can pick it up, or open the composer and fix it yourself."
+	"Add it to the request board and a curator can pick it up, or fix it yourself in Composer."
 
 export function requestAdded(params: { demand: number; requestCount: number }): string {
 	const { demand, requestCount } = params
@@ -40,7 +40,7 @@ export function alreadyRequested(params: { demand: number; requestCount: number 
 }
 
 export const selfFixInstructions =
-	"Want to fix the lyrics yourself? Drop a YouTube Music link in the composer, or open the composer and start from there."
+	"To fix it yourself, open Composer and write the lyrics out. Once they look right, head back to YouTube Music, scroll down to the **Submit lyrics with Unison** button, and upload what you just made."
 
 export const blockedMetadataFallback =
 	"Couldn't pull the track details, so this can't go on the request board yet."

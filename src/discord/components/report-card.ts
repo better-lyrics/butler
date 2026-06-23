@@ -47,7 +47,10 @@ function addMetaContent(container: ContainerBuilder, meta: ReportMeta): void {
 	}
 	container
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(new TextDisplayBuilder().setContent(reportHelp))
+		.addTextDisplayComponents(
+			new TextDisplayBuilder().setContent(reportHelp),
+			new TextDisplayBuilder().setContent(selfFixInstructions)
+		)
 }
 
 function addBlockedContent(container: ContainerBuilder): void {
