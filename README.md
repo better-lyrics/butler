@@ -44,10 +44,11 @@ cp .env.example .env   # then fill in the values
 pnpm run dev           # watch mode
 ```
 
-Or run it once without watch:
+Build and run the compiled output (what production runs):
 
 ```sh
-pnpm start
+pnpm build   # esbuild bundles src into dist/, no TypeScript loader at runtime
+pnpm start   # node dist/index.js
 ```
 
 Checks:

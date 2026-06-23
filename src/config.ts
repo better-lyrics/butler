@@ -9,12 +9,25 @@ export interface Config {
 	ytmCookie: string | null
 }
 
+const DEFAULT_UNISON_API_BASE_URL = "https://unison.boidu.dev"
+const DEFAULT_LINK_PAGE_URL = "https://unison.boidu.dev/link"
+const DEFAULT_COMPOSER_BASE_URL = "https://composer.betterlyrics.org"
+
 function required(env: Record<string, string | undefined>, name: string): string {
 	const value = env[name]
 	if (value === undefined || value === "") {
 		throw new Error(`Missing required env var: ${name}`)
 	}
 	return value
+}
+
+function withDefault(
+	env: Record<string, string | undefined>,
+	name: string,
+	fallback: string
+): string {
+	const value = env[name]
+	return value === undefined || value === "" ? fallback : value
 }
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -24,11 +37,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 		discordBotToken: required(env, "DISCORD_BOT_TOKEN"),
 		databaseUrl: required(env, "DATABASE_URL"),
 		unison: {
-			baseUrl: required(env, "UNISON_API_BASE_URL"),
+			baseUrl: withDefault(env, "UNISON_API_BASE_URL", DEFAULT_UNISON_API_BASE_URL),
 			botSecret: required(env, "BUTLER_BOT_SECRET"),
 		},
-		linkPageUrl: required(env, "LINK_PAGE_URL"),
-		composerBaseUrl: required(env, "COMPOSER_BASE_URL"),
+		linkPageUrl: withDefault(env, "LINK_PAGE_URL", DEFAULT_LINK_PAGE_URL),
+		composerBaseUrl: withDefault(env, "COMPOSER_BASE_URL", DEFAULT_COMPOSER_BASE_URL),
 		ytmCookie: ytmCookie === undefined || ytmCookie === "" ? null : ytmCookie,
 	}
 }

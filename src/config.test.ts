@@ -1,41 +1,53 @@
 import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIERS, TIER_ORDER, loadConfig } from "@/config"
 import { describe, expect, it } from "vitest"
 
-const REQUIRED_KEYS = [
-	"DISCORD_BOT_TOKEN",
-	"DATABASE_URL",
-	"UNISON_API_BASE_URL",
-	"BUTLER_BOT_SECRET",
-	"LINK_PAGE_URL",
-	"COMPOSER_BASE_URL",
-] as const
+const REQUIRED_KEYS = ["DISCORD_BOT_TOKEN", "DATABASE_URL", "BUTLER_BOT_SECRET"] as const
 
 function completeEnv(): Record<string, string | undefined> {
 	return {
 		DISCORD_BOT_TOKEN: "bot-token",
 		DATABASE_URL: "postgres://localhost:5432/butler",
-		UNISON_API_BASE_URL: "https://unison.example.com",
 		BUTLER_BOT_SECRET: "bot-secret",
-		LINK_PAGE_URL: "https://link.example.com",
-		COMPOSER_BASE_URL: "https://composer.example.com",
 	}
 }
 
 describe("loadConfig", () => {
-	it("parses a complete env into the right nested shape", () => {
+	it("parses a minimal env and applies the production url defaults", () => {
 		const config = loadConfig(completeEnv())
 
 		expect(config).toEqual({
 			discordBotToken: "bot-token",
 			databaseUrl: "postgres://localhost:5432/butler",
 			unison: {
-				baseUrl: "https://unison.example.com",
+				baseUrl: "https://unison.boidu.dev",
 				botSecret: "bot-secret",
 			},
-			linkPageUrl: "https://link.example.com",
-			composerBaseUrl: "https://composer.example.com",
+			linkPageUrl: "https://unison.boidu.dev/link",
+			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
 		})
+	})
+})
+
+describe("loadConfig url defaults", () => {
+	it("overrides each default when its env var is set", () => {
+		const env = completeEnv()
+		env.UNISON_API_BASE_URL = "https://unison.example.com"
+		env.LINK_PAGE_URL = "https://link.example.com"
+		env.COMPOSER_BASE_URL = "https://composer.example.com"
+
+		const config = loadConfig(env)
+
+		expect(config.unison.baseUrl).toBe("https://unison.example.com")
+		expect(config.linkPageUrl).toBe("https://link.example.com")
+		expect(config.composerBaseUrl).toBe("https://composer.example.com")
+	})
+
+	it("falls back to the default when an override is an empty string", () => {
+		const env = completeEnv()
+		env.UNISON_API_BASE_URL = ""
+
+		expect(loadConfig(env).unison.baseUrl).toBe("https://unison.boidu.dev")
 	})
 })
 
