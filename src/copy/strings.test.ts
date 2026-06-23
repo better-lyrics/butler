@@ -24,9 +24,17 @@ describe("promotionHeadline", () => {
 			expect(promotionHeadline({ discordId, tier: "master" })).toContain("top three")
 		})
 
-		it("frames the banded tiers by their real percentile thresholds", () => {
-			expect(promotionHeadline({ discordId, tier: "elite" })).toContain("Top 5%")
-			expect(promotionHeadline({ discordId, tier: "lyricist" })).toContain("top 20%")
+		it("names the banded tiers by their role, not a raw percentile", () => {
+			expect(promotionHeadline({ discordId, tier: "elite" })).toContain("Elite Lyricist")
+			expect(promotionHeadline({ discordId, tier: "lyricist" })).toContain("Lyricist")
+		})
+	})
+
+	describe("invariants", () => {
+		it("never exposes a raw percentile to users", () => {
+			for (const tier of tiers) {
+				expect(promotionHeadline({ discordId, tier })).not.toContain("%")
+			}
 		})
 	})
 

@@ -51,8 +51,9 @@ const PROMOTION_HEADLINES: Record<string, (mention: string) => string> = {
 	grandmaster: (m) =>
 		`${m} climbed to Grandmaster Lyricist. Second on the whole board and gaining.`,
 	master: (m) => `${m} broke into the top three. Master Lyricist now, and that is rare air.`,
-	elite: (m) => `${m} leveled up to Elite Lyricist. Top 5% of curators and it shows.`,
-	lyricist: (m) => `${m} cracked the top 20%. Lyricist now, a ranked curator on the board.`,
+	elite: (m) => `${m} leveled up to Elite Lyricist. One of the sharpest curators on the board now.`,
+	lyricist: (m) =>
+		`${m} earned the Lyricist role, a ranked spot on the board. Plenty of room to climb.`,
 }
 
 export function promotionHeadline(params: { discordId: string; tier: string }): string {
