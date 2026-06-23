@@ -1,3 +1,4 @@
+import { PALETTE } from "@/config"
 import {
 	blockedMetadataFallback,
 	reportAddToBoardButtonLabel,
@@ -51,7 +52,7 @@ function addBlockedContent(container: ContainerBuilder): void {
 }
 
 export function buildReportCard(opts: ReportCardOptions): CardPayload {
-	const container = new ContainerBuilder()
+	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
 
 	if (opts.meta !== null) {
 		addMetaContent(container, opts.meta)

@@ -1,3 +1,4 @@
+import { PALETTE } from "@/config"
 import { connectButtonLabel, connectPromptBody } from "@/copy/strings"
 import {
 	ActionRowBuilder,
@@ -15,6 +16,7 @@ export interface CardPayload {
 
 export function buildConnectCard(opts: { linkPageUrl: string }): CardPayload {
 	const container = new ContainerBuilder()
+		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(new TextDisplayBuilder().setContent(connectPromptBody))
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(

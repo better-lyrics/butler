@@ -1,3 +1,4 @@
+import { PALETTE } from "@/config"
 import {
 	blockedMetadataFallback,
 	reportAddToBoardButtonLabel,
@@ -88,6 +89,10 @@ describe("report card", () => {
 			const addBtn = buttons(container).find((b) => b.custom_id === addCustomId)
 			expect(addBtn).toBeDefined()
 			expect(addBtn?.label).toBe(reportAddToBoardButtonLabel)
+		})
+		it("uses the brand red accent", () => {
+			const json = container.toJSON() as { accent_color?: number }
+			expect(json.accent_color).toBe(PALETTE.betterLyricsRed)
 		})
 		it("decodes the add-to-board custom-id into action and args", () => {
 			const addBtn = buttons(container).find((b) => b.custom_id === addCustomId)

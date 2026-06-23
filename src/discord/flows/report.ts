@@ -33,22 +33,39 @@ export interface ReportDeps {
 /**
  * Auto-card a message posted in the report channel.
  *
- * Parses a YouTube Music link from the message, looks up its track metadata, and
- * replies with a report card carrying an add-to-board button and a fix-it link.
+ * Only responds when the message contains a YouTube Music link. Other messages
+ * (plain chatter, non-YTM links) are ignored so the channel does not get spammed.
+ * A valid link still posts a card even if metadata cannot be fetched.
  */
+/**
+ * Build the composer deep link with every param Better Lyrics sends (title, artist,
+ * album, duration, videoId). videoId alone is enough; the rest prefill the composer.
+ */
+function composerLink(base: string, videoId: string, meta: TrackMeta | null): string {
+	const params = new URLSearchParams()
+	if (meta) {
+		params.set("title", meta.title)
+		params.set("artist", meta.artist)
+		if (meta.album) params.set("album", meta.album)
+		params.set("duration", String(meta.durationSec))
+	}
+	params.set("videoId", videoId)
+	return `${base}?${params.toString()}`
+}
+
 export async function handleReportMessage(message: ReportMessage, deps: ReportDeps): Promise<void> {
 	if (message.author.bot) return
 	if (message.channelId !== deps.reportChannelId) return
 
 	const videoId = parseYtmVideoId(message.content)
-	const meta = videoId ? await deps.fetchMeta(videoId) : null
-	const composerUrl = videoId
-		? `${deps.composerBaseUrl}?videoId=${encodeURIComponent(videoId)}`
-		: deps.composerBaseUrl
+	if (!videoId) return
+
+	const meta = await deps.fetchMeta(videoId)
+	const composerUrl = composerLink(deps.composerBaseUrl, videoId, meta)
 
 	await message.reply(
 		buildReportCard({
-			videoId: videoId ?? "",
+			videoId,
 			posterId: message.author.id,
 			meta: meta ? { title: meta.title, artist: meta.artist, albumArtUrl: meta.albumArtUrl } : null,
 			composerUrl,

@@ -160,11 +160,40 @@ describe("handleReportMessage", () => {
 			const addBtn = btns.find((b) => b.custom_id === `report.add:${videoId}:${posterId}`)
 			expect(addBtn).toBeDefined()
 			expect(btns.some((b) => b.custom_id === "connect")).toBe(false)
+
+			const fixBtn = btns.find((b) => b.url)
+			expect(fixBtn?.url).toContain(`videoId=${videoId}`)
+			expect(fixBtn?.url).toContain("title=")
+			expect(fixBtn?.url).toContain("artist=")
+			expect(fixBtn?.url).toContain("album=")
+			expect(fixBtn?.url).toContain("duration=")
+		})
+	})
+
+	describe("ytm link without metadata", () => {
+		it("still posts a card with a videoId-only composer link and no add-to-board", async () => {
+			const { message, replies } = makeMessage({
+				authorId: "user-9",
+				bot: false,
+				channelId: reportChannelId,
+				content: ytmLink(videoId),
+			})
+			const { deps, fetchMetaCalls } = makeReportDeps({ meta: null })
+
+			await handleReportMessage(message, deps)
+
+			expect(fetchMetaCalls).toEqual([videoId])
+			expect(replies).toHaveLength(1)
+			const btns = buttonsOf(replies[0] as CardPayload)
+			expect(btns.some((b) => b.custom_id?.startsWith("report.add"))).toBe(false)
+			const fixBtn = btns.find((b) => b.url)
+			expect(fixBtn?.url).toContain(`videoId=${videoId}`)
+			expect(fixBtn?.url).not.toContain("title=")
 		})
 	})
 
 	describe("non-ytm message", () => {
-		it("replies with the degraded card and never fetches metadata", async () => {
+		it("is ignored: no reply and no metadata fetch", async () => {
 			const { message, replies } = makeMessage({
 				authorId: "user-1",
 				bot: false,
@@ -176,10 +205,7 @@ describe("handleReportMessage", () => {
 			await handleReportMessage(message, deps)
 
 			expect(fetchMetaCalls).toEqual([])
-			expect(replies).toHaveLength(1)
-			const payload = replies[0] as CardPayload
-			const btns = buttonsOf(payload)
-			expect(btns.some((b) => b.custom_id?.startsWith("report.add"))).toBe(false)
+			expect(replies).toHaveLength(0)
 		})
 	})
 })

@@ -1,3 +1,4 @@
+import { PALETTE } from "@/config"
 import { connectButtonLabel } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { ButtonStyle, MessageFlags } from "discord.js"
@@ -96,5 +97,11 @@ describe("connect card", () => {
 	it("flags are non-ephemeral components v2", () => {
 		const payload = buildConnectCard({ linkPageUrl })
 		expect(payload.flags).toBe(MessageFlags.IsComponentsV2)
+	})
+
+	it("uses the brand red accent", () => {
+		const payload = buildConnectCard({ linkPageUrl })
+		const json = (payload.components[0] as ContainerBuilder).toJSON() as { accent_color?: number }
+		expect(json.accent_color).toBe(PALETTE.betterLyricsRed)
 	})
 })

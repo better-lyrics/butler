@@ -59,7 +59,7 @@ export const SYNC_INTERVAL_MS = 60 * 60 * 1000
 export const ALBUM_ART_SIZE = 1024
 
 export const PALETTE = {
-	betterLyricsRed: 0xf20c32,
+	betterLyricsRed: 0xf20c33,
 	composerAccent: 0x818cf8,
 	composerDark: 0x1a1a1c,
 }

@@ -108,7 +108,7 @@ describe("tunables", () => {
 	})
 
 	it("exposes the palette colors", () => {
-		expect(PALETTE.betterLyricsRed).toBe(0xf20c32)
+		expect(PALETTE.betterLyricsRed).toBe(0xf20c33)
 		expect(PALETTE.composerAccent).toBe(0x818cf8)
 		expect(PALETTE.composerDark).toBe(0x1a1a1c)
 	})
