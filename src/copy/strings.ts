@@ -76,9 +76,9 @@ const PROMOTION_LINES: Record<string, PromotionLine> = {
 // Custom emojis from the community guild (1268184963266908220). Animated ones use the `a:` prefix.
 // The bot must be a member of that guild, and needs "Use External Emojis" in any other guild it posts in.
 const TIER_EMOJI: Record<string, string> = {
-	legendary: "<:ohiorespect:1516782814287368225>",
-	grandmaster: "<:absolutecinema:1516783553646694480>",
-	master: "<:Flowersforyou:1514955160768610506>",
+	legendary: "<a:PogFishAnimated:1519140120014622731>",
+	grandmaster: "<a:pogseizure:1519140203304845403>",
+	master: "<a:CatInsanity:1519139827419709450>",
 	elite: "<a:bussin:1516783244291477630>",
 	lyricist: "<:blobcat_flower:1516783964092760095>",
 }

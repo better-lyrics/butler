@@ -60,15 +60,22 @@ describe("promotionSubtitle", () => {
 	})
 
 	it("prefixes each tier subtitle with its custom emoji", () => {
-		expect(promotionSubtitle("legendary")).toContain("<:ohiorespect:1516782814287368225>")
-		expect(promotionSubtitle("grandmaster")).toContain("<:absolutecinema:1516783553646694480>")
-		expect(promotionSubtitle("master")).toContain("<:Flowersforyou:1514955160768610506>")
+		expect(promotionSubtitle("legendary")).toContain("<a:PogFishAnimated:1519140120014622731>")
+		expect(promotionSubtitle("grandmaster")).toContain("<a:pogseizure:1519140203304845403>")
+		expect(promotionSubtitle("master")).toContain("<a:CatInsanity:1519139827419709450>")
 		expect(promotionSubtitle("lyricist")).toContain("<:blobcat_flower:1516783964092760095>")
 	})
 
-	it("uses animated emoji syntax for the elite tier", () => {
+	it("uses animated emoji syntax for the animated tiers", () => {
+		for (const tier of ["legendary", "grandmaster", "master", "elite"]) {
+			expect(promotionSubtitle(tier)).toContain("<a:")
+		}
 		expect(promotionSubtitle("elite")).toContain("<a:bussin:1516783244291477630>")
-		expect(promotionSubtitle("elite")).not.toContain("<:bussin:")
+	})
+
+	it("keeps the lyricist tier emoji static", () => {
+		expect(promotionSubtitle("lyricist")).toContain("<:blobcat_flower:")
+		expect(promotionSubtitle("lyricist")).not.toContain("<a:")
 	})
 
 	it("never exposes a raw percentile in a title or subtitle", () => {
