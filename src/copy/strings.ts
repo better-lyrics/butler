@@ -40,7 +40,7 @@ export function alreadyRequested(params: { demand: number; requestCount: number 
 }
 
 export const selfFixInstructions =
-	"To fix it yourself, open Composer and write the lyrics out. Once they look right, head back to YouTube Music, scroll down to the **Submit lyrics with Unison** button, and upload what you just made."
+	"To fix it yourself, open Composer and sync the lyrics. If you get stuck, there's a tutorial in the help section, and a getting-started walkthrough runs the first time you open it. Once the lyrics look right, head back to YouTube Music, scroll down to the **Submit lyrics with Unison** button, and upload what you made."
 
 export const blockedMetadataFallback =
 	"Couldn't pull the track details, so this can't go on the request board yet."
