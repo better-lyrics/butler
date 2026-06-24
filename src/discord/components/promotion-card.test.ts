@@ -1,5 +1,5 @@
 import { PALETTE } from "@/config"
-import { promotionSubtitle, promotionTitle } from "@/copy/strings"
+import { promotionStats, promotionSubtitle, promotionTitle } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
@@ -88,21 +88,29 @@ describe("promotion card", () => {
 			)
 			expect(blob).toContain(promotionSubtitle(opts.tier))
 			expect(blob).not.toContain("## ")
-			expect(blob).not.toContain("-# ")
 		})
-		it("shows a stats line with the rank and formatted counts", () => {
+		it("keeps the rank line as a subtext footer", () => {
 			const blob = textBlob(container)
+			expect(blob).toContain(
+				`-# ${promotionStats({ rank: 1, submissionCount: 248, totalUpvotes: 1234 })}`
+			)
 			expect(blob).toContain("Rank #1")
 			expect(blob).toContain("248 submissions")
 			expect(blob).toContain("1,234 upvotes")
 		})
-		it("renders the avatar as a thumbnail", () => {
+		it("puts the avatar next to the subtitle, not the title", () => {
 			const thumbs = thumbnails(container)
 			expect(thumbs).toHaveLength(1)
 			expect(thumbs[0]?.media.url).toBe(opts.avatarUrl)
+			const section = collect(container).find((n) => n.type === 9)
+			const sectionText = (section?.components ?? []).map((c) => c.content ?? "").join("\n")
+			expect(sectionText).toContain(promotionSubtitle(opts.tier))
+			expect(sectionText).not.toContain(
+				promotionTitle({ discordId: opts.discordId, tier: opts.tier })
+			)
 		})
-		it("separates the headline from the stats with a divider", () => {
-			expect(separators(container).length).toBeGreaterThanOrEqual(1)
+		it("uses two dividers, around the subtitle", () => {
+			expect(separators(container).length).toBe(2)
 		})
 		it("sets the accent color", () => {
 			expect(rootJson(container).accent_color).toBe(PALETTE.betterLyricsRed)

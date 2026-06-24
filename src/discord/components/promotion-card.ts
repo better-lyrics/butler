@@ -28,25 +28,26 @@ export function buildPromotionCard(opts: PromotionCardOptions): CardPayload {
 		totalUpvotes: opts.totalUpvotes,
 	})
 
-	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
+	const container = new ContainerBuilder()
+		.setAccentColor(PALETTE.betterLyricsRed)
+		.addTextDisplayComponents(new TextDisplayBuilder().setContent(title))
+		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 
-	const titleText = new TextDisplayBuilder().setContent(title)
-	if (opts.avatarUrl !== "") {
-		container.addSectionComponents(
-			new SectionBuilder()
-				.addTextDisplayComponents(titleText)
-				.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.avatarUrl))
-		)
-	} else {
-		container.addTextDisplayComponents(titleText)
+	if (subtitle !== "") {
+		const subtitleText = new TextDisplayBuilder().setContent(subtitle)
+		if (opts.avatarUrl !== "") {
+			container.addSectionComponents(
+				new SectionBuilder()
+					.addTextDisplayComponents(subtitleText)
+					.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.avatarUrl))
+			)
+		} else {
+			container.addTextDisplayComponents(subtitleText)
+		}
+		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 	}
 
-	container.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-
-	const body: TextDisplayBuilder[] = []
-	if (subtitle !== "") body.push(new TextDisplayBuilder().setContent(subtitle))
-	body.push(new TextDisplayBuilder().setContent(stats))
-	container.addTextDisplayComponents(...body)
+	container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${stats}`))
 
 	return { components: [container], flags: MessageFlags.IsComponentsV2 }
 }
