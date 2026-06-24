@@ -53,7 +53,7 @@ interface PromotionLine {
 const PROMOTION_LINES: Record<string, PromotionLine> = {
 	legendary: {
 		title: (m) => `${m} just took the top spot!`,
-		subtitle: "Legendary Lyricist, the most trusted curator in the server right now.",
+		subtitle: "Top of the board, most trusted of them all.",
 	},
 	grandmaster: {
 		title: (m) => `${m} climbed to Grandmaster Lyricist!`,
@@ -65,11 +65,11 @@ const PROMOTION_LINES: Record<string, PromotionLine> = {
 	},
 	elite: {
 		title: (m) => `${m} leveled up to Elite Lyricist!`,
-		subtitle: "One of the sharpest curators on the board now.",
+		subtitle: "One of the sharpest curators on the board.",
 	},
 	lyricist: {
 		title: (m) => `${m} earned the Lyricist role!`,
-		subtitle: "A ranked spot on the board, with plenty of room to climb.",
+		subtitle: "Ranked now, with plenty of room to climb.",
 	},
 }
 
