@@ -15,3 +15,5 @@ CREATE TABLE IF NOT EXISTS guild_config (
   tier_overrides      JSONB,
   enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );
+-- Migration for guild_config tables created before the on/off switch existed.
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
