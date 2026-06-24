@@ -20,7 +20,7 @@ export interface PromotionCardOptions {
 }
 
 export function buildPromotionCard(opts: PromotionCardOptions): CardPayload {
-	const title = `## ${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}`
+	const title = `**${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}**`
 	const subtitle = promotionSubtitle(opts.tier)
 	const stats = promotionStats({
 		rank: opts.rank,
@@ -28,26 +28,25 @@ export function buildPromotionCard(opts: PromotionCardOptions): CardPayload {
 		totalUpvotes: opts.totalUpvotes,
 	})
 
-	const headingTexts = [new TextDisplayBuilder().setContent(title)]
-	if (subtitle !== "") {
-		headingTexts.push(new TextDisplayBuilder().setContent(`-# ${subtitle}`))
-	}
-
 	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
 
+	const titleText = new TextDisplayBuilder().setContent(title)
 	if (opts.avatarUrl !== "") {
 		container.addSectionComponents(
 			new SectionBuilder()
-				.addTextDisplayComponents(...headingTexts)
+				.addTextDisplayComponents(titleText)
 				.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.avatarUrl))
 		)
 	} else {
-		container.addTextDisplayComponents(...headingTexts)
+		container.addTextDisplayComponents(titleText)
 	}
 
-	container
-		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${stats}`))
+	container.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+
+	const body: TextDisplayBuilder[] = []
+	if (subtitle !== "") body.push(new TextDisplayBuilder().setContent(subtitle))
+	body.push(new TextDisplayBuilder().setContent(stats))
+	container.addTextDisplayComponents(...body)
 
 	return { components: [container], flags: MessageFlags.IsComponentsV2 }
 }

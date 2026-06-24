@@ -81,10 +81,14 @@ describe("promotion card", () => {
 		it("pings the curator with a discord mention", () => {
 			expect(textBlob(container)).toContain(`<@${opts.discordId}>`)
 		})
-		it("renders the tier title as a heading and the subtitle as subtext", () => {
+		it("renders the title in bold and the subtitle as plain text", () => {
 			const blob = textBlob(container)
-			expect(blob).toContain(`## ${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}`)
-			expect(blob).toContain(`-# ${promotionSubtitle(opts.tier)}`)
+			expect(blob).toContain(
+				`**${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}**`
+			)
+			expect(blob).toContain(promotionSubtitle(opts.tier))
+			expect(blob).not.toContain("## ")
+			expect(blob).not.toContain("-# ")
 		})
 		it("shows a stats line with the rank and formatted counts", () => {
 			const blob = textBlob(container)
