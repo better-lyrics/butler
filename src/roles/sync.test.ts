@@ -192,7 +192,43 @@ describe("runSync", () => {
 
 			expect(rec.applied).toEqual([])
 			expect(rec.announced).toEqual([])
-			expect(result).toEqual({ granted: 0, removed: 0, announced: 0, skipped: false })
+			expect(result).toEqual({
+				granted: 0,
+				removed: 0,
+				announced: 0,
+				skipped: false,
+				transitions: [],
+			})
+		})
+	})
+
+	describe("transitions", () => {
+		it("returns a grant transition for a brand-new role", async () => {
+			const links = new Map([["k1", "d1"]])
+			const { deps } = buildDeps({ links })
+
+			const result = await runSync(deps)
+
+			expect(result.transitions).toContainEqual({ discordId: "d1", from: null, to: "rank-1" })
+		})
+
+		it("returns a move transition when a member changes tier", async () => {
+			const links = new Map([["k1", "d1"]])
+			const holdings = new Map([["d1", "rank-1"]])
+			const leaderboard = [
+				makeEntry("k1", 4),
+				makeEntry("k2", 1),
+				makeEntry("k3", 2),
+				makeEntry("k4", 3),
+			]
+			const { deps } = buildDeps({ links, holdings, leaderboard })
+
+			const result = await runSync(deps)
+
+			const moved = result.transitions.find((t) => t.discordId === "d1")
+			expect(moved?.from).toBe("rank-1")
+			expect(moved?.to).not.toBeNull()
+			expect(moved?.to).not.toBe("rank-1")
 		})
 	})
 
@@ -208,7 +244,13 @@ describe("runSync", () => {
 			expect(rec.applied).toEqual([])
 			expect(rec.persisted).toEqual([])
 			expect(rec.announced).toEqual([])
-			expect(result).toEqual({ granted: 0, removed: 0, announced: 0, skipped: true })
+			expect(result).toEqual({
+				granted: 0,
+				removed: 0,
+				announced: 0,
+				skipped: true,
+				transitions: [],
+			})
 		})
 	})
 })

@@ -208,6 +208,42 @@ describe("handleReportMessage", () => {
 			expect(replies).toHaveLength(0)
 		})
 	})
+
+	describe("outcome for logging", () => {
+		it("returns the carded video, poster, and track for a ytm link", async () => {
+			const { message } = makeMessage({
+				authorId: "poster-x",
+				bot: false,
+				channelId: reportChannelId,
+				content: ytmLink(videoId),
+			})
+			const { deps } = makeReportDeps({ meta: sampleMeta })
+
+			const outcome = await handleReportMessage(message, deps)
+
+			expect(outcome).toEqual({
+				videoId,
+				posterId: "poster-x",
+				meta: {
+					title: sampleMeta.title,
+					artist: sampleMeta.artist,
+					albumArtUrl: sampleMeta.albumArtUrl,
+				},
+			})
+		})
+
+		it("returns null when the message is ignored", async () => {
+			const { message } = makeMessage({
+				authorId: "user-1",
+				bot: false,
+				channelId: reportChannelId,
+				content: "just chatting",
+			})
+			const { deps } = makeReportDeps({ meta: sampleMeta })
+
+			expect(await handleReportMessage(message, deps)).toBeNull()
+		})
+	})
 })
 
 interface AddRecorder {
@@ -354,6 +390,45 @@ describe("handleAddToBoard", () => {
 			await handleAddToBoard(interaction, deps)
 
 			expect(replies[0]?.content).toBe(alreadyRequested({ demand: 7, requestCount: 6 }))
+		})
+	})
+
+	describe("outcome for logging", () => {
+		it("returns the poster, track, and result on a submit", async () => {
+			const { interaction } = makeAddInteraction({ userId: posterId, customId: addCustomId })
+			const result: BotRequestResult = { status: "created", demand: 5, requestCount: 4 }
+			const { deps } = makeAddDeps({ isMod: false, meta: sampleMeta, result })
+
+			const outcome = await handleAddToBoard(interaction, deps)
+
+			expect(outcome).toEqual({
+				posterId,
+				title: sampleMeta.title,
+				artist: sampleMeta.artist,
+				result,
+			})
+		})
+
+		it("returns null when the clicker is not allowed", async () => {
+			const { interaction } = makeAddInteraction({ userId: "intruder", customId: addCustomId })
+			const { deps } = makeAddDeps({
+				isMod: false,
+				meta: sampleMeta,
+				result: { status: "created", demand: 1, requestCount: 1 },
+			})
+
+			expect(await handleAddToBoard(interaction, deps)).toBeNull()
+		})
+
+		it("returns null when metadata is missing", async () => {
+			const { interaction } = makeAddInteraction({ userId: posterId, customId: addCustomId })
+			const { deps } = makeAddDeps({
+				isMod: false,
+				meta: null,
+				result: { status: "error", code: 500 },
+			})
+
+			expect(await handleAddToBoard(interaction, deps)).toBeNull()
 		})
 	})
 })

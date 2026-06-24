@@ -1,4 +1,4 @@
-import { diffHoldings } from "@/roles/diff"
+import { type RoleTransition, diffHoldings, roleTransitions } from "@/roles/diff"
 import { type TierConfig, computeTiers } from "@/roles/tiers"
 import type { LeaderboardEntry } from "@/unison/client"
 
@@ -23,6 +23,7 @@ export interface SyncResult {
 	removed: number
 	announced: number
 	skipped: boolean
+	transitions: RoleTransition[]
 }
 
 export async function runSync(deps: SyncDeps): Promise<SyncResult> {
@@ -55,7 +56,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 	// An empty desired set almost always means an upstream blip (a 200 with no curators,
 	// or a mass-unlink) rather than a real "remove everyone" intent.
 	if (desired.size === 0 && current.size > 0) {
-		return { granted: 0, removed: 0, announced: 0, skipped: true }
+		return { granted: 0, removed: 0, announced: 0, skipped: true, transitions: [] }
 	}
 
 	const diff = diffHoldings({ desired, current, order: deps.tierOrder })
@@ -78,5 +79,11 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 		announced++
 	}
 
-	return { granted: diff.grants.length, removed: diff.removals.length, announced, skipped: false }
+	return {
+		granted: diff.grants.length,
+		removed: diff.removals.length,
+		announced,
+		skipped: false,
+		transitions: roleTransitions(diff),
+	}
 }

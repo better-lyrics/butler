@@ -45,21 +45,42 @@ export const selfFixInstructions =
 export const blockedMetadataFallback =
 	"Couldn't pull the track details, so this can't go on the request board yet."
 
-const PROMOTION_HEADLINES: Record<string, (mention: string) => string> = {
-	legendary: (m) =>
-		`${m} just took the top spot. Legendary Lyricist, the most trusted curator in the server right now.`,
-	grandmaster: (m) =>
-		`${m} climbed to Grandmaster Lyricist. Second on the whole board and gaining.`,
-	master: (m) => `${m} broke into the top three. Master Lyricist now, and that is rare air.`,
-	elite: (m) => `${m} leveled up to Elite Lyricist. One of the sharpest curators on the board now.`,
-	lyricist: (m) =>
-		`${m} earned the Lyricist role, a ranked spot on the board. Plenty of room to climb.`,
+interface PromotionLine {
+	title: (mention: string) => string
+	subtitle: string
 }
 
-export function promotionHeadline(params: { discordId: string; tier: string }): string {
+const PROMOTION_LINES: Record<string, PromotionLine> = {
+	legendary: {
+		title: (m) => `${m} just took the top spot!`,
+		subtitle: "Legendary Lyricist, the most trusted curator in the server right now.",
+	},
+	grandmaster: {
+		title: (m) => `${m} climbed to Grandmaster Lyricist!`,
+		subtitle: "Second on the whole board now, and gaining.",
+	},
+	master: {
+		title: (m) => `${m} broke into the top three!`,
+		subtitle: "Master Lyricist now, and that is rare air.",
+	},
+	elite: {
+		title: (m) => `${m} leveled up to Elite Lyricist!`,
+		subtitle: "One of the sharpest curators on the board now.",
+	},
+	lyricist: {
+		title: (m) => `${m} earned the Lyricist role!`,
+		subtitle: "A ranked spot on the board, with plenty of room to climb.",
+	},
+}
+
+export function promotionTitle(params: { discordId: string; tier: string }): string {
 	const mention = `<@${params.discordId}>`
-	const make = PROMOTION_HEADLINES[params.tier]
-	return make ? make(mention) : `${mention} reached ${tierLabel(params.tier)}.`
+	const line = PROMOTION_LINES[params.tier]
+	return line ? line.title(mention) : `${mention} reached ${tierLabel(params.tier)}!`
+}
+
+export function promotionSubtitle(tier: string): string {
+	return PROMOTION_LINES[tier]?.subtitle ?? ""
 }
 
 function countLabel(n: number, word: string): string {

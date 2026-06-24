@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { diffHoldings } from "./diff"
+import { diffHoldings, roleTransitions } from "./diff"
 
 const order = ["lyricist", "special", "rank-3", "rank-2", "rank-1"]
 
@@ -96,6 +96,40 @@ describe("diffHoldings", () => {
 				order,
 			})
 			expect(result.promotions).toEqual([])
+		})
+	})
+
+	describe("roleTransitions", () => {
+		it("reports a fresh grant as from null to the new tier", () => {
+			const diff = diffHoldings({
+				desired: new Map([["u1", "special"]]),
+				current: new Map(),
+				order,
+			})
+			expect(roleTransitions(diff)).toEqual([{ discordId: "u1", from: null, to: "special" }])
+		})
+
+		it("reports a drop as from the old tier to null", () => {
+			const diff = diffHoldings({
+				desired: new Map(),
+				current: new Map([["u1", "special"]]),
+				order,
+			})
+			expect(roleTransitions(diff)).toEqual([{ discordId: "u1", from: "special", to: null }])
+		})
+
+		it("collapses a tier change into one move with both ends", () => {
+			const diff = diffHoldings({
+				desired: new Map([["u1", "rank-1"]]),
+				current: new Map([["u1", "lyricist"]]),
+				order,
+			})
+			expect(roleTransitions(diff)).toEqual([{ discordId: "u1", from: "lyricist", to: "rank-1" }])
+		})
+
+		it("returns nothing when the diff is empty", () => {
+			const diff = diffHoldings({ desired: new Map(), current: new Map(), order })
+			expect(roleTransitions(diff)).toEqual([])
 		})
 	})
 

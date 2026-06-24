@@ -21,9 +21,11 @@ export const syncCommand = new SlashCommandBuilder()
 	.setDescription("Run a curator role sync now")
 	.setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 
+export type SyncTrigger = { kind: "scheduled" } | { kind: "manual"; byDiscordId: string }
+
 export interface SyncCommandDeps {
 	pool: Pool
-	runSyncForGuild(config: GuildConfig): Promise<SyncResult | null>
+	runSyncForGuild(config: GuildConfig, trigger?: SyncTrigger): Promise<SyncResult | null>
 }
 
 export async function handleSync(
@@ -48,7 +50,10 @@ export async function handleSync(
 	// A sync fetches members one by one, which can exceed the 3 second reply window.
 	await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
-	const result = await deps.runSyncForGuild(gc)
+	const result = await deps.runSyncForGuild(gc, {
+		kind: "manual",
+		byDiscordId: interaction.user.id,
+	})
 	if (!result) {
 		await interaction.editReply({ content: SYNC_FAILED })
 		return

@@ -1,5 +1,5 @@
 import { PALETTE } from "@/config"
-import { promotionHeadline, promotionStats } from "@/copy/strings"
+import { promotionStats, promotionSubtitle, promotionTitle } from "@/copy/strings"
 import {
 	ContainerBuilder,
 	MessageFlags,
@@ -20,28 +20,34 @@ export interface PromotionCardOptions {
 }
 
 export function buildPromotionCard(opts: PromotionCardOptions): CardPayload {
-	const headline = promotionHeadline({ discordId: opts.discordId, tier: opts.tier })
+	const title = `## ${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}`
+	const subtitle = promotionSubtitle(opts.tier)
 	const stats = promotionStats({
 		rank: opts.rank,
 		submissionCount: opts.submissionCount,
 		totalUpvotes: opts.totalUpvotes,
 	})
 
+	const headingTexts = [new TextDisplayBuilder().setContent(title)]
+	if (subtitle !== "") {
+		headingTexts.push(new TextDisplayBuilder().setContent(`-# ${subtitle}`))
+	}
+
 	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
 
 	if (opts.avatarUrl !== "") {
 		container.addSectionComponents(
 			new SectionBuilder()
-				.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
+				.addTextDisplayComponents(...headingTexts)
 				.setThumbnailAccessory(new ThumbnailBuilder().setURL(opts.avatarUrl))
 		)
 	} else {
-		container.addTextDisplayComponents(new TextDisplayBuilder().setContent(headline))
+		container.addTextDisplayComponents(...headingTexts)
 	}
 
 	container
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(new TextDisplayBuilder().setContent(stats))
+		.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${stats}`))
 
 	return { components: [container], flags: MessageFlags.IsComponentsV2 }
 }

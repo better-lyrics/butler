@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
-	promotionHeadline,
 	promotionStats,
+	promotionSubtitle,
+	promotionTitle,
 	reportHelp,
 	selfFixInstructions,
 	tierLabel,
@@ -11,45 +12,58 @@ const discordId = "111222333444555666"
 const mention = `<@${discordId}>`
 const tiers = ["legendary", "grandmaster", "master", "elite", "lyricist"]
 
-describe("promotionHeadline", () => {
+describe("promotionTitle", () => {
 	describe("happy paths", () => {
-		it("pings the curator with a discord mention in every tier", () => {
+		it("pings the curator in every tier", () => {
 			for (const tier of tiers) {
-				expect(promotionHeadline({ discordId, tier })).toContain(mention)
+				expect(promotionTitle({ discordId, tier })).toContain(mention)
 			}
 		})
 
-		it("gives every tier a distinct line", () => {
-			const lines = tiers.map((tier) => promotionHeadline({ discordId, tier }))
-			expect(new Set(lines).size).toBe(tiers.length)
-		})
-
-		it("frames the podium tiers by their absolute rank", () => {
-			expect(promotionHeadline({ discordId, tier: "legendary" })).toContain("top spot")
-			expect(promotionHeadline({ discordId, tier: "grandmaster" })).toContain("Second")
-			expect(promotionHeadline({ discordId, tier: "master" })).toContain("top three")
-		})
-
-		it("names the banded tiers by their role, not a raw percentile", () => {
-			expect(promotionHeadline({ discordId, tier: "elite" })).toContain("Elite Lyricist")
-			expect(promotionHeadline({ discordId, tier: "lyricist" })).toContain("Lyricist")
-		})
-	})
-
-	describe("invariants", () => {
-		it("never exposes a raw percentile to users", () => {
+		it("ends every tier title with an exclamation", () => {
 			for (const tier of tiers) {
-				expect(promotionHeadline({ discordId, tier })).not.toContain("%")
+				expect(promotionTitle({ discordId, tier }).endsWith("!")).toBe(true)
 			}
+		})
+
+		it("gives every tier a distinct title", () => {
+			const titles = tiers.map((tier) => promotionTitle({ discordId, tier }))
+			expect(new Set(titles).size).toBe(tiers.length)
+		})
+
+		it("frames the podium titles by their absolute rank", () => {
+			expect(promotionTitle({ discordId, tier: "legendary" })).toContain("top spot")
+			expect(promotionTitle({ discordId, tier: "master" })).toContain("top three")
 		})
 	})
 
 	describe("edge cases", () => {
 		it("falls back to the tier label for an unknown tier", () => {
-			const line = promotionHeadline({ discordId, tier: "wizard" })
+			const line = promotionTitle({ discordId, tier: "wizard" })
 			expect(line).toContain(mention)
 			expect(line).toContain(tierLabel("wizard"))
 		})
+	})
+})
+
+describe("promotionSubtitle", () => {
+	it("names the tier without exposing a raw percentile", () => {
+		expect(promotionSubtitle("elite")).toContain("sharpest")
+		expect(promotionSubtitle("grandmaster")).toContain("Second")
+		for (const tier of tiers) {
+			expect(promotionSubtitle(tier).length).toBeGreaterThan(0)
+		}
+	})
+
+	it("returns an empty string for an unknown tier", () => {
+		expect(promotionSubtitle("wizard")).toBe("")
+	})
+
+	it("never exposes a raw percentile in a title or subtitle", () => {
+		for (const tier of tiers) {
+			expect(promotionTitle({ discordId, tier })).not.toContain("%")
+			expect(promotionSubtitle(tier)).not.toContain("%")
+		}
 	})
 })
 

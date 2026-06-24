@@ -1,5 +1,5 @@
 import { PALETTE } from "@/config"
-import { promotionHeadline } from "@/copy/strings"
+import { promotionSubtitle, promotionTitle } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
@@ -81,10 +81,10 @@ describe("promotion card", () => {
 		it("pings the curator with a discord mention", () => {
 			expect(textBlob(container)).toContain(`<@${opts.discordId}>`)
 		})
-		it("uses the tier-specific headline", () => {
-			expect(textBlob(container)).toContain(
-				promotionHeadline({ discordId: opts.discordId, tier: opts.tier })
-			)
+		it("renders the tier title as a heading and the subtitle as subtext", () => {
+			const blob = textBlob(container)
+			expect(blob).toContain(`## ${promotionTitle({ discordId: opts.discordId, tier: opts.tier })}`)
+			expect(blob).toContain(`-# ${promotionSubtitle(opts.tier)}`)
 		})
 		it("shows a stats line with the rank and formatted counts", () => {
 			const blob = textBlob(container)
@@ -110,11 +110,11 @@ describe("promotion card", () => {
 
 	describe("per-tier headlines", () => {
 		for (const tier of ["legendary", "grandmaster", "master", "elite", "lyricist"]) {
-			it(`renders the ${tier} headline`, () => {
+			it(`renders the ${tier} title and subtitle`, () => {
 				const container = buildPromotionCard({ ...opts, tier }).components[0] as ContainerBuilder
-				expect(textBlob(container)).toContain(
-					promotionHeadline({ discordId: opts.discordId, tier })
-				)
+				const blob = textBlob(container)
+				expect(blob).toContain(promotionTitle({ discordId: opts.discordId, tier }))
+				expect(blob).toContain(promotionSubtitle(tier))
 			})
 		}
 	})

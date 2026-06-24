@@ -10,6 +10,7 @@ import {
 import type { Pool } from "pg"
 
 const SETUP_GUILD_ONLY = "This command can only be used in a server."
+const SETUP_NO_PERMISSION = "You need the Manage Server permission to run this."
 const SETUP_DONE = "Setup complete. Posted the connect card to the configured channel."
 const SETUP_CONNECT_FAILED =
 	"Setup saved, but I could not post the connect card. Check that I can send messages there."
@@ -81,14 +82,14 @@ export interface SetupDeps {
 export async function handleSetup(
 	interaction: ChatInputCommandInteraction,
 	deps: SetupDeps
-): Promise<void> {
+): Promise<GuildConfig | null> {
 	if (!interaction.guildId) {
 		await interaction.reply({ content: SETUP_GUILD_ONLY, flags: MessageFlags.Ephemeral })
-		return
+		return null
 	}
 	if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-		await interaction.reply({ content: SETUP_GUILD_ONLY, flags: MessageFlags.Ephemeral })
-		return
+		await interaction.reply({ content: SETUP_NO_PERMISSION, flags: MessageFlags.Ephemeral })
+		return null
 	}
 
 	const connectChannel = interaction.options.getChannel("connect_channel", true)
@@ -118,8 +119,9 @@ export async function handleSetup(
 	if (channel?.isTextBased() && channel.isSendable()) {
 		await channel.send(buildConnectCard({ linkPageUrl: deps.linkPageUrl }))
 		await interaction.reply({ content: SETUP_DONE, flags: MessageFlags.Ephemeral })
-		return
+		return config
 	}
 
 	await interaction.reply({ content: SETUP_CONNECT_FAILED, flags: MessageFlags.Ephemeral })
+	return config
 }

@@ -1,4 +1,4 @@
-import { blockedMetadataFallback, promotionHeadline } from "@/copy/strings"
+import { blockedMetadataFallback, promotionTitle } from "@/copy/strings"
 import type { TrackMeta } from "@/ytm/metadata"
 import type { ChatInputCommandInteraction, ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
@@ -83,7 +83,7 @@ describe("buildPreviewCard", () => {
 		it("promotion: pings the curator with the tier headline and stats", () => {
 			const card = buildPreviewCard({ ...baseParams, card: "promotion", tier: "elite" })
 			const blob = textBlob(card)
-			expect(blob).toContain(promotionHeadline({ discordId: baseParams.userId, tier: "elite" }))
+			expect(blob).toContain(promotionTitle({ discordId: baseParams.userId, tier: "elite" }))
 			expect(blob).toContain("Rank #7")
 		})
 	})

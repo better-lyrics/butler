@@ -5,10 +5,11 @@ import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
 import { handlePreview, previewCommand } from "@/discord/commands/preview"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
-import { handleSync, syncCommand } from "@/discord/commands/sync"
+import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
+import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
 import { createUnisonClient } from "@/unison/client"
@@ -36,6 +37,17 @@ const fetchMeta = (videoId: string) => fetchTrackMeta(ytmSource, videoId, ALBUM_
 
 const discord = createDiscordClient()
 
+async function sendModLog(modChannelId: string | null, event: ModLogEvent): Promise<void> {
+	if (!modChannelId) return
+	const channel = await discord.channels.fetch(modChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return
+	await channel.send(formatModLogEvent(event))
+}
+
+function modLog(modChannelId: string | null, event: ModLogEvent): void {
+	sendModLog(modChannelId, event).catch((err) => console.error("mod log failed", err))
+}
+
 function isGuildMod(interaction: {
 	memberPermissions: ButtonInteraction["memberPermissions"]
 }): boolean {
@@ -46,7 +58,9 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 	const route = routeInteraction(interaction.customId)
 	if (route?.handler !== "report.add") return
 
-	await handleAddToBoard(interaction, {
+	const gc = interaction.guildId ? await getGuildConfig(pool, interaction.guildId) : null
+
+	const outcome = await handleAddToBoard(interaction, {
 		isMod: () => isGuildMod(interaction),
 		fetchMeta,
 		submitRequest: async (body) => {
@@ -55,6 +69,16 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			return r
 		},
 	})
+
+	if (outcome && gc?.modChannelId) {
+		modLog(gc.modChannelId, {
+			kind: "request_result",
+			discordId: outcome.posterId,
+			title: outcome.title,
+			artist: outcome.artist,
+			result: outcome.result,
+		})
+	}
 }
 
 async function handleMessage(message: Message): Promise<void> {
@@ -62,14 +86,29 @@ async function handleMessage(message: Message): Promise<void> {
 	const gc = message.guildId ? await getGuildConfig(pool, message.guildId) : null
 	if (!gc?.reportChannelId || gc.reportChannelId !== message.channelId) return
 
-	await handleReportMessage(message, {
+	const outcome = await handleReportMessage(message, {
 		reportChannelId: gc.reportChannelId,
 		fetchMeta,
 		composerBaseUrl: config.composerBaseUrl,
 	})
+
+	if (outcome && gc.modChannelId) {
+		modLog(gc.modChannelId, {
+			kind: "report_posted",
+			discordId: outcome.posterId,
+			title: outcome.meta?.title ?? outcome.videoId,
+			artist: outcome.meta?.artist ?? "unknown artist",
+		})
+	}
 }
 
-async function runSyncForGuild(gc: GuildConfig): Promise<SyncResult | null> {
+async function runSyncForGuild(
+	gc: GuildConfig,
+	trigger: SyncTrigger = { kind: "scheduled" }
+): Promise<SyncResult | null> {
+	if (trigger.kind === "manual") {
+		modLog(gc.modChannelId, { kind: "sync_triggered", discordId: trigger.byDiscordId })
+	}
 	try {
 		const guild = await discord.guilds.fetch(gc.guildId)
 		const botHighest = guild.members.me?.roles.highest.position ?? 0
@@ -83,6 +122,10 @@ async function runSyncForGuild(gc: GuildConfig): Promise<SyncResult | null> {
 			assertRoleHierarchy(botHighest, managedPositions)
 		} catch (err) {
 			console.error(`sync skipped for guild ${gc.guildId}: hierarchy guard failed`, err)
+			modLog(gc.modChannelId, {
+				kind: "sync_failed",
+				reason: "my role must sit above the tier roles",
+			})
 			return null
 		}
 
@@ -127,14 +170,42 @@ async function runSyncForGuild(gc: GuildConfig): Promise<SyncResult | null> {
 
 		if (result.skipped) {
 			console.warn(`sync skipped for guild ${gc.guildId}: empty desired set`)
+			modLog(gc.modChannelId, { kind: "sync_skipped" })
 		} else {
 			console.log(
 				`sync done for guild ${gc.guildId}: granted=${result.granted} removed=${result.removed} announced=${result.announced}`
 			)
+			for (const t of result.transitions) {
+				if (t.from === null && t.to !== null) {
+					modLog(gc.modChannelId, { kind: "role_granted", discordId: t.discordId, tier: t.to })
+				} else if (t.to === null && t.from !== null) {
+					modLog(gc.modChannelId, { kind: "role_removed", discordId: t.discordId, tier: t.from })
+				} else if (t.from !== null && t.to !== null) {
+					modLog(gc.modChannelId, {
+						kind: "role_moved",
+						discordId: t.discordId,
+						from: t.from,
+						to: t.to,
+					})
+				}
+			}
+			// Skip the heartbeat line for a scheduled run that changed nothing; manual runs and
+			// any run with changes still report a summary so the channel reflects real activity.
+			const noop = result.granted === 0 && result.removed === 0 && result.announced === 0
+			if (!(trigger.kind === "scheduled" && noop)) {
+				modLog(gc.modChannelId, {
+					kind: "sync_summary",
+					trigger: trigger.kind,
+					granted: result.granted,
+					removed: result.removed,
+					announced: result.announced,
+				})
+			}
 		}
 		return result
 	} catch (err) {
 		console.error(`sync failed for guild ${gc.guildId}`, err)
+		modLog(gc.modChannelId, { kind: "sync_failed", reason: String(err) })
 		return null
 	}
 }
@@ -177,9 +248,13 @@ discord.on(Events.MessageCreate, (message) => {
 
 discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 	if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
-		handleSetup(interaction, { pool, linkPageUrl: config.linkPageUrl }).catch((err) =>
-			console.error("setup handler failed", err)
-		)
+		handleSetup(interaction, { pool, linkPageUrl: config.linkPageUrl })
+			.then((saved) => {
+				if (saved?.modChannelId) {
+					modLog(saved.modChannelId, { kind: "setup_updated", discordId: interaction.user.id })
+				}
+			})
+			.catch((err) => console.error("setup handler failed", err))
 		return
 	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "sync") {

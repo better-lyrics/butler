@@ -26,6 +26,7 @@ function makeInteraction(opts: { guildId: string | null; manage: boolean }) {
 	const interaction = {
 		guildId: opts.guildId,
 		memberPermissions: { has: () => opts.manage },
+		user: { id: "tester-1" },
 		async reply(payload: { content?: string }) {
 			rec.replies.push(payload)
 		},
@@ -119,6 +120,7 @@ describe("handleSync result reporting", () => {
 			removed: 1,
 			announced: 1,
 			skipped: false,
+			transitions: [],
 		})
 		const { interaction, rec } = makeInteraction({ guildId: "g1", manage: true })
 
@@ -135,7 +137,13 @@ describe("handleSync result reporting", () => {
 	it("reports the skipped message when the sync was skipped", async () => {
 		const pool = await makePool()
 		await upsertGuildConfig(pool, seededConfig("g1"))
-		const { deps } = makeDeps(pool, { granted: 0, removed: 0, announced: 0, skipped: true })
+		const { deps } = makeDeps(pool, {
+			granted: 0,
+			removed: 0,
+			announced: 0,
+			skipped: true,
+			transitions: [],
+		})
 		const { interaction, rec } = makeInteraction({ guildId: "g1", manage: true })
 
 		await handleSync(interaction, deps)

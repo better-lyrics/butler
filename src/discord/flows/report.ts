@@ -6,7 +6,7 @@ import {
 	requestAdded,
 	requestFailed,
 } from "@/copy/strings"
-import { buildReportCard } from "@/discord/components/report-card"
+import { type ReportMeta, buildReportCard } from "@/discord/components/report-card"
 import { decodeCustomId } from "@/interactions/custom-id"
 import { buildBotRequestBody } from "@/requests/payload"
 import type { BotRequestBody } from "@/requests/payload"
@@ -53,24 +53,34 @@ export function composerLink(base: string, videoId: string, meta: TrackMeta | nu
 	return `${base}?${params.toString()}`
 }
 
-export async function handleReportMessage(message: ReportMessage, deps: ReportDeps): Promise<void> {
-	if (message.author.bot) return
-	if (message.channelId !== deps.reportChannelId) return
+/** What the report flow carded, returned so the caller can log it. Null when ignored. */
+export interface ReportOutcome {
+	videoId: string
+	posterId: string
+	meta: ReportMeta | null
+}
+
+export async function handleReportMessage(
+	message: ReportMessage,
+	deps: ReportDeps
+): Promise<ReportOutcome | null> {
+	if (message.author.bot) return null
+	if (message.channelId !== deps.reportChannelId) return null
 
 	const videoId = parseYtmVideoId(message.content)
-	if (!videoId) return
+	if (!videoId) return null
 
 	const meta = await deps.fetchMeta(videoId)
 	const composerUrl = composerLink(deps.composerBaseUrl, videoId, meta)
+	const reportMeta: ReportMeta | null = meta
+		? { title: meta.title, artist: meta.artist, albumArtUrl: meta.albumArtUrl }
+		: null
 
 	await message.reply(
-		buildReportCard({
-			videoId,
-			posterId: message.author.id,
-			meta: meta ? { title: meta.title, artist: meta.artist, albumArtUrl: meta.albumArtUrl } : null,
-			composerUrl,
-		})
+		buildReportCard({ videoId, posterId: message.author.id, meta: reportMeta, composerUrl })
 	)
+
+	return { videoId, posterId: message.author.id, meta: reportMeta }
 }
 
 /** Minimal shape of the add-to-board button interaction. */
@@ -106,27 +116,35 @@ function resultContent(result: BotRequestResult): string {
  * Only the original poster or a mod may use it. Submits the request attributed
  * to the original poster and replies ephemerally with a humanized result.
  */
+/** What a successful add-to-board did, returned so the caller can log it. Null when nothing was submitted. */
+export interface AddToBoardOutcome {
+	posterId: string
+	title: string
+	artist: string
+	result: BotRequestResult
+}
+
 export async function handleAddToBoard(
 	interaction: AddToBoardInteraction,
 	deps: AddToBoardDeps
-): Promise<void> {
+): Promise<AddToBoardOutcome | null> {
 	const decoded = decodeCustomId(interaction.customId)
-	if (!decoded || decoded.action !== "report.add") return
+	if (!decoded || decoded.action !== "report.add") return null
 
 	const videoId = decoded.args[0]
 	const posterId = decoded.args[1]
-	if (!videoId || !posterId) return
+	if (!videoId || !posterId) return null
 
 	const allowed = interaction.user.id === posterId || (await deps.isMod(interaction.user.id))
 	if (!allowed) {
 		await interaction.reply({ content: notYourReport, flags: MessageFlags.Ephemeral })
-		return
+		return null
 	}
 
 	const meta = await deps.fetchMeta(videoId)
 	if (!meta) {
 		await interaction.reply({ content: blockedMetadataFallback, flags: MessageFlags.Ephemeral })
-		return
+		return null
 	}
 
 	const body = buildBotRequestBody(
@@ -139,4 +157,6 @@ export async function handleAddToBoard(
 		content: resultContent(result),
 		flags: MessageFlags.Ephemeral,
 	})
+
+	return { posterId, title: meta.title, artist: meta.artist, result }
 }
