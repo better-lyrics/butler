@@ -69,7 +69,7 @@ const PROMOTION_LINES: Record<string, PromotionLine> = {
 	},
 	lyricist: {
 		title: (m) => `${m} earned the Lyricist role!`,
-		subtitle: "Ranked now, with plenty of room to climb.",
+		subtitle: "On the board, with plenty of room to climb.",
 	},
 }
 
