@@ -3,6 +3,12 @@ import { type GuildConfig, getGuildConfig, listGuildConfigs } from "@/db/guild-c
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
+import {
+	activateCommand,
+	deactivateCommand,
+	handleActivate,
+	handleDeactivate,
+} from "@/discord/commands/power"
 import { handlePreview, previewCommand } from "@/discord/commands/preview"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
@@ -83,8 +89,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 
 async function handleMessage(message: Message): Promise<void> {
 	if (message.author.bot) return
+	if (message.guildId !== config.guildId) return
 	const gc = message.guildId ? await getGuildConfig(pool, message.guildId) : null
 	if (!gc?.reportChannelId || gc.reportChannelId !== message.channelId) return
+	if (!gc.enabled) return
 
 	const outcome = await handleReportMessage(message, {
 		reportChannelId: gc.reportChannelId,
@@ -214,6 +222,8 @@ let syncHandle: ReturnType<typeof setInterval> | null = null
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
+		if (gc.guildId !== config.guildId) continue
+		if (!gc.enabled) continue
 		await runSyncForGuild(gc)
 	}
 }
@@ -221,18 +231,17 @@ async function runAll(): Promise<void> {
 discord.once(Events.ClientReady, async (client) => {
 	console.log(`logged in as ${client.user.tag}`)
 	try {
-		const commands = [setupCommand.toJSON(), syncCommand.toJSON()]
-		if (config.devGuildId) {
-			// Guild-scoped commands appear instantly; clear the global set to avoid duplicates.
-			// /preview is a dev-only tool, so it ships only to the dev guild.
-			await client.application.commands.set(
-				[...commands, previewCommand.toJSON()],
-				config.devGuildId
-			)
-			await client.application.commands.set([])
-		} else {
-			await client.application.commands.set(commands)
-		}
+		// butler serves exactly one guild. Register guild-scoped (instant, never shows elsewhere)
+		// and wipe any global commands left over from earlier deploys.
+		const commands = [
+			setupCommand.toJSON(),
+			syncCommand.toJSON(),
+			previewCommand.toJSON(),
+			activateCommand.toJSON(),
+			deactivateCommand.toJSON(),
+		]
+		await client.application.commands.set(commands, config.guildId)
+		await client.application.commands.set([])
 	} catch (err) {
 		console.error("failed to register slash commands", err)
 	}
@@ -247,6 +256,8 @@ discord.on(Events.MessageCreate, (message) => {
 })
 
 discord.on(Events.InteractionCreate, (interaction: Interaction) => {
+	// butler only acts in its one guild; ignore anything from anywhere else.
+	if (interaction.guildId !== config.guildId) return
 	if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
 		handleSetup(interaction, { pool, linkPageUrl: config.linkPageUrl })
 			.then((saved) => {
@@ -261,6 +272,34 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		handleSync(interaction, { pool, runSyncForGuild }).catch((err) =>
 			console.error("sync handler failed", err)
 		)
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "activate") {
+		handleActivate(interaction, { pool, runSyncForGuild })
+			.then((out) => {
+				if (out.changed) {
+					modLog(out.modChannelId, {
+						kind: "power_toggled",
+						discordId: interaction.user.id,
+						on: true,
+					})
+				}
+			})
+			.catch((err) => console.error("activate handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "deactivate") {
+		handleDeactivate(interaction, { pool, runSyncForGuild })
+			.then((out) => {
+				if (out.changed) {
+					modLog(out.modChannelId, {
+						kind: "power_toggled",
+						discordId: interaction.user.id,
+						on: false,
+					})
+				}
+			})
+			.catch((err) => console.error("deactivate handler failed", err))
 		return
 	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "preview") {

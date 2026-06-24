@@ -24,6 +24,7 @@ export type ModLogEvent =
 			result: BotRequestResult
 	  }
 	| { kind: "setup_updated"; discordId: string }
+	| { kind: "power_toggled"; discordId: string; on: boolean }
 
 export type ModLog = (event: ModLogEvent) => void
 
@@ -78,5 +79,7 @@ export function formatModLogEvent(event: ModLogEvent): string {
 			return requestLine(event)
 		case "setup_updated":
 			return `**Setup** ${mention(event.discordId)} updated butler's configuration.`
+		case "power_toggled":
+			return `**Power** ${mention(event.discordId)} turned butler ${event.on ? "on" : "off"}.`
 	}
 }

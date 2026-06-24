@@ -12,5 +12,6 @@ CREATE TABLE IF NOT EXISTS guild_config (
   announce_channel_id TEXT,
   mod_channel_id      TEXT,
   role_ids            JSONB NOT NULL DEFAULT '{}',
-  tier_overrides      JSONB
+  tier_overrides      JSONB,
+  enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );

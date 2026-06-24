@@ -24,11 +24,11 @@ Three are required. The rest default to production values.
 | `DISCORD_BOT_TOKEN` | yes | Discord bot token. |
 | `DATABASE_URL` | yes | Postgres connection string. |
 | `BUTLER_BOT_SECRET` | yes | Must match the value set on Unison. |
+| `GUILD_ID` | yes | The one guild butler serves. Commands register only here, and it ignores every other server. |
 | `UNISON_API_BASE_URL` | no | Defaults to `https://unison.boidu.dev`. |
 | `LINK_PAGE_URL` | no | Defaults to `https://unison.boidu.dev/link`. |
 | `COMPOSER_BASE_URL` | no | Defaults to `https://composer.betterlyrics.org`. |
 | `YTM_COOKIE` | no | Throwaway Google account cookie for richer metadata. |
-| `DEV_GUILD_ID` | no | Set it to register slash commands to one guild instantly instead of waiting on global propagation. |
 
 ## Run it
 
@@ -43,7 +43,9 @@ pnpm run lint
 
 ## In Discord
 
-Invite the bot with Manage Roles and drag its role above the five tier roles. Enable the MessageContent privileged intent. Then run `/setup` (admin only) to record the channels and the five tier roles; it posts the connect card. `/sync` runs a role sync on demand, otherwise it runs hourly.
+butler serves the single guild named in `GUILD_ID` and ignores every other server. Invite it with Manage Roles, Read Message History, and Use External Emojis, then drag its role above the five tier roles. Enable the MessageContent privileged intent.
+
+It ships **dormant**. Run `/setup` (admin only) to record the channels and the five tier roles; it posts the connect card but assigns nothing yet. When you are ready, run `/activate`: it flips butler on and runs the first sync, which seeds and announces every current curator. `/deactivate` puts it back to sleep (no syncing, announcing, or report watching). `/sync` runs a sync on demand once active, otherwise it runs hourly. `/preview` renders any card for a quick look.
 
 Tiers, highest to lowest: #1 Legendary Lyricist, #2 Grandmaster Lyricist, #3 Master Lyricist, top 5% Elite Lyricist, top 20% Lyricist.
 

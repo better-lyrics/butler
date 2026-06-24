@@ -111,6 +111,8 @@ export async function handleSetup(
 			lyricist: interaction.options.getRole("lyricist_role", true).id,
 		},
 		tierOverrides: null,
+		// The switch is owned by /activate and /deactivate; upsertGuildConfig leaves it untouched.
+		enabled: false,
 	}
 
 	await upsertGuildConfig(deps.pool, config)

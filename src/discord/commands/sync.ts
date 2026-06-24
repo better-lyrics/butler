@@ -11,6 +11,7 @@ import type { Pool } from "pg"
 export const SYNC_GUILD_ONLY = "This command can only be used in a server."
 export const SYNC_NO_PERMISSION = "You need the Manage Server permission to run this."
 export const SYNC_NO_CONFIG = "This server is not set up yet. Run /setup first."
+export const SYNC_DISABLED = "butler is off. Run /activate first."
 export const SYNC_FAILED =
 	"Could not run the sync. Check that my role sits above the tier roles, and the logs."
 export const SYNC_SKIPPED =
@@ -44,6 +45,10 @@ export async function handleSync(
 	const gc = await getGuildConfig(deps.pool, interaction.guildId)
 	if (!gc) {
 		await interaction.reply({ content: SYNC_NO_CONFIG, flags: MessageFlags.Ephemeral })
+		return
+	}
+	if (!gc.enabled) {
+		await interaction.reply({ content: SYNC_DISABLED, flags: MessageFlags.Ephemeral })
 		return
 	}
 

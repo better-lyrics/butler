@@ -8,6 +8,7 @@ export interface GuildConfig {
 	modChannelId: string | null
 	roleIds: Record<string, string>
 	tierOverrides: unknown | null
+	enabled: boolean
 }
 
 interface GuildConfigRow {
@@ -18,6 +19,7 @@ interface GuildConfigRow {
 	mod_channel_id: string | null
 	role_ids: unknown
 	tier_overrides: unknown
+	enabled: boolean
 }
 
 // JSONB comes back parsed from real pg, but pg-mem returns column defaults
@@ -43,13 +45,14 @@ function mapConfig(row: GuildConfigRow): GuildConfig {
 		modChannelId: row.mod_channel_id,
 		roleIds: parseJson<Record<string, string>>(row.role_ids, {}),
 		tierOverrides: parseJsonOrNull(row.tier_overrides),
+		enabled: row.enabled === true,
 	}
 }
 
 export async function getGuildConfig(pool: Pool, guildId: string): Promise<GuildConfig | null> {
 	const result = await pool.query<GuildConfigRow>(
 		`SELECT guild_id, connect_channel_id, report_channel_id, announce_channel_id,
-		        mod_channel_id, role_ids, tier_overrides
+		        mod_channel_id, role_ids, tier_overrides, enabled
 		 FROM guild_config WHERE guild_id = $1`,
 		[guildId]
 	)
@@ -60,7 +63,7 @@ export async function getGuildConfig(pool: Pool, guildId: string): Promise<Guild
 export async function listGuildConfigs(pool: Pool): Promise<GuildConfig[]> {
 	const result = await pool.query<GuildConfigRow>(
 		`SELECT guild_id, connect_channel_id, report_channel_id, announce_channel_id,
-		        mod_channel_id, role_ids, tier_overrides
+		        mod_channel_id, role_ids, tier_overrides, enabled
 		 FROM guild_config ORDER BY guild_id ASC`
 	)
 	return result.rows.map(mapConfig)
@@ -88,4 +91,14 @@ export async function upsertGuildConfig(pool: Pool, config: GuildConfig): Promis
 			config.tierOverrides === null ? null : JSON.stringify(config.tierOverrides),
 		]
 	)
+}
+
+// Kept separate from upsertGuildConfig on purpose: re-running /setup must never flip the
+// global switch, so the upsert leaves `enabled` untouched and only this toggles it.
+export async function setGuildEnabled(
+	pool: Pool,
+	guildId: string,
+	enabled: boolean
+): Promise<void> {
+	await pool.query("UPDATE guild_config SET enabled = $2 WHERE guild_id = $1", [guildId, enabled])
 }

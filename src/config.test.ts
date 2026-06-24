@@ -1,13 +1,19 @@
 import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIERS, TIER_ORDER, loadConfig } from "@/config"
 import { describe, expect, it } from "vitest"
 
-const REQUIRED_KEYS = ["DISCORD_BOT_TOKEN", "DATABASE_URL", "BUTLER_BOT_SECRET"] as const
+const REQUIRED_KEYS = [
+	"DISCORD_BOT_TOKEN",
+	"DATABASE_URL",
+	"BUTLER_BOT_SECRET",
+	"GUILD_ID",
+] as const
 
 function completeEnv(): Record<string, string | undefined> {
 	return {
 		DISCORD_BOT_TOKEN: "bot-token",
 		DATABASE_URL: "postgres://localhost:5432/butler",
 		BUTLER_BOT_SECRET: "bot-secret",
+		GUILD_ID: "111111111111111111",
 	}
 }
 
@@ -25,14 +31,14 @@ describe("loadConfig", () => {
 			linkPageUrl: "https://unison.boidu.dev/link",
 			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
-			devGuildId: null,
+			guildId: "111111111111111111",
 		})
 	})
 
-	it("carries DEV_GUILD_ID when set, for instant per-guild command registration", () => {
+	it("carries GUILD_ID, the one guild butler serves", () => {
 		const env = completeEnv()
-		env.DEV_GUILD_ID = "123456789012345678"
-		expect(loadConfig(env).devGuildId).toBe("123456789012345678")
+		env.GUILD_ID = "123456789012345678"
+		expect(loadConfig(env).guildId).toBe("123456789012345678")
 	})
 })
 

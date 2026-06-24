@@ -7,7 +7,7 @@ export interface Config {
 	linkPageUrl: string
 	composerBaseUrl: string
 	ytmCookie: string | null
-	devGuildId: string | null
+	guildId: string
 }
 
 const DEFAULT_UNISON_API_BASE_URL = "https://unison.boidu.dev"
@@ -33,7 +33,6 @@ function withDefault(
 
 export function loadConfig(env: Record<string, string | undefined>): Config {
 	const ytmCookie = env.YTM_COOKIE
-	const devGuildId = env.DEV_GUILD_ID
 
 	return {
 		discordBotToken: required(env, "DISCORD_BOT_TOKEN"),
@@ -45,7 +44,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 		linkPageUrl: withDefault(env, "LINK_PAGE_URL", DEFAULT_LINK_PAGE_URL),
 		composerBaseUrl: withDefault(env, "COMPOSER_BASE_URL", DEFAULT_COMPOSER_BASE_URL),
 		ytmCookie: ytmCookie === undefined || ytmCookie === "" ? null : ytmCookie,
-		devGuildId: devGuildId === undefined || devGuildId === "" ? null : devGuildId,
+		guildId: required(env, "GUILD_ID"),
 	}
 }
 

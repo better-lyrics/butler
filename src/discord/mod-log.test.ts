@@ -117,6 +117,14 @@ describe("formatModLogEvent", () => {
 		})
 	})
 
+	describe("power event", () => {
+		it("says who turned butler on or off", () => {
+			expect(formatModLogEvent({ kind: "power_toggled", discordId, on: true })).toContain("on")
+			expect(formatModLogEvent({ kind: "power_toggled", discordId, on: true })).toContain(mention)
+			expect(formatModLogEvent({ kind: "power_toggled", discordId, on: false })).toContain("off")
+		})
+	})
+
 	describe("invariants", () => {
 		const samples: ModLogEvent[] = [
 			{ kind: "sync_triggered", discordId },
@@ -135,6 +143,7 @@ describe("formatModLogEvent", () => {
 				result: { status: "error", code: 1 },
 			},
 			{ kind: "setup_updated", discordId },
+			{ kind: "power_toggled", discordId, on: true },
 		]
 
 		it("every event produces a non-empty single-line message with a bold tag", () => {
