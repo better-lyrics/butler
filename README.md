@@ -50,3 +50,7 @@ Tiers, highest to lowest: #1 Legendary Lyricist, #2 Grandmaster Lyricist, #3 Mas
 ## Deploy
 
 Railway, as a worker. No public port, since butler only makes outbound calls. Set the three required vars (plus `DEV_GUILD_ID` while testing). If `BUTLER_BOT_SECRET` does not match Unison, the bot reads and the request POST will 401. There is no OAuth to configure here; that is Unison's side.
+
+## License
+
+GPL-3.0-or-later. See [LICENSE](LICENSE).
