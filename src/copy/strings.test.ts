@@ -59,6 +59,18 @@ describe("promotionSubtitle", () => {
 		expect(promotionSubtitle("wizard")).toBe("")
 	})
 
+	it("prefixes each tier subtitle with its custom emoji", () => {
+		expect(promotionSubtitle("legendary")).toContain("<:ohiorespect:1516782814287368225>")
+		expect(promotionSubtitle("grandmaster")).toContain("<:absolutecinema:1516783553646694480>")
+		expect(promotionSubtitle("master")).toContain("<:Flowersforyou:1514955160768610506>")
+		expect(promotionSubtitle("lyricist")).toContain("<:blobcat_flower:1516783964092760095>")
+	})
+
+	it("uses animated emoji syntax for the elite tier", () => {
+		expect(promotionSubtitle("elite")).toContain("<a:bussin:1516783244291477630>")
+		expect(promotionSubtitle("elite")).not.toContain("<:bussin:")
+	})
+
 	it("never exposes a raw percentile in a title or subtitle", () => {
 		for (const tier of tiers) {
 			expect(promotionTitle({ discordId, tier })).not.toContain("%")

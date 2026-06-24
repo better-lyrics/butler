@@ -73,6 +73,16 @@ const PROMOTION_LINES: Record<string, PromotionLine> = {
 	},
 }
 
+// Custom emojis from the community guild (1268184963266908220). Animated ones use the `a:` prefix.
+// The bot must be a member of that guild, and needs "Use External Emojis" in any other guild it posts in.
+const TIER_EMOJI: Record<string, string> = {
+	legendary: "<:ohiorespect:1516782814287368225>",
+	grandmaster: "<:absolutecinema:1516783553646694480>",
+	master: "<:Flowersforyou:1514955160768610506>",
+	elite: "<a:bussin:1516783244291477630>",
+	lyricist: "<:blobcat_flower:1516783964092760095>",
+}
+
 export function promotionTitle(params: { discordId: string; tier: string }): string {
 	const mention = `<@${params.discordId}>`
 	const line = PROMOTION_LINES[params.tier]
@@ -80,7 +90,10 @@ export function promotionTitle(params: { discordId: string; tier: string }): str
 }
 
 export function promotionSubtitle(tier: string): string {
-	return PROMOTION_LINES[tier]?.subtitle ?? ""
+	const line = PROMOTION_LINES[tier]
+	if (!line) return ""
+	const emoji = TIER_EMOJI[tier]
+	return emoji ? `${emoji} ${line.subtitle}` : line.subtitle
 }
 
 function countLabel(n: number, word: string): string {
