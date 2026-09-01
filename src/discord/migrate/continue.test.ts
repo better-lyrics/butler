@@ -1,6 +1,7 @@
 import {
 	migrateAlreadyCommitted,
 	migrateExpired,
+	migrateFailed,
 	migrateNotYet,
 	migrateSessionNotFound,
 } from "@/copy/strings"
@@ -102,5 +103,14 @@ describe("handleMigrateContinue edge cases", () => {
 			deps({ status: "ok", data: { ...ready, status: "expired" } })
 		)
 		expect(replies[0]?.content).toBe(migrateExpired)
+	})
+
+	it("reports a failed session (e.g. same key) so the user can restart", async () => {
+		const { interaction, replies } = fakeInteraction("migrate.continue:sess-1")
+		await handleMigrateContinue(
+			interaction,
+			deps({ status: "ok", data: { ...ready, status: "failed", newKeyId: null, counts: null } })
+		)
+		expect(replies[0]?.content).toBe(migrateFailed)
 	})
 })

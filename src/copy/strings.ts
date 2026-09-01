@@ -119,9 +119,11 @@ export const reportFixItMyselfButtonLabel = "Fix it myself"
 export const migrateStartHeading = "**Move your account to a new key**"
 
 export const migrateStartBody =
-	"Lost your key? Open Better Lyrics on the install that holds your NEW key and link it to this Discord. Once that is done, come back and tap Continue."
+	"Open your new Better Lyrics extension and click Link Discord, the normal linking flow. That link is your proof. When it is done, come back and tap Continue."
 
-export const migrateSignButtonLabel = "Link my new key"
+export function migrateMovingAccount(shortId: string): string {
+	return `Moving account \`${shortId}\`.`
+}
 
 export const migrateContinueButtonLabel = "Continue"
 
@@ -210,8 +212,14 @@ export function migrateTokenMismatch(shortId: string): string {
 export const migrateAlreadyActive =
 	"You already have a migration in progress. Finish or wait for it before starting another."
 
-export const migrateSameKey =
-	"Your new key is the same as your old one, so there is nothing to move."
+export const migrateBlacklisted =
+	"This account is blocked from linking, so it cannot be migrated. Reach out to a mod if you think this is a mistake."
+
+export const migrateLinkingDisabled =
+	"Account linking is switched off right now. Try again a little later."
+
+export const migrateFailed =
+	"That migration could not go through (the two keys may be the same). Run /migrate to try again."
 
 export const migrateNotReady =
 	"This migration is not ready to commit yet. Finish linking your new key first."

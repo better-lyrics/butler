@@ -20,7 +20,7 @@ import {
 	TextInputStyle,
 } from "discord.js"
 import { matchesConfirmToken, migrateShortId } from "./confirm-token"
-import { canToggleNickname, parseNicknameChoice } from "./continue"
+import { canToggleNickname, parseNicknameChoice } from "./nickname"
 
 const SHORT_ID_INPUT = "shortId"
 

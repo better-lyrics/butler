@@ -1,4 +1,9 @@
-import { migrateAlreadyActive, migrateGenericError, migrateSameKey } from "@/copy/strings"
+import {
+	migrateAlreadyActive,
+	migrateBlacklisted,
+	migrateGenericError,
+	migrateLinkingDisabled,
+} from "@/copy/strings"
 import { createCooldown } from "@/discord/migrate/cooldown"
 import type { MigrationStartResult } from "@/unison/client"
 import { MessageFlags } from "discord.js"
@@ -47,7 +52,6 @@ describe("handleMigrate happy path", () => {
 		await handleMigrate(interaction, deps(started).deps)
 		const s = JSON.stringify(replies[0])
 		expect(s).toContain("migrate.continue:sess-1")
-		expect(s).toContain("https://u.test/sign")
 		expect(ephemeral(replies[0]?.flags)).toBe(true)
 	})
 })
@@ -66,10 +70,16 @@ describe("handleMigrate business outcomes", () => {
 		expect(replies[0]?.content).toBe(migrateAlreadyActive)
 	})
 
-	it("tells the user when the new key equals the old", async () => {
+	it("tells the user when the account is blacklisted", async () => {
 		const { interaction, replies } = fakeInteraction()
-		await handleMigrate(interaction, deps({ status: "same_key" }).deps)
-		expect(replies[0]?.content).toBe(migrateSameKey)
+		await handleMigrate(interaction, deps({ status: "blacklisted" }).deps)
+		expect(replies[0]?.content).toBe(migrateBlacklisted)
+	})
+
+	it("tells the user when linking is disabled", async () => {
+		const { interaction, replies } = fakeInteraction()
+		await handleMigrate(interaction, deps({ status: "linking_disabled" }).deps)
+		expect(replies[0]?.content).toBe(migrateLinkingDisabled)
 	})
 
 	it("shows a generic error on transport failure", async () => {

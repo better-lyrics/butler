@@ -4,6 +4,7 @@ import {
 	migrateContinueButtonLabel,
 	migrateKeyLine,
 	migrateLinkButtonLabel,
+	migrateMovingAccount,
 	migrateNicknameChoosing,
 	migrateNicknameKept,
 	migrateNicknameToggleLabel,
@@ -14,7 +15,6 @@ import {
 	migratePreviewCounts,
 	migratePreviewHeading,
 	migratePreviewWarning,
-	migrateSignButtonLabel,
 	migrateStartBody,
 	migrateStartHeading,
 	migrateSuccessBody,
@@ -32,6 +32,7 @@ import {
 	TextDisplayBuilder,
 } from "discord.js"
 import { migrateShortId } from "../migrate/confirm-token"
+import { canToggleNickname } from "../migrate/nickname"
 
 export interface MigrateCardPayload {
 	components: ContainerBuilder[]
@@ -46,7 +47,6 @@ function text(content: string): TextDisplayBuilder {
 
 export function buildMigrateStartCard(opts: {
 	sessionId: string
-	signUrl: string
 	oldKeyId: string
 }): MigrateCardPayload {
 	const container = new ContainerBuilder()
@@ -54,13 +54,9 @@ export function buildMigrateStartCard(opts: {
 		.addTextDisplayComponents(text(migrateStartHeading))
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(migrateStartBody))
-		.addTextDisplayComponents(text(`Old identity: \`${migrateShortId(opts.oldKeyId)}\``))
+		.addTextDisplayComponents(text(migrateMovingAccount(migrateShortId(opts.oldKeyId))))
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
-				new ButtonBuilder()
-					.setStyle(ButtonStyle.Link)
-					.setURL(opts.signUrl)
-					.setLabel(migrateSignButtonLabel),
 				new ButtonBuilder()
 					.setStyle(ButtonStyle.Primary)
 					.setCustomId(encodeCustomId("migrate.continue", [opts.sessionId]))
@@ -85,9 +81,7 @@ export function buildMigratePreviewCard(opts: {
 	}
 	const oldShort = migrateShortId(status.oldKeyId)
 	const newShort = status.newKeyId ? migrateShortId(status.newKeyId) : "?"
-
-	const canToggle =
-		!!status.oldNickname && !!status.newNickname && status.oldNickname !== status.newNickname
+	const canToggle = canToggleNickname(status)
 
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)

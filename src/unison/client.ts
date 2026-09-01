@@ -37,8 +37,9 @@ export interface MigrationMoved {
 export type MigrationStartResult =
 	| { status: "started"; sessionId: string; signUrl: string; oldKeyId: string }
 	| { status: "not_linked" }
+	| { status: "blacklisted" }
 	| { status: "already_active" }
-	| { status: "same_key" }
+	| { status: "linking_disabled" }
 	| { status: "error"; code: number }
 
 export type MigrationSessionStatus =
@@ -119,16 +120,23 @@ interface BotRequestResponse {
 }
 
 interface MigrationStartData {
-	status: string
 	sessionId?: string
 	signUrl?: string
 	oldKeyId?: string
 }
 
 interface MigrationCommitData {
-	status: string
 	migrationId?: string
 	moved?: MigrationMoved
+}
+
+async function errorCode(res: Response): Promise<string | null> {
+	try {
+		const body = (await res.json()) as { code?: string }
+		return body.code ?? null
+	} catch {
+		return null
+	}
 }
 
 export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
@@ -201,11 +209,8 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				headers: { ...authHeaders, "Content-Type": "application/json" },
 				body: JSON.stringify({ discordId }),
 			})
-			if (!res.ok) {
-				return { status: "error", code: res.status }
-			}
-			const { data } = (await res.json()) as { data: MigrationStartData }
-			if (data.status === "started") {
+			if (res.ok) {
+				const { data } = (await res.json()) as { data: MigrationStartData }
 				if (data.sessionId && data.signUrl && data.oldKeyId) {
 					return {
 						status: "started",
@@ -216,14 +221,18 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				}
 				return { status: "error", code: res.status }
 			}
-			if (
-				data.status === "not_linked" ||
-				data.status === "already_active" ||
-				data.status === "same_key"
-			) {
-				return { status: data.status }
+			switch (await errorCode(res)) {
+				case "NOT_LINKED":
+					return { status: "not_linked" }
+				case "LINK_BLACKLISTED":
+					return { status: "blacklisted" }
+				case "MIGRATION_ALREADY_ACTIVE":
+					return { status: "already_active" }
+				case "LINKING_DISABLED":
+					return { status: "linking_disabled" }
+				default:
+					return { status: "error", code: res.status }
 			}
-			return { status: "error", code: res.status }
 		},
 
 		async getMigrationStatus(sessionId) {
@@ -246,25 +255,25 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				headers: { ...authHeaders, "Content-Type": "application/json" },
 				body: JSON.stringify({ discordId, keepNickname }),
 			})
-			if (!res.ok) {
-				return { status: "error", code: res.status }
-			}
-			const { data } = (await res.json()) as { data: MigrationCommitData }
-			if (data.status === "committed") {
+			if (res.ok) {
+				const { data } = (await res.json()) as { data: MigrationCommitData }
 				if (data.migrationId && data.moved) {
 					return { status: "committed", migrationId: data.migrationId, moved: data.moved }
 				}
 				return { status: "error", code: res.status }
 			}
-			if (
-				data.status === "not_ready" ||
-				data.status === "not_owner" ||
-				data.status === "already_committed" ||
-				data.status === "expired"
-			) {
-				return { status: data.status }
+			switch (await errorCode(res)) {
+				case "MIGRATION_EXPIRED":
+					return { status: "expired" }
+				case "MIGRATION_ALREADY_COMMITTED":
+					return { status: "already_committed" }
+				case "MIGRATION_NOT_READY":
+					return { status: "not_ready" }
+				case "MIGRATION_NOT_OWNER":
+					return { status: "not_owner" }
+				default:
+					return { status: "error", code: res.status }
 			}
-			return { status: "error", code: res.status }
 		},
 	}
 }

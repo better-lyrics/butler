@@ -237,12 +237,16 @@ describe("createUnisonClient submitBotRequest error responses", () => {
 	})
 })
 
+function errorResponse(status: number, code: string) {
+	return Response.json({ success: false, error: "nope", code, hint: "try again" }, { status })
+}
+
 describe("createUnisonClient startMigration", () => {
 	it("posts the discord id with bearer auth and parses a started result", async () => {
 		const payload = {
 			success: true,
 			data: {
-				status: "started",
+				status: "awaiting_new_key",
 				sessionId: "sess-1",
 				signUrl: "https://unison.test/link/migrate/sess-1",
 				oldKeyId: `${"a".repeat(58)}1b2c3d`,
@@ -266,38 +270,47 @@ describe("createUnisonClient startMigration", () => {
 		})
 	})
 
-	it("parses a not_linked business outcome", async () => {
-		const payload = { success: true, data: { status: "not_linked" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 400 NOT_LINKED to not_linked", async () => {
+		const { fn } = makeFetch(errorResponse(400, "NOT_LINKED"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.startMigration("disc-1")).toEqual({ status: "not_linked" })
 	})
 
-	it("parses an already_active business outcome", async () => {
-		const payload = { success: true, data: { status: "already_active" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 403 LINK_BLACKLISTED to blacklisted", async () => {
+		const { fn } = makeFetch(errorResponse(403, "LINK_BLACKLISTED"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.startMigration("disc-1")).toEqual({ status: "blacklisted" })
+	})
+
+	it("maps 409 MIGRATION_ALREADY_ACTIVE to already_active", async () => {
+		const { fn } = makeFetch(errorResponse(409, "MIGRATION_ALREADY_ACTIVE"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.startMigration("disc-1")).toEqual({ status: "already_active" })
 	})
 
-	it("parses a same_key business outcome", async () => {
-		const payload = { success: true, data: { status: "same_key" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 503 LINKING_DISABLED to linking_disabled", async () => {
+		const { fn } = makeFetch(errorResponse(503, "LINKING_DISABLED"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.startMigration("disc-1")).toEqual({ status: "same_key" })
+		expect(await client.startMigration("disc-1")).toEqual({ status: "linking_disabled" })
 	})
 
-	it("maps a started response missing fields to an error so a bad move never proceeds", async () => {
-		const payload = { success: true, data: { status: "started", sessionId: "sess-1" } }
+	it("maps an unknown error code to a generic error carrying the http status", async () => {
+		const { fn } = makeFetch(errorResponse(418, "SURPRISE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 418 })
+	})
+
+	it("maps a 200 missing fields to an error so a bad move never proceeds", async () => {
+		const payload = { success: true, data: { status: "awaiting_new_key", sessionId: "sess-1" } }
 		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 200 })
 	})
 
-	it("maps a non-ok response to an error result", async () => {
-		const { fn } = makeFetch(new Response("nope", { status: 401 }))
+	it("maps a non-json error body to a generic error", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 401 })
+		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 500 })
 	})
 })
 
@@ -336,6 +349,20 @@ describe("createUnisonClient getMigrationStatus", () => {
 		expect(await client.getMigrationStatus("sess-1")).toEqual({ status: "ok", data })
 	})
 
+	it("passes through a failed status (e.g. same key)", async () => {
+		const data = {
+			status: "failed",
+			oldKeyId: `${"a".repeat(58)}1b2c3d`,
+			newKeyId: null,
+			oldNickname: "OldName",
+			newNickname: null,
+			counts: null,
+		}
+		const { fn } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getMigrationStatus("sess-1")).toEqual({ status: "ok", data })
+	})
+
 	it("maps a 404 to a not_found result", async () => {
 		const { fn } = makeFetch(new Response("gone", { status: 404 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
@@ -350,7 +377,7 @@ describe("createUnisonClient getMigrationStatus", () => {
 })
 
 describe("createUnisonClient commitMigration", () => {
-	it("posts discord id and nickname choice with bearer auth and parses a committed result", async () => {
+	it("posts the discord id and nickname choice with bearer auth and parses a committed result", async () => {
 		const moved = {
 			submissions: 12,
 			votes: 38,
@@ -358,7 +385,7 @@ describe("createUnisonClient commitMigration", () => {
 			fulfillments: 5,
 			collisionsDropped: 2,
 		}
-		const payload = { success: true, data: { status: "committed", migrationId: "mig-1", moved } }
+		const payload = { success: true, data: { migrationId: "mig-1", moved } }
 		const { fn, calls } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
@@ -367,59 +394,52 @@ describe("createUnisonClient commitMigration", () => {
 		expect(calls[0]?.url).toBe("https://unison.test/api/migrations/bot/sess-1/commit")
 		expect(calls[0]?.method).toBe("POST")
 		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
-		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
-			discordId: "disc-1",
-			keepNickname: "new",
-		})
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ discordId: "disc-1", keepNickname: "new" })
 		expect(result).toEqual({ status: "committed", migrationId: "mig-1", moved })
 	})
 
-	it("parses a not_ready outcome", async () => {
-		const payload = { success: true, data: { status: "not_ready" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 410 MIGRATION_EXPIRED to expired", async () => {
+		const { fn } = makeFetch(errorResponse(410, "MIGRATION_EXPIRED"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "not_ready" })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "expired" })
 	})
 
-	it("parses a not_owner outcome", async () => {
-		const payload = { success: true, data: { status: "not_owner" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
-		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "not_owner" })
-	})
-
-	it("parses an already_committed outcome", async () => {
-		const payload = { success: true, data: { status: "already_committed" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 409 MIGRATION_ALREADY_COMMITTED to already_committed", async () => {
+		const { fn } = makeFetch(errorResponse(409, "MIGRATION_ALREADY_COMMITTED"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
 			status: "already_committed",
 		})
 	})
 
-	it("parses an expired outcome", async () => {
-		const payload = { success: true, data: { status: "expired" } }
-		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+	it("maps 409 MIGRATION_NOT_READY to not_ready (distinguished from already_committed by code)", async () => {
+		const { fn } = makeFetch(errorResponse(409, "MIGRATION_NOT_READY"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "expired" })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "not_ready" })
+	})
+
+	it("maps 403 MIGRATION_NOT_OWNER to not_owner", async () => {
+		const { fn } = makeFetch(errorResponse(403, "MIGRATION_NOT_OWNER"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({ status: "not_owner" })
+	})
+
+	it("maps 500 MIGRATION_FAILED to a generic error", async () => {
+		const { fn } = makeFetch(errorResponse(500, "MIGRATION_FAILED"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
+			status: "error",
+			code: 500,
+		})
 	})
 
 	it("maps a committed response missing moved counts to an error", async () => {
-		const payload = { success: true, data: { status: "committed", migrationId: "mig-1" } }
+		const payload = { success: true, data: { migrationId: "mig-1" } }
 		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
 			status: "error",
 			code: 200,
-		})
-	})
-
-	it("maps a non-ok response to an error result", async () => {
-		const { fn } = makeFetch(new Response("nope", { status: 500 }))
-		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
-			status: "error",
-			code: 500,
 		})
 	})
 })

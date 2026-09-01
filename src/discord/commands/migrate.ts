@@ -1,8 +1,9 @@
 import {
 	migrateAlreadyActive,
+	migrateBlacklisted,
 	migrateCooldown,
 	migrateGenericError,
-	migrateSameKey,
+	migrateLinkingDisabled,
 } from "@/copy/strings"
 import { buildMigrateNotLinkedCard, buildMigrateStartCard } from "@/discord/components/migrate-card"
 import type { Cooldown } from "@/discord/migrate/cooldown"
@@ -50,7 +51,6 @@ export async function handleMigrate(
 				ephemeralCard(
 					buildMigrateStartCard({
 						sessionId: result.sessionId,
-						signUrl: result.signUrl,
 						oldKeyId: result.oldKeyId,
 					})
 				)
@@ -64,8 +64,11 @@ export async function handleMigrate(
 		case "already_active":
 			await interaction.reply(ephemeralText(migrateAlreadyActive))
 			return
-		case "same_key":
-			await interaction.reply(ephemeralText(migrateSameKey))
+		case "blacklisted":
+			await interaction.reply(ephemeralText(migrateBlacklisted))
+			return
+		case "linking_disabled":
+			await interaction.reply(ephemeralText(migrateLinkingDisabled))
 			return
 		default:
 			await interaction.reply(ephemeralText(migrateGenericError))

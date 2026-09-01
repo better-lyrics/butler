@@ -24,16 +24,12 @@ const readyStatus: MigrationStatus = {
 }
 
 describe("buildMigrateStartCard", () => {
-	it("renders a link button to the sign url and a continue button carrying the session id", () => {
-		const card = buildMigrateStartCard({
-			sessionId: "sess-1",
-			signUrl: "https://u.test/x",
-			oldKeyId: OLD_KEY,
-		})
+	it("renders a continue button with the session id and the old key short id, no url", () => {
+		const card = buildMigrateStartCard({ sessionId: "sess-1", oldKeyId: OLD_KEY })
 		const s = json(card)
-		expect(s).toContain("https://u.test/x")
 		expect(s).toContain("migrate.continue:sess-1")
 		expect(s).toContain("1b2c3d")
+		expect(s).not.toContain("https://")
 	})
 })
 

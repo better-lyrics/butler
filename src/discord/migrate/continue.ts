@@ -1,14 +1,16 @@
 import {
 	migrateAlreadyCommitted,
 	migrateExpired,
+	migrateFailed,
 	migrateGenericError,
 	migrateNotYet,
 	migrateSessionNotFound,
 } from "@/copy/strings"
 import { buildMigratePreviewCard } from "@/discord/components/migrate-card"
 import { decodeCustomId } from "@/interactions/custom-id"
-import type { MigrationStatus, MigrationStatusResult, NicknameChoice } from "@/unison/client"
+import type { MigrationStatusResult, NicknameChoice } from "@/unison/client"
 import { MessageFlags } from "discord.js"
+import { canToggleNickname, parseNicknameChoice } from "./nickname"
 
 /** Minimal shape of a migrate button interaction (continue / nickname toggle). */
 export interface MigrateComponentInteraction {
@@ -19,14 +21,6 @@ export interface MigrateComponentInteraction {
 
 export interface MigratePreviewDeps {
 	getMigrationStatus(sessionId: string): Promise<MigrationStatusResult>
-}
-
-export function parseNicknameChoice(arg: string | undefined): NicknameChoice {
-	return arg === "new" ? "new" : "old"
-}
-
-export function canToggleNickname(data: MigrationStatus): boolean {
-	return !!data.oldNickname && !!data.newNickname && data.oldNickname !== data.newNickname
 }
 
 function ephemeralText(content: string) {
@@ -70,6 +64,9 @@ export async function handleMigrateContinue(
 			return
 		case "expired":
 			await interaction.reply(ephemeralText(migrateExpired))
+			return
+		case "failed":
+			await interaction.reply(ephemeralText(migrateFailed))
 			return
 		default:
 			await interaction.reply(ephemeralText(migrateGenericError))
