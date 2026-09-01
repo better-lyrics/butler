@@ -119,7 +119,7 @@ export const reportFixItMyselfButtonLabel = "Fix it myself"
 export const migrateStartHeading = "**Move your account to a new key**"
 
 export const migrateStartBody =
-	"Open your new Better Lyrics extension and click Link Discord, the normal linking flow. That link is your proof. When it is done, come back and tap Continue."
+	"Open https://unison.boidu.dev, sign in with Better Lyrics and click Link Discord under https://unison.boidu.dev/me. When that's done, come back and tap Continue."
 
 export function migrateMovingAccount(shortId: string): string {
 	return `Moving account \`${shortId}\`.`
