@@ -1,7 +1,20 @@
 import { decodeCustomId } from "@/interactions/custom-id"
 
 /** Name of the handler an interaction is dispatched to. */
-export type HandlerName = "report.add"
+export type HandlerName =
+	| "report.add"
+	| "migrate.continue"
+	| "migrate.nick"
+	| "migrate.confirm"
+	| "migrate.commit"
+
+const HANDLERS: readonly HandlerName[] = [
+	"report.add",
+	"migrate.continue",
+	"migrate.nick",
+	"migrate.confirm",
+	"migrate.commit",
+]
 
 /** A resolved interaction route: which handler to run and its decoded args. */
 export interface Route {
@@ -20,8 +33,6 @@ export function routeInteraction(customId: string): Route | null {
 	if (!decoded) {
 		return null
 	}
-	if (decoded.action === "report.add") {
-		return { handler: "report.add", args: decoded.args }
-	}
-	return null
+	const handler = HANDLERS.find((h) => h === decoded.action)
+	return handler ? { handler, args: decoded.args } : null
 }

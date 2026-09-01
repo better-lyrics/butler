@@ -18,6 +18,61 @@ export type BotRequestResult =
 	| { status: "already_available" }
 	| { status: "error"; code: number }
 
+export interface MigrationCounts {
+	submissions: number
+	votes: number
+	reports: number
+	fulfillments: number
+	collisions: number
+}
+
+export interface MigrationMoved {
+	submissions: number
+	votes: number
+	reports: number
+	fulfillments: number
+	collisionsDropped: number
+}
+
+export type MigrationStartResult =
+	| { status: "started"; sessionId: string; signUrl: string; oldKeyId: string }
+	| { status: "not_linked" }
+	| { status: "blacklisted" }
+	| { status: "already_active" }
+	| { status: "linking_disabled" }
+	| { status: "error"; code: number }
+
+export type MigrationSessionStatus =
+	| "awaiting_new_key"
+	| "ready"
+	| "committed"
+	| "failed"
+	| "expired"
+
+export interface MigrationStatus {
+	status: MigrationSessionStatus
+	oldKeyId: string
+	newKeyId: string | null
+	oldNickname: string | null
+	newNickname: string | null
+	counts: MigrationCounts | null
+}
+
+export type MigrationStatusResult =
+	| { status: "ok"; data: MigrationStatus }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
+export type NicknameChoice = "old" | "new"
+
+export type MigrationCommitResult =
+	| { status: "committed"; migrationId: string; moved: MigrationMoved }
+	| { status: "not_ready" }
+	| { status: "not_owner" }
+	| { status: "already_committed" }
+	| { status: "expired" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -29,6 +84,13 @@ export interface UnisonClient {
 	getBotLinks(): Promise<Array<{ discordId: string; keyId: string }>>
 	getBotBlacklist(): Promise<Set<string>>
 	submitBotRequest(body: BotRequestBody): Promise<BotRequestResult>
+	startMigration(discordId: string): Promise<MigrationStartResult>
+	getMigrationStatus(sessionId: string): Promise<MigrationStatusResult>
+	commitMigration(
+		sessionId: string,
+		discordId: string,
+		keepNickname: NicknameChoice
+	): Promise<MigrationCommitResult>
 }
 
 interface LeaderboardResponse {
@@ -55,6 +117,26 @@ interface BotRequestData {
 interface BotRequestResponse {
 	success: boolean
 	data: BotRequestData
+}
+
+interface MigrationStartData {
+	sessionId?: string
+	signUrl?: string
+	oldKeyId?: string
+}
+
+interface MigrationCommitData {
+	migrationId?: string
+	moved?: MigrationMoved
+}
+
+async function errorCode(res: Response): Promise<string | null> {
+	try {
+		const body = (await res.json()) as { code?: string }
+		return body.code ?? null
+	} catch {
+		return null
+	}
 }
 
 export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
@@ -119,6 +201,82 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			}
 
 			return { status: "error", code: res.status }
+		},
+
+		async startMigration(discordId) {
+			const res = await doFetch(`${baseUrl}/migrations/bot/start`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ discordId }),
+			})
+			if (res.ok) {
+				const { data } = (await res.json()) as { data: MigrationStartData }
+				if (data?.sessionId && data.signUrl && data.oldKeyId) {
+					return {
+						status: "started",
+						sessionId: data.sessionId,
+						signUrl: data.signUrl,
+						oldKeyId: data.oldKeyId,
+					}
+				}
+				return { status: "error", code: res.status }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_LINKED":
+					return { status: "not_linked" }
+				case "LINK_BLACKLISTED":
+					return { status: "blacklisted" }
+				case "MIGRATION_ALREADY_ACTIVE":
+					return { status: "already_active" }
+				case "LINKING_DISABLED":
+					return { status: "linking_disabled" }
+				default:
+					return { status: "error", code: res.status }
+			}
+		},
+
+		async getMigrationStatus(sessionId) {
+			const res = await doFetch(`${baseUrl}/migrations/bot/${sessionId}`, {
+				headers: authHeaders,
+			})
+			if (res.status === 404) {
+				return { status: "not_found" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const { data } = (await res.json()) as { data: MigrationStatus }
+			if (data?.status) {
+				return { status: "ok", data }
+			}
+			return { status: "error", code: res.status }
+		},
+
+		async commitMigration(sessionId, discordId, keepNickname) {
+			const res = await doFetch(`${baseUrl}/migrations/bot/${sessionId}/commit`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ discordId, keepNickname }),
+			})
+			if (res.ok) {
+				const { data } = (await res.json()) as { data: MigrationCommitData }
+				if (data?.migrationId && data.moved) {
+					return { status: "committed", migrationId: data.migrationId, moved: data.moved }
+				}
+				return { status: "error", code: res.status }
+			}
+			switch (await errorCode(res)) {
+				case "MIGRATION_EXPIRED":
+					return { status: "expired" }
+				case "MIGRATION_ALREADY_COMMITTED":
+					return { status: "already_committed" }
+				case "MIGRATION_NOT_READY":
+					return { status: "not_ready" }
+				case "MIGRATION_NOT_OWNER":
+					return { status: "not_owner" }
+				default:
+					return { status: "error", code: res.status }
+			}
 		},
 	}
 }
