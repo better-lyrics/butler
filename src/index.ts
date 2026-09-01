@@ -1,8 +1,16 @@
-import { ALBUM_ART_SIZE, SYNC_INTERVAL_MS, TIERS, TIER_ORDER, loadConfig } from "@/config"
+import {
+	ALBUM_ART_SIZE,
+	MIGRATE_COOLDOWN_MS,
+	SYNC_INTERVAL_MS,
+	TIERS,
+	TIER_ORDER,
+	loadConfig,
+} from "@/config"
 import { type GuildConfig, getGuildConfig, listGuildConfigs } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
+import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
 import {
 	activateCommand,
 	deactivateCommand,
@@ -15,7 +23,11 @@ import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sy
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
+import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
+import { handleMigrateContinue } from "@/discord/migrate/continue"
+import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
+import { decodeCustomId } from "@/interactions/custom-id"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
 import { createUnisonClient } from "@/unison/client"
@@ -37,6 +49,8 @@ const unison = createUnisonClient({
 	baseUrl: config.unison.baseUrl,
 	botSecret: config.unison.botSecret,
 })
+
+const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
 
 const ytmSource = createYoutubeiSource(config.ytmCookie)
 const fetchMeta = (videoId: string) => fetchTrackMeta(ytmSource, videoId, ALBUM_ART_SIZE)
@@ -60,10 +74,7 @@ function isGuildMod(interaction: {
 	return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false
 }
 
-async function handleButton(interaction: ButtonInteraction): Promise<void> {
-	const route = routeInteraction(interaction.customId)
-	if (route?.handler !== "report.add") return
-
+async function handleReportButton(interaction: ButtonInteraction): Promise<void> {
 	const gc = interaction.guildId ? await getGuildConfig(pool, interaction.guildId) : null
 
 	const outcome = await handleAddToBoard(interaction, {
@@ -84,6 +95,25 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			artist: outcome.artist,
 			result: outcome.result,
 		})
+	}
+}
+
+async function handleButton(interaction: ButtonInteraction): Promise<void> {
+	const route = routeInteraction(interaction.customId)
+	if (!route) return
+	switch (route.handler) {
+		case "report.add":
+			await handleReportButton(interaction)
+			return
+		case "migrate.continue":
+		case "migrate.nick":
+			await handleMigrateContinue(interaction, {
+				getMigrationStatus: (sessionId) => unison.getMigrationStatus(sessionId),
+			})
+			return
+		case "migrate.confirm":
+			await handleMigrateConfirm(interaction)
+			return
 	}
 }
 
@@ -239,6 +269,7 @@ discord.once(Events.ClientReady, async (client) => {
 			previewCommand.toJSON(),
 			activateCommand.toJSON(),
 			deactivateCommand.toJSON(),
+			migrateCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
 		await client.application.commands.set([])
@@ -310,8 +341,26 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		}).catch((err) => console.error("preview handler failed", err))
 		return
 	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "migrate") {
+		handleMigrate(interaction, {
+			startMigration: (discordId) => unison.startMigration(discordId),
+			cooldown: migrateCooldown,
+			linkPageUrl: config.linkPageUrl,
+		}).catch((err) => console.error("migrate handler failed", err))
+		return
+	}
 	if (interaction.isButton()) {
 		handleButton(interaction).catch((err) => console.error("button handler failed", err))
+		return
+	}
+	if (interaction.isModalSubmit()) {
+		if (decodeCustomId(interaction.customId)?.action === "migrate.commit") {
+			handleMigrateCommit(interaction, {
+				getMigrationStatus: (sessionId) => unison.getMigrationStatus(sessionId),
+				commitMigration: (sessionId, discordId, keepNickname) =>
+					unison.commitMigration(sessionId, discordId, keepNickname),
+			}).catch((err) => console.error("migrate commit handler failed", err))
+		}
 	}
 })
 

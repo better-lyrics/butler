@@ -115,3 +115,120 @@ export const notYourReport = "Only the person who posted this and the mods can u
 export const reportAddToBoardButtonLabel = "Add to request board"
 
 export const reportFixItMyselfButtonLabel = "Fix it myself"
+
+export const migrateStartHeading = "**Move your account to a new key**"
+
+export const migrateStartBody =
+	"Lost your key? Open Better Lyrics on the install that holds your NEW key and link it to this Discord. Once that is done, come back and tap Continue."
+
+export const migrateSignButtonLabel = "Link my new key"
+
+export const migrateContinueButtonLabel = "Continue"
+
+export const migratePreviewHeading = "**Review your migration**"
+
+export const migratePreviewBody =
+	"Your old identity keeps everything below and moves onto your new key:"
+
+export function migratePreviewCounts(counts: {
+	submissions: number
+	votes: number
+	reports: number
+	fulfillments: number
+}): string {
+	const subs = countLabel(counts.submissions, "submission")
+	const votes = countLabel(counts.votes, "vote")
+	const reports = countLabel(counts.reports, "report")
+	const fills = countLabel(counts.fulfillments, "fulfillment")
+	return `${subs}  ·  ${votes}  ·  ${reports}  ·  ${fills}`
+}
+
+export function migratePreviewCollisions(n: number): string | null {
+	if (n <= 0) return null
+	const dupes = countLabel(n, "duplicate")
+	return `${dupes} (vote or report) will be dropped, keeping the one you already have.`
+}
+
+export function migrateKeyLine(oldShort: string, newShort: string): string {
+	return `Old key \`${oldShort}\`  ->  new key \`${newShort}\``
+}
+
+export function migrateNicknameKept(name: string | null): string {
+	return name ? `Nickname kept: **${name}**` : "No nickname to carry over."
+}
+
+export function migrateNicknameChoosing(current: string): string {
+	return `Nickname: **${current}**`
+}
+
+export function migrateNicknameToggleLabel(other: string): string {
+	return `Use "${other}"`
+}
+
+export const migratePreviewWarning = "This cannot be undone from Discord."
+
+export const migrateConfirmButtonLabel = "Confirm migration"
+
+export const migrateSuccessHeading = "**Migration complete**"
+
+export function migrateSuccessBody(moved: {
+	submissions: number
+	votes: number
+	reports: number
+	fulfillments: number
+	collisionsDropped: number
+}): string {
+	const subs = countLabel(moved.submissions, "submission")
+	const votes = countLabel(moved.votes, "vote")
+	const reports = countLabel(moved.reports, "report")
+	const fills = countLabel(moved.fulfillments, "fulfillment")
+	const dropped =
+		moved.collisionsDropped > 0
+			? ` Dropped ${countLabel(moved.collisionsDropped, "duplicate")}.`
+			: ""
+	return `Moved ${subs}, ${votes}, ${reports}, and ${fills} onto your new key.${dropped}`
+}
+
+export const migrateNotLinkedHeading = "**Link your old identity first**"
+
+export const migrateNotLinkedBody =
+	"This Discord is not linked to any Better Lyrics key yet, so there is nothing to move. Link your OLD identity first, then run /migrate."
+
+export const migrateLinkButtonLabel = "Link Better Lyrics"
+
+export const migrateNotYet =
+	"Your new key is not linked yet. Finish linking from your new install, then tap Continue again."
+
+export function migrateCooldown(retryAfterMs: number): string {
+	return `Slow down a moment. Try /migrate again in ${Math.ceil(retryAfterMs / 1000)}s.`
+}
+
+export function migrateTokenMismatch(shortId: string): string {
+	return `That did not match. Type the new key id \`${shortId}\` exactly to confirm.`
+}
+
+export const migrateAlreadyActive =
+	"You already have a migration in progress. Finish or wait for it before starting another."
+
+export const migrateSameKey =
+	"Your new key is the same as your old one, so there is nothing to move."
+
+export const migrateNotReady =
+	"This migration is not ready to commit yet. Finish linking your new key first."
+
+export const migrateNotOwner =
+	"This Discord no longer owns the old identity, so the migration was stopped."
+
+export const migrateAlreadyCommitted = "This migration was already completed."
+
+export const migrateExpired = "This migration expired. Run /migrate to start a fresh one."
+
+export const migrateSessionNotFound =
+	"That migration session is no longer around. Run /migrate to start again."
+
+export const migrateGenericError =
+	"Something went wrong with the migration. Give it another try in a moment."
+
+export const migrateConfirmModalTitle = "Confirm migration"
+
+export const migrateConfirmInputLabel = "Type the new key id to confirm"

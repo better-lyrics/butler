@@ -11,6 +11,27 @@ describe("routeInteraction", () => {
 				args: ["dQw4w9WgXcQ"],
 			})
 		})
+
+		it('routes a "migrate.continue" id carrying the session id', () => {
+			expect(routeInteraction(encodeCustomId("migrate.continue", ["sess-1"]))).toEqual({
+				handler: "migrate.continue",
+				args: ["sess-1"],
+			})
+		})
+
+		it('routes a "migrate.nick" id carrying the session id and choice', () => {
+			expect(routeInteraction(encodeCustomId("migrate.nick", ["sess-1", "new"]))).toEqual({
+				handler: "migrate.nick",
+				args: ["sess-1", "new"],
+			})
+		})
+
+		it('routes a "migrate.confirm" id carrying the session id and choice', () => {
+			expect(routeInteraction(encodeCustomId("migrate.confirm", ["sess-1", "old"]))).toEqual({
+				handler: "migrate.confirm",
+				args: ["sess-1", "old"],
+			})
+		})
 	})
 
 	describe("unknown and unparseable ids", () => {
