@@ -9,8 +9,8 @@ import {
 import { buildMigratePreviewCard } from "@/discord/components/migrate-card"
 import { decodeCustomId } from "@/interactions/custom-id"
 import type { MigrationStatusResult, NicknameChoice } from "@/unison/client"
-import { MessageFlags } from "discord.js"
 import { canToggleNickname, parseNicknameChoice } from "./nickname"
+import { ephemeralText } from "./reply"
 
 /** Minimal shape of a migrate button interaction (continue / nickname toggle). */
 export interface MigrateComponentInteraction {
@@ -21,10 +21,6 @@ export interface MigrateComponentInteraction {
 
 export interface MigratePreviewDeps {
 	getMigrationStatus(sessionId: string): Promise<MigrationStatusResult>
-}
-
-function ephemeralText(content: string) {
-	return { content, flags: MessageFlags.Ephemeral }
 }
 
 export async function handleMigrateContinue(

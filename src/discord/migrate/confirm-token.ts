@@ -5,7 +5,6 @@ export function migrateShortId(keyId: string): string {
 	return keyId.slice(-SHORT_ID_LENGTH).toLowerCase()
 }
 
-/** Whether the typed confirmation matches the new key's short id (trimmed, case-insensitive). */
 export function matchesConfirmToken(typed: string, keyId: string): boolean {
 	const short = migrateShortId(keyId)
 	if (short.length < SHORT_ID_LENGTH) {

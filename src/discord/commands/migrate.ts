@@ -7,6 +7,7 @@ import {
 } from "@/copy/strings"
 import { buildMigrateNotLinkedCard, buildMigrateStartCard } from "@/discord/components/migrate-card"
 import type { Cooldown } from "@/discord/migrate/cooldown"
+import { ephemeralText } from "@/discord/migrate/reply"
 import type { MigrationStartResult } from "@/unison/client"
 import { MessageFlags, SlashCommandBuilder } from "discord.js"
 
@@ -24,10 +25,6 @@ export interface MigrateCommandDeps {
 	startMigration(discordId: string): Promise<MigrationStartResult>
 	cooldown: Cooldown
 	linkPageUrl: string
-}
-
-function ephemeralText(content: string) {
-	return { content, flags: MessageFlags.Ephemeral }
 }
 
 function ephemeralCard(card: { components: unknown[]; flags: number }) {

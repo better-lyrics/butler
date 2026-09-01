@@ -21,6 +21,7 @@ import {
 } from "discord.js"
 import { matchesConfirmToken, migrateShortId } from "./confirm-token"
 import { canToggleNickname, parseNicknameChoice } from "./nickname"
+import { ephemeralText } from "./reply"
 
 const SHORT_ID_INPUT = "shortId"
 
@@ -45,10 +46,6 @@ export interface MigrateCommitDeps {
 		discordId: string,
 		keepNickname: NicknameChoice
 	): Promise<import("@/unison/client").MigrationCommitResult>
-}
-
-function ephemeralText(content: string) {
-	return { content, flags: MessageFlags.Ephemeral }
 }
 
 export async function handleMigrateConfirm(interaction: MigrateConfirmInteraction): Promise<void> {

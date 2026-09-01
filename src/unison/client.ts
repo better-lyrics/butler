@@ -211,7 +211,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			})
 			if (res.ok) {
 				const { data } = (await res.json()) as { data: MigrationStartData }
-				if (data.sessionId && data.signUrl && data.oldKeyId) {
+				if (data?.sessionId && data.signUrl && data.oldKeyId) {
 					return {
 						status: "started",
 						sessionId: data.sessionId,
@@ -246,7 +246,10 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "error", code: res.status }
 			}
 			const { data } = (await res.json()) as { data: MigrationStatus }
-			return { status: "ok", data }
+			if (data?.status) {
+				return { status: "ok", data }
+			}
+			return { status: "error", code: res.status }
 		},
 
 		async commitMigration(sessionId, discordId, keepNickname) {
@@ -257,7 +260,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			})
 			if (res.ok) {
 				const { data } = (await res.json()) as { data: MigrationCommitData }
-				if (data.migrationId && data.moved) {
+				if (data?.migrationId && data.moved) {
 					return { status: "committed", migrationId: data.migrationId, moved: data.moved }
 				}
 				return { status: "error", code: res.status }

@@ -307,6 +307,12 @@ describe("createUnisonClient startMigration", () => {
 		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 200 })
 	})
 
+	it("maps a 200 whose envelope omits data to an error instead of throwing", async () => {
+		const { fn } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.startMigration("disc-1")).toEqual({ status: "error", code: 200 })
+	})
+
 	it("maps a non-json error body to a generic error", async () => {
 		const { fn } = makeFetch(new Response("boom", { status: 500 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
@@ -361,6 +367,12 @@ describe("createUnisonClient getMigrationStatus", () => {
 		const { fn } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.getMigrationStatus("sess-1")).toEqual({ status: "ok", data })
+	})
+
+	it("maps a 200 whose envelope omits data to an error so a malformed response never crashes a handler", async () => {
+		const { fn } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getMigrationStatus("sess-1")).toEqual({ status: "error", code: 200 })
 	})
 
 	it("maps a 404 to a not_found result", async () => {
@@ -436,6 +448,15 @@ describe("createUnisonClient commitMigration", () => {
 	it("maps a committed response missing moved counts to an error", async () => {
 		const payload = { success: true, data: { migrationId: "mig-1" } }
 		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
+			status: "error",
+			code: 200,
+		})
+	})
+
+	it("maps a 200 whose envelope omits data to an error instead of throwing", async () => {
+		const { fn } = makeFetch(Response.json({ success: true }, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
 			status: "error",

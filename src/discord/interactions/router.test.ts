@@ -32,6 +32,13 @@ describe("routeInteraction", () => {
 				args: ["sess-1", "old"],
 			})
 		})
+
+		it('routes a "migrate.commit" modal id carrying the session id and choice', () => {
+			expect(routeInteraction(encodeCustomId("migrate.commit", ["sess-1", "new"]))).toEqual({
+				handler: "migrate.commit",
+				args: ["sess-1", "new"],
+			})
+		})
 	})
 
 	describe("unknown and unparseable ids", () => {

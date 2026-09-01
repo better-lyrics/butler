@@ -27,7 +27,6 @@ import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/con
 import { handleMigrateContinue } from "@/discord/migrate/continue"
 import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
-import { decodeCustomId } from "@/interactions/custom-id"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
 import { createUnisonClient } from "@/unison/client"
@@ -354,7 +353,7 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		return
 	}
 	if (interaction.isModalSubmit()) {
-		if (decodeCustomId(interaction.customId)?.action === "migrate.commit") {
+		if (routeInteraction(interaction.customId)?.handler === "migrate.commit") {
 			handleMigrateCommit(interaction, {
 				getMigrationStatus: (sessionId) => unison.getMigrationStatus(sessionId),
 				commitMigration: (sessionId, discordId, keepNickname) =>

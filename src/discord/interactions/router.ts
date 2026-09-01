@@ -1,13 +1,19 @@
 import { decodeCustomId } from "@/interactions/custom-id"
 
 /** Name of the handler an interaction is dispatched to. */
-export type HandlerName = "report.add" | "migrate.continue" | "migrate.nick" | "migrate.confirm"
+export type HandlerName =
+	| "report.add"
+	| "migrate.continue"
+	| "migrate.nick"
+	| "migrate.confirm"
+	| "migrate.commit"
 
 const HANDLERS: readonly HandlerName[] = [
 	"report.add",
 	"migrate.continue",
 	"migrate.nick",
 	"migrate.confirm",
+	"migrate.commit",
 ]
 
 /** A resolved interaction route: which handler to run and its decoded args. */
