@@ -257,7 +257,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			})
 			if (res.ok) {
 				const { data } = (await res.json()) as { data: MigrationCommitData }
-				if (data?.migrationId && data.moved) {
+				if (typeof data?.migrationId === "number" && data.moved) {
 					return { status: "committed", migrationId: data.migrationId, moved: data.moved }
 				}
 				return { status: "error", code: res.status }

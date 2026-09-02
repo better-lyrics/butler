@@ -427,6 +427,24 @@ describe("createUnisonClient commitMigration", () => {
 		expect(result).toEqual({ status: "committed", migrationId: 42, moved })
 	})
 
+	it("regression: treats a committed migration whose migrationId is 0 as committed, not an error", async () => {
+		const moved = {
+			submissions: 1,
+			votes: 0,
+			reports: 0,
+			fulfillments: 0,
+			collisionsDropped: 0,
+		}
+		const payload = { success: true, data: { migrationId: 0, moved } }
+		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
+			status: "committed",
+			migrationId: 0,
+			moved,
+		})
+	})
+
 	it("maps 410 MIGRATION_EXPIRED to expired", async () => {
 		const { fn } = makeFetch(errorResponse(410, "MIGRATION_EXPIRED"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
