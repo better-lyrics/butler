@@ -46,7 +46,6 @@ describe("handleMigrate happy path", () => {
 		const started: MigrationStartResult = {
 			status: "started",
 			sessionId: "sess-1",
-			signUrl: "https://u.test/sign",
 			oldKeyId: `${"a".repeat(58)}1b2c3d`,
 		}
 		await handleMigrate(interaction, deps(started).deps)
@@ -94,7 +93,6 @@ describe("handleMigrate rate limit", () => {
 		const started: MigrationStartResult = {
 			status: "started",
 			sessionId: "sess-1",
-			signUrl: "https://u.test/sign",
 			oldKeyId: `${"a".repeat(58)}1b2c3d`,
 		}
 		const d = deps(started, () => 0)
@@ -112,7 +110,6 @@ describe("handleMigrate rate limit", () => {
 		const started: MigrationStartResult = {
 			status: "started",
 			sessionId: "sess-1",
-			signUrl: "https://u.test/sign",
 			oldKeyId: `${"a".repeat(58)}1b2c3d`,
 		}
 		const d = deps(started, () => 0)

@@ -35,7 +35,7 @@ export interface MigrationMoved {
 }
 
 export type MigrationStartResult =
-	| { status: "started"; sessionId: string; signUrl: string; oldKeyId: string }
+	| { status: "started"; sessionId: string; oldKeyId: string }
 	| { status: "not_linked" }
 	| { status: "blacklisted" }
 	| { status: "already_active" }
@@ -55,6 +55,8 @@ export interface MigrationStatus {
 	newKeyId: string | null
 	oldNickname: string | null
 	newNickname: string | null
+	oldDisplayName: string
+	newDisplayName: string
 	counts: MigrationCounts | null
 }
 
@@ -66,7 +68,7 @@ export type MigrationStatusResult =
 export type NicknameChoice = "old" | "new"
 
 export type MigrationCommitResult =
-	| { status: "committed"; migrationId: string; moved: MigrationMoved }
+	| { status: "committed"; migrationId: number; moved: MigrationMoved }
 	| { status: "not_ready" }
 	| { status: "not_owner" }
 	| { status: "already_committed" }
@@ -121,12 +123,11 @@ interface BotRequestResponse {
 
 interface MigrationStartData {
 	sessionId?: string
-	signUrl?: string
 	oldKeyId?: string
 }
 
 interface MigrationCommitData {
-	migrationId?: string
+	migrationId?: number
 	moved?: MigrationMoved
 }
 
@@ -211,11 +212,10 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			})
 			if (res.ok) {
 				const { data } = (await res.json()) as { data: MigrationStartData }
-				if (data?.sessionId && data.signUrl && data.oldKeyId) {
+				if (data?.sessionId && data.oldKeyId) {
 					return {
 						status: "started",
 						sessionId: data.sessionId,
-						signUrl: data.signUrl,
 						oldKeyId: data.oldKeyId,
 					}
 				}
@@ -239,9 +239,6 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			const res = await doFetch(`${baseUrl}/migrations/bot/${sessionId}`, {
 				headers: authHeaders,
 			})
-			if (res.status === 404) {
-				return { status: "not_found" }
-			}
 			if (!res.ok) {
 				return { status: "error", code: res.status }
 			}

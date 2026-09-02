@@ -87,7 +87,7 @@ export function buildMigratePreviewCard(opts: {
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(text(migratePreviewHeading))
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(text(migratePreviewBody))
+		.addTextDisplayComponents(text(migratePreviewBody(status.newDisplayName)))
 		.addTextDisplayComponents(text(migratePreviewCounts(counts)))
 
 	const collisions = migratePreviewCollisions(counts.collisions)
@@ -95,13 +95,17 @@ export function buildMigratePreviewCard(opts: {
 		container.addTextDisplayComponents(text(collisions))
 	}
 
-	container.addTextDisplayComponents(text(migrateKeyLine(oldShort, newShort)))
+	container.addTextDisplayComponents(
+		text(migrateKeyLine(status.oldDisplayName, oldShort, status.newDisplayName, newShort))
+	)
 
 	if (canToggle) {
 		const current = choice === "old" ? status.oldNickname : status.newNickname
 		container.addTextDisplayComponents(text(migrateNicknameChoosing(current ?? "")))
 	} else {
-		container.addTextDisplayComponents(text(migrateNicknameKept(status.oldNickname)))
+		container.addTextDisplayComponents(
+			text(migrateNicknameKept(status.oldNickname ?? status.newNickname))
+		)
 	}
 
 	container

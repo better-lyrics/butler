@@ -20,16 +20,18 @@ const readyStatus: MigrationStatus = {
 	newKeyId: NEW_KEY,
 	oldNickname: "OldName",
 	newNickname: "NewName",
+	oldDisplayName: "OldName",
+	newDisplayName: "NewName",
 	counts: { submissions: 12, votes: 40, reports: 3, fulfillments: 5, collisions: 2 },
 }
 
 describe("buildMigrateStartCard", () => {
-	it("renders a continue button with the session id and the old key short id, no url", () => {
+	it("renders a continue button with the session id, the old key short id, and the sign-in link", () => {
 		const card = buildMigrateStartCard({ sessionId: "sess-1", oldKeyId: OLD_KEY })
 		const s = json(card)
 		expect(s).toContain("migrate.continue:sess-1")
 		expect(s).toContain("1b2c3d")
-		expect(s).not.toContain("https://")
+		expect(s).toContain("https://unison.boidu.dev")
 	})
 })
 
@@ -71,6 +73,31 @@ describe("buildMigratePreviewCard happy path", () => {
 	})
 })
 
+describe("buildMigratePreviewCard display names", () => {
+	it("shows the new key display name (petname when no nickname) in the header", () => {
+		const status: MigrationStatus = {
+			...readyStatus,
+			newNickname: null,
+			newDisplayName: "swift-otter",
+		}
+		const s = json(buildMigratePreviewCard({ sessionId: "sess-1", status, choice: "old" }))
+		expect(s).toContain("new key `swift-otter`")
+	})
+
+	it("shows both display names alongside their short ids on the key line", () => {
+		const status: MigrationStatus = {
+			...readyStatus,
+			oldDisplayName: "old-pet",
+			newDisplayName: "new-pet",
+		}
+		const s = json(buildMigratePreviewCard({ sessionId: "sess-1", status, choice: "old" }))
+		expect(s).toContain("old-pet")
+		expect(s).toContain("new-pet")
+		expect(s).toContain("1b2c3d")
+		expect(s).toContain("9e8f7a")
+	})
+})
+
 describe("buildMigratePreviewCard edge cases", () => {
 	it("omits the toggle and keeps old when the new key has no nickname", () => {
 		const status: MigrationStatus = { ...readyStatus, newNickname: null }
@@ -78,6 +105,14 @@ describe("buildMigratePreviewCard edge cases", () => {
 		const s = json(card)
 		expect(s).not.toContain("migrate.nick:")
 		expect(s).toContain("migrate.confirm:sess-1:old")
+	})
+
+	it("shows the surviving new nickname on the kept line when the old key has none", () => {
+		const status: MigrationStatus = { ...readyStatus, oldNickname: null }
+		const s = json(buildMigratePreviewCard({ sessionId: "sess-1", status, choice: "old" }))
+		expect(s).not.toContain("migrate.nick:")
+		expect(s).toContain("Nickname kept: **NewName**")
+		expect(s).not.toContain("No nickname to carry over")
 	})
 
 	it("omits the toggle when both nicknames are identical", () => {
