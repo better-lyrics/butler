@@ -1,12 +1,11 @@
 import {
 	migrateAlreadyCommitted,
-	migrateExpired,
 	migrateFailed,
 	migrateGenericError,
 	migrateNotYet,
 	migrateSessionNotFound,
 } from "@/copy/strings"
-import { buildMigratePreviewCard } from "@/discord/components/migrate-card"
+import { buildMigrateExpiredCard, buildMigratePreviewCard } from "@/discord/components/migrate-card"
 import { decodeCustomId } from "@/interactions/custom-id"
 import type { MigrationStatusResult, NicknameChoice } from "@/unison/client"
 import { canToggleNickname, parseNicknameChoice } from "./nickname"
@@ -59,7 +58,7 @@ export async function handleMigrateContinue(
 			await interaction.reply(ephemeralText(migrateAlreadyCommitted))
 			return
 		case "expired":
-			await interaction.reply(ephemeralText(migrateExpired))
+			await interaction.update(buildMigrateExpiredCard())
 			return
 		case "failed":
 			await interaction.reply(ephemeralText(migrateFailed))

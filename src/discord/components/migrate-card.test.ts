@@ -1,6 +1,7 @@
 import type { MigrationStatus } from "@/unison/client"
 import { describe, expect, it } from "vitest"
 import {
+	buildMigrateExpiredCard,
 	buildMigrateNotLinkedCard,
 	buildMigratePreviewCard,
 	buildMigrateStartCard,
@@ -27,11 +28,24 @@ const readyStatus: MigrationStatus = {
 
 describe("buildMigrateStartCard", () => {
 	it("renders a continue button with the session id, the old key short id, and the sign-in link", () => {
-		const card = buildMigrateStartCard({ sessionId: "sess-1", oldKeyId: OLD_KEY })
+		const card = buildMigrateStartCard({
+			sessionId: "sess-1",
+			oldKeyId: OLD_KEY,
+			expiresAt: 1788394920,
+		})
 		const s = json(card)
 		expect(s).toContain("migrate.continue:sess-1")
 		expect(s).toContain("1b2c3d")
 		expect(s).toContain("https://unison.boidu.dev")
+	})
+
+	it("stamps the expiry as a relative discord timestamp", () => {
+		const card = buildMigrateStartCard({
+			sessionId: "sess-1",
+			oldKeyId: OLD_KEY,
+			expiresAt: 1788394920,
+		})
+		expect(json(card)).toContain("<t:1788394920:R>")
 	})
 })
 
@@ -140,6 +154,16 @@ describe("buildMigrateSuccessCard", () => {
 		const s = json(card)
 		expect(s).toContain("12")
 		expect(s).toContain("9e8f7a")
+	})
+})
+
+describe("buildMigrateExpiredCard", () => {
+	it("tells the user the migration expired and to run /migrate again, with no buttons", () => {
+		const card = buildMigrateExpiredCard()
+		const s = json(card)
+		expect(s).toContain("expired")
+		expect(s).toContain("/migrate")
+		expect(s).not.toContain("migrate.continue")
 	})
 })
 

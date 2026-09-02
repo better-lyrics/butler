@@ -2,6 +2,8 @@ import { PALETTE } from "@/config"
 import {
 	migrateConfirmButtonLabel,
 	migrateContinueButtonLabel,
+	migrateExpired,
+	migrateExpiresLine,
 	migrateKeyLine,
 	migrateLinkButtonLabel,
 	migrateMovingAccount,
@@ -30,6 +32,8 @@ import {
 	MessageFlags,
 	SeparatorBuilder,
 	TextDisplayBuilder,
+	TimestampStyles,
+	time,
 } from "discord.js"
 import { migrateShortId } from "../migrate/confirm-token"
 import { canToggleNickname } from "../migrate/nickname"
@@ -48,6 +52,7 @@ function text(content: string): TextDisplayBuilder {
 export function buildMigrateStartCard(opts: {
 	sessionId: string
 	oldKeyId: string
+	expiresAt: number
 }): MigrateCardPayload {
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
@@ -55,6 +60,9 @@ export function buildMigrateStartCard(opts: {
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(migrateStartBody))
 		.addTextDisplayComponents(text(migrateMovingAccount(migrateShortId(opts.oldKeyId))))
+		.addTextDisplayComponents(
+			text(migrateExpiresLine(time(opts.expiresAt, TimestampStyles.RelativeTime)))
+		)
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
@@ -144,6 +152,13 @@ export function buildMigrateSuccessCard(opts: {
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(migrateSuccessBody(opts.moved)))
 		.addTextDisplayComponents(text(`Now on key \`${migrateShortId(opts.newKeyId)}\`.`))
+	return { components: [container], flags: FLAGS }
+}
+
+export function buildMigrateExpiredCard(): MigrateCardPayload {
+	const container = new ContainerBuilder()
+		.setAccentColor(PALETTE.betterLyricsRed)
+		.addTextDisplayComponents(text(migrateExpired))
 	return { components: [container], flags: FLAGS }
 }
 

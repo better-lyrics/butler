@@ -125,6 +125,10 @@ export function migrateMovingAccount(shortId: string): string {
 	return `Moving account \`${shortId}\`.`
 }
 
+export function migrateExpiresLine(timestamp: string): string {
+	return `This migration expires ${timestamp}.`
+}
+
 export const migrateContinueButtonLabel = "Continue"
 
 export const migratePreviewHeading = "**Review your migration**"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+	migrateExpiresLine,
 	migratePreviewBody,
 	migratePreviewCollisions,
 	promotionStats,
@@ -152,5 +153,15 @@ describe("migratePreviewCollisions", () => {
 
 	it("returns null when there is nothing to drop", () => {
 		expect(migratePreviewCollisions(0)).toBeNull()
+	})
+})
+
+describe("migrateExpiresLine", () => {
+	it("embeds the relative discord timestamp token so the user sees the countdown", () => {
+		expect(migrateExpiresLine("<t:1788394920:R>")).toContain("<t:1788394920:R>")
+	})
+
+	it("frames the timestamp as the migration expiry while the window is active", () => {
+		expect(migrateExpiresLine("<t:1788394920:R>")).toContain("This migration expires")
 	})
 })
