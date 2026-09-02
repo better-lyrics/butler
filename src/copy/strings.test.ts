@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+	migrateExpiresLine,
+	migratePreviewBody,
+	migratePreviewCollisions,
 	promotionStats,
 	promotionSubtitle,
 	promotionTitle,
@@ -130,5 +133,35 @@ describe("promotionStats", () => {
 			expect(line).toContain("0 submissions")
 			expect(line).toContain("0 upvotes")
 		})
+	})
+})
+
+describe("migratePreviewBody", () => {
+	it("names the new key the account moves onto", () => {
+		expect(migratePreviewBody("swift-otter")).toContain("new key `swift-otter`")
+	})
+
+	it("keeps the everything-moves framing", () => {
+		expect(migratePreviewBody("3d71d3")).toContain("You keep everything below")
+	})
+})
+
+describe("migratePreviewCollisions", () => {
+	it("names votes, reports, and requests as the droppable duplicates", () => {
+		expect(migratePreviewCollisions(2)).toContain("(vote, report, or request)")
+	})
+
+	it("returns null when there is nothing to drop", () => {
+		expect(migratePreviewCollisions(0)).toBeNull()
+	})
+})
+
+describe("migrateExpiresLine", () => {
+	it("embeds the relative discord timestamp token so the user sees the countdown", () => {
+		expect(migrateExpiresLine("<t:1788394920:R>")).toContain("<t:1788394920:R>")
+	})
+
+	it("frames the timestamp as the migration expiry while the window is active", () => {
+		expect(migrateExpiresLine("<t:1788394920:R>")).toContain("This migration expires")
 	})
 })

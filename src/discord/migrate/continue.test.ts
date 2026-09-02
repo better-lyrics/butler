@@ -1,6 +1,5 @@
 import {
 	migrateAlreadyCommitted,
-	migrateExpired,
 	migrateFailed,
 	migrateNotYet,
 	migrateSessionNotFound,
@@ -18,6 +17,8 @@ const ready: MigrationStatus = {
 	newKeyId: NEW_KEY,
 	oldNickname: "OldName",
 	newNickname: "NewName",
+	oldDisplayName: "OldName",
+	newDisplayName: "NewName",
 	counts: { submissions: 12, votes: 40, reports: 3, fulfillments: 5, collisions: 2 },
 }
 
@@ -96,13 +97,16 @@ describe("handleMigrateContinue edge cases", () => {
 		expect(replies[0]?.content).toBe(migrateAlreadyCommitted)
 	})
 
-	it("reports an expired session", async () => {
-		const { interaction, replies } = fakeInteraction("migrate.continue:sess-1")
+	it("swaps the card to an expired notice pointing at /migrate when the session has expired", async () => {
+		const { interaction, updates, replies } = fakeInteraction("migrate.continue:sess-1")
 		await handleMigrateContinue(
 			interaction,
 			deps({ status: "ok", data: { ...ready, status: "expired" } })
 		)
-		expect(replies[0]?.content).toBe(migrateExpired)
+		expect(replies).toHaveLength(0)
+		const s = JSON.stringify(updates[0])
+		expect(s).toContain("expired")
+		expect(s).toContain("/migrate")
 	})
 
 	it("reports a failed session (e.g. same key) so the user can restart", async () => {

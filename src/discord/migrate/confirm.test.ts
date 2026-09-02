@@ -24,12 +24,14 @@ const ready: MigrationStatus = {
 	newKeyId: NEW_KEY,
 	oldNickname: "OldName",
 	newNickname: "NewName",
+	oldDisplayName: "OldName",
+	newDisplayName: "NewName",
 	counts: { submissions: 12, votes: 40, reports: 3, fulfillments: 5, collisions: 2 },
 }
 
 const committed: MigrationCommitResult = {
 	status: "committed",
-	migrationId: "mig-1",
+	migrationId: 42,
 	moved: { submissions: 12, votes: 38, reports: 3, fulfillments: 5, collisionsDropped: 2 },
 }
 

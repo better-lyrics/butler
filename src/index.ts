@@ -343,8 +343,13 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 	if (interaction.isChatInputCommand() && interaction.commandName === "migrate") {
 		handleMigrate(interaction, {
 			startMigration: (discordId) => unison.startMigration(discordId),
+			getMigrationStatus: (sessionId) => unison.getMigrationStatus(sessionId),
 			cooldown: migrateCooldown,
 			linkPageUrl: config.linkPageUrl,
+			now: () => Date.now(),
+			schedule: (callback, delayMs) => {
+				setTimeout(callback, delayMs)
+			},
 		}).catch((err) => console.error("migrate handler failed", err))
 		return
 	}

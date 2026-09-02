@@ -265,7 +265,6 @@ describe("createUnisonClient startMigration", () => {
 		expect(result).toEqual({
 			status: "started",
 			sessionId: "sess-1",
-			signUrl: "https://unison.test/link/migrate/sess-1",
 			oldKeyId: `${"a".repeat(58)}1b2c3d`,
 		})
 	})
@@ -328,6 +327,8 @@ describe("createUnisonClient getMigrationStatus", () => {
 			newKeyId: `${"b".repeat(58)}9e8f7a`,
 			oldNickname: "OldName",
 			newNickname: "NewName",
+			oldDisplayName: "OldName",
+			newDisplayName: "NewName",
 			counts: { submissions: 12, votes: 40, reports: 3, fulfillments: 5, collisions: 2 },
 		}
 		const { fn, calls } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
@@ -375,10 +376,26 @@ describe("createUnisonClient getMigrationStatus", () => {
 		expect(await client.getMigrationStatus("sess-1")).toEqual({ status: "error", code: 200 })
 	})
 
-	it("maps a 404 to a not_found result", async () => {
+	it("passes through an expired status for a missing session (unison answers 200, never 404)", async () => {
+		const data = {
+			status: "expired",
+			oldKeyId: `${"a".repeat(58)}1b2c3d`,
+			newKeyId: null,
+			oldNickname: null,
+			newNickname: null,
+			oldDisplayName: "OldName",
+			newDisplayName: "",
+			counts: null,
+		}
+		const { fn } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getMigrationStatus("sess-x")).toEqual({ status: "ok", data })
+	})
+
+	it("maps a 404 to a generic error since a missing session returns 200 with expired, never 404", async () => {
 		const { fn } = makeFetch(new Response("gone", { status: 404 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-		expect(await client.getMigrationStatus("sess-x")).toEqual({ status: "not_found" })
+		expect(await client.getMigrationStatus("sess-x")).toEqual({ status: "error", code: 404 })
 	})
 
 	it("maps another non-ok response to an error result", async () => {
@@ -397,7 +414,7 @@ describe("createUnisonClient commitMigration", () => {
 			fulfillments: 5,
 			collisionsDropped: 2,
 		}
-		const payload = { success: true, data: { migrationId: "mig-1", moved } }
+		const payload = { success: true, data: { migrationId: 42, moved } }
 		const { fn, calls } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
@@ -407,7 +424,25 @@ describe("createUnisonClient commitMigration", () => {
 		expect(calls[0]?.method).toBe("POST")
 		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
 		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ discordId: "disc-1", keepNickname: "new" })
-		expect(result).toEqual({ status: "committed", migrationId: "mig-1", moved })
+		expect(result).toEqual({ status: "committed", migrationId: 42, moved })
+	})
+
+	it("regression: treats a committed migration whose migrationId is 0 as committed, not an error", async () => {
+		const moved = {
+			submissions: 1,
+			votes: 0,
+			reports: 0,
+			fulfillments: 0,
+			collisionsDropped: 0,
+		}
+		const payload = { success: true, data: { migrationId: 0, moved } }
+		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({
+			status: "committed",
+			migrationId: 0,
+			moved,
+		})
 	})
 
 	it("maps 410 MIGRATION_EXPIRED to expired", async () => {
@@ -446,7 +481,7 @@ describe("createUnisonClient commitMigration", () => {
 	})
 
 	it("maps a committed response missing moved counts to an error", async () => {
-		const payload = { success: true, data: { migrationId: "mig-1" } }
+		const payload = { success: true, data: { migrationId: 42 } }
 		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.commitMigration("sess-1", "disc-1", "old")).toEqual({

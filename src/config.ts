@@ -60,6 +60,12 @@ export const SYNC_INTERVAL_MS = 60 * 60 * 1000
 
 export const MIGRATE_COOLDOWN_MS = 15 * 1000
 
+// keep in sync with unison sessionTtlSeconds (900s); the start-card expiry is derived from this
+export const MIGRATE_SESSION_TTL_MS = 15 * 60 * 1000
+
+// flip the idle start card this long before the ttl, while the interaction token is still valid
+export const MIGRATE_EXPIRY_EDIT_LEAD_MS = 10 * 1000
+
 export const ALBUM_ART_SIZE = 1024
 
 export const PALETTE = {

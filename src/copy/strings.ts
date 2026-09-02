@@ -125,12 +125,17 @@ export function migrateMovingAccount(shortId: string): string {
 	return `Moving account \`${shortId}\`.`
 }
 
+export function migrateExpiresLine(timestamp: string): string {
+	return `This migration expires ${timestamp}.`
+}
+
 export const migrateContinueButtonLabel = "Continue"
 
 export const migratePreviewHeading = "**Review your migration**"
 
-export const migratePreviewBody =
-	"Your old identity keeps everything below and moves onto your new key:"
+export function migratePreviewBody(name: string): string {
+	return `You keep everything below, and it all moves onto your new key \`${name}\`:`
+}
 
 export function migratePreviewCounts(counts: {
 	submissions: number
@@ -148,11 +153,16 @@ export function migratePreviewCounts(counts: {
 export function migratePreviewCollisions(n: number): string | null {
 	if (n <= 0) return null
 	const dupes = countLabel(n, "duplicate")
-	return `${dupes} (vote or report) will be dropped, keeping the one you already have.`
+	return `${dupes} (vote, report, or request) will be dropped, keeping the one you already have.`
 }
 
-export function migrateKeyLine(oldShort: string, newShort: string): string {
-	return `Old key \`${oldShort}\`  ->  new key \`${newShort}\``
+export function migrateKeyLine(
+	oldDisplayName: string,
+	oldShort: string,
+	newDisplayName: string,
+	newShort: string
+): string {
+	return `${oldDisplayName} (\`${oldShort}\`)  ->  ${newDisplayName} (\`${newShort}\`)`
 }
 
 export function migrateNicknameKept(name: string | null): string {
