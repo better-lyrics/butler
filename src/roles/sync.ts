@@ -1,5 +1,6 @@
+import { type BadgeEntry, diffBadges } from "@/roles/badge-diff"
 import { type RoleTransition, diffHoldings, roleTransitions } from "@/roles/diff"
-import type { LeaderboardEntry } from "@/unison/client"
+import type { BadgeCatalogue, BadgeDef, LeaderboardEntry, UserGamification } from "@/unison/client"
 
 export interface SyncDeps {
 	getLeaderboard(): Promise<LeaderboardEntry[]>
@@ -12,7 +13,27 @@ export interface SyncDeps {
 		entry: LeaderboardEntry
 		tier: string
 	}): Promise<void>
+	getUserBadges(keyId: string): Promise<UserGamification>
+	getBadgeCatalogue(): Promise<BadgeCatalogue>
+	getBadgeHoldings(discordId: string): Promise<BadgeEntry[]>
+	recordBadge(
+		discordId: string,
+		badge: { badgeKey: string; tier: number | null; awardedAt: number }
+	): Promise<void>
+	isSeeded(discordId: string): Promise<boolean>
+	markSeeded(discordId: string, seededAt: number): Promise<void>
+	announceBadge(input: {
+		discordId: string
+		badgeName: string
+		badgeDescription: string
+	}): Promise<void>
+	announceSummary(input: {
+		promotions: Array<{ displayName: string; tier: string }>
+		badges: Array<{ displayName: string; badgeName: string }>
+	}): Promise<void>
+	now(): number
 	tierOrder: string[]
+	batchThreshold: number
 }
 
 export interface SyncResult {
@@ -58,18 +79,90 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 		await deps.persistHolding(discordId, finalTier)
 	}
 
-	let announced = 0
+	const promotions: Array<{ discordId: string; entry: LeaderboardEntry; tier: string }> = []
 	for (const promo of diff.promotions) {
 		const entry = entryByDiscord.get(promo.discordId)
 		if (entry === undefined) continue
-		await deps.announcePromotion({ discordId: promo.discordId, entry, tier: promo.tier })
-		announced++
+		promotions.push({ discordId: promo.discordId, entry, tier: promo.tier })
+	}
+
+	const catalogue = await deps.getBadgeCatalogue()
+	const defByKey = new Map<string, BadgeDef>()
+	for (const def of catalogue.badges) defByKey.set(def.key, def)
+
+	const awards: Array<{
+		discordId: string
+		displayName: string
+		badgeName: string
+		badgeDescription: string
+	}> = []
+
+	for (const [discordId, entry] of entryByDiscord) {
+		const gamification = await deps.getUserBadges(entry.keyId)
+		const earnedMedals: BadgeEntry[] = gamification.badges
+			.filter((b) => b.earned && defByKey.get(b.key)?.kind !== "title")
+			.map((b) => ({ key: b.key, tier: b.tier ?? null }))
+
+		const held = await deps.getBadgeHoldings(discordId)
+		const seeded = await deps.isSeeded(discordId)
+
+		if (!seeded) {
+			for (const medal of earnedMedals) {
+				await deps.recordBadge(discordId, {
+					badgeKey: medal.key,
+					tier: medal.tier,
+					awardedAt: deps.now(),
+				})
+			}
+			await deps.markSeeded(discordId, deps.now())
+			continue
+		}
+
+		const { newlyEarned } = diffBadges({ earned: earnedMedals, held })
+		for (const badge of newlyEarned) {
+			await deps.recordBadge(discordId, {
+				badgeKey: badge.key,
+				tier: badge.tier,
+				awardedAt: deps.now(),
+			})
+			const def = defByKey.get(badge.key)
+			if (def === undefined) continue
+			awards.push({
+				discordId,
+				displayName: entry.displayName,
+				badgeName: def.name,
+				badgeDescription: def.description,
+			})
+		}
+	}
+
+	const total = promotions.length + awards.length
+	if (total > deps.batchThreshold) {
+		await deps.announceSummary({
+			promotions: promotions.map((p) => ({ displayName: p.entry.displayName, tier: p.tier })),
+			badges: awards.map((a) => ({ displayName: a.displayName, badgeName: a.badgeName })),
+		})
+	} else {
+		for (const promo of promotions) {
+			await deps.announcePromotion({
+				discordId: promo.discordId,
+				entry: promo.entry,
+				tier: promo.tier,
+			})
+		}
+		for (const award of awards) {
+			await deps.announceBadge({
+				discordId: award.discordId,
+				badgeName: award.badgeName,
+				badgeDescription: award.badgeDescription,
+			})
+		}
 	}
 
 	return {
 		granted: diff.grants.length,
 		removed: diff.removals.length,
-		announced,
+		announced: total,
 		skipped: false,
 		transitions: roleTransitions(diff),
 	}

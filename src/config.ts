@@ -8,6 +8,7 @@ export interface Config {
 	composerBaseUrl: string
 	ytmCookie: string | null
 	guildId: string
+	announce: { batchThreshold: number }
 }
 
 const DEFAULT_UNISON_API_BASE_URL = "https://unison.boidu.dev"
@@ -31,6 +32,17 @@ function withDefault(
 	return value === undefined || value === "" ? fallback : value
 }
 
+function withDefaultNumber(
+	env: Record<string, string | undefined>,
+	name: string,
+	fallback: number
+): number {
+	const value = env[name]
+	if (value === undefined || value === "") return fallback
+	const parsed = Number.parseInt(value, 10)
+	return Number.isNaN(parsed) ? fallback : parsed
+}
+
 export function loadConfig(env: Record<string, string | undefined>): Config {
 	const ytmCookie = env.YTM_COOKIE
 
@@ -45,6 +57,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 		composerBaseUrl: withDefault(env, "COMPOSER_BASE_URL", DEFAULT_COMPOSER_BASE_URL),
 		ytmCookie: ytmCookie === undefined || ytmCookie === "" ? null : ytmCookie,
 		guildId: required(env, "GUILD_ID"),
+		announce: { batchThreshold: withDefaultNumber(env, "ANNOUNCE_BATCH_THRESHOLD", 5) },
 	}
 }
 

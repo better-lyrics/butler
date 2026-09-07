@@ -32,6 +32,7 @@ describe("loadConfig", () => {
 			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
 			guildId: "111111111111111111",
+			announce: { batchThreshold: 5 },
 		})
 	})
 
@@ -98,6 +99,30 @@ describe("loadConfig YTM_COOKIE", () => {
 		env.YTM_COOKIE = "VISITOR_INFO1_LIVE=abc; SID=xyz"
 		const config = loadConfig(env)
 		expect(config.ytmCookie).toBe("VISITOR_INFO1_LIVE=abc; SID=xyz")
+	})
+})
+
+describe("loadConfig ANNOUNCE_BATCH_THRESHOLD", () => {
+	it("defaults to 5 when absent", () => {
+		expect(loadConfig(completeEnv()).announce.batchThreshold).toBe(5)
+	})
+
+	it("carries a numeric override", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = "12"
+		expect(loadConfig(env).announce.batchThreshold).toBe(12)
+	})
+
+	it("falls back to the default when the override is empty", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = ""
+		expect(loadConfig(env).announce.batchThreshold).toBe(5)
+	})
+
+	it("falls back to the default when the override is not a number", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = "loads"
+		expect(loadConfig(env).announce.batchThreshold).toBe(5)
 	})
 })
 

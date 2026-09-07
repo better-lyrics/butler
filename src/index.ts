@@ -5,6 +5,7 @@ import {
 	TIER_ORDER,
 	loadConfig,
 } from "@/config"
+import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
 import { type GuildConfig, getGuildConfig, listGuildConfigs } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
@@ -19,6 +20,8 @@ import {
 import { handlePreview, previewCommand } from "@/discord/commands/preview"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
+import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
+import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
@@ -199,7 +202,45 @@ async function runSyncForGuild(
 				})
 				await channel.send(card)
 			},
+			getUserBadges: (keyId) => unison.getUserBadges(keyId),
+			getBadgeCatalogue: () => unison.getBadgeCatalogue(),
+			getBadgeHoldings: (discordId) => getBadgeHoldings(pool, discordId, gc.guildId),
+			recordBadge: (discordId, badge) =>
+				setBadgeHolding(pool, {
+					discordId,
+					guildId: gc.guildId,
+					badgeKey: badge.badgeKey,
+					tier: badge.tier,
+					awardedAt: badge.awardedAt,
+				}),
+			isSeeded: (discordId) => isSeeded(pool, discordId, gc.guildId),
+			markSeeded: (discordId, seededAt) => markSeeded(pool, discordId, gc.guildId, seededAt),
+			announceBadge: async (input) => {
+				if (!gc.announceChannelId) return
+				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
+				if (!channel?.isTextBased() || !channel.isSendable()) return
+				const member = await guild.members.fetch(input.discordId).catch(() => null)
+				const card = buildBadgeAwardCard({
+					discordId: input.discordId,
+					avatarUrl: member?.displayAvatarURL() ?? null,
+					badgeName: input.badgeName,
+					badgeDescription: input.badgeDescription,
+				})
+				await channel.send(card)
+			},
+			announceSummary: async (input) => {
+				if (!gc.announceChannelId) return
+				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
+				if (!channel?.isTextBased() || !channel.isSendable()) return
+				const card = buildAnnounceSummaryCard({
+					promotions: input.promotions,
+					badges: input.badges,
+				})
+				await channel.send(card)
+			},
+			now: () => Date.now(),
 			tierOrder: TIER_ORDER,
+			batchThreshold: config.announce.batchThreshold,
 		})
 
 		if (result.skipped) {
