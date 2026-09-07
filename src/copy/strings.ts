@@ -110,6 +110,32 @@ export function promotionStats(params: {
 	return `Rank #${params.rank}  ·  ${subs}  ·  ${ups}`
 }
 
+export function badgeAwardTitle(params: { discordId: string; badgeName: string }): string {
+	return `<@${params.discordId}> earned the ${params.badgeName} badge!`
+}
+
+export const announceSummaryHeading = "**Fresh wins on the board**"
+
+export const announceSummaryPromotionsLabel = "**Role promotions**"
+
+export const announceSummaryBadgesLabel = "**New badges**"
+
+export function announceSummaryPromotionLine(params: {
+	displayName: string
+	tier: string
+}): string {
+	const emoji = TIER_EMOJI[params.tier]
+	const lead = emoji ? `${emoji} ` : ""
+	return `- ${lead}**${params.displayName}** reached ${tierLabel(params.tier)}`
+}
+
+export function announceSummaryBadgeLine(params: {
+	displayName: string
+	badgeName: string
+}): string {
+	return `- **${params.displayName}** earned ${params.badgeName}`
+}
+
 export const notYourReport = "Only the person who posted this and the mods can use these buttons."
 
 export const reportAddToBoardButtonLabel = "Add to request board"
