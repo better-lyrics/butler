@@ -21,6 +21,15 @@ function makeEntry(keyId: string, rank: number): LeaderboardEntry {
 		fulfilledCount: 3,
 		fulfilledDemand: 2,
 		rank,
+		community: false,
+		discordLinked: false,
+		tier: null,
+		level: 0,
+		xp: 0,
+		xpForNext: null,
+		badgeCount: 0,
+		topBadge: null,
+		featured: [],
 		displayName: `curator-${keyId}`,
 	}
 }

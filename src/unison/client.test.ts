@@ -54,6 +54,65 @@ describe("createUnisonClient getLeaderboard", () => {
 		expect(result).toEqual(curators)
 	})
 
+	it("carries the gamification fields on each curator row", async () => {
+		const curators = [
+			{
+				keyId: "key-1",
+				reputation: 100,
+				score: 42,
+				submissionCount: 7,
+				totalUpvotes: 30,
+				fulfilledCount: 5,
+				fulfilledDemand: 12,
+				rank: 1,
+				community: false,
+				discordLinked: true,
+				tier: "master",
+				level: 14,
+				xp: 5200,
+				xpForNext: 800,
+				badgeCount: 3,
+				topBadge: { key: "most-loved", name: "Most Loved", tier: 2 },
+				featured: [
+					{ key: "most-loved", name: "Most Loved", tier: 2 },
+					{ key: "sharp-ear", name: "Sharp Ear" },
+				],
+				displayName: "Alice",
+			},
+			{
+				keyId: "key-community",
+				reputation: 999,
+				score: 9000,
+				submissionCount: 0,
+				totalUpvotes: 0,
+				fulfilledCount: 0,
+				fulfilledDemand: 0,
+				rank: 0,
+				community: true,
+				discordLinked: false,
+				tier: null,
+				level: 0,
+				xp: 0,
+				xpForNext: null,
+				badgeCount: 0,
+				topBadge: null,
+				featured: [],
+				displayName: "Better Lyrics",
+			},
+		]
+		const payload = { success: true, data: { curators } }
+		const { fn } = makeFetch(Response.json(payload, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getLeaderboard()
+
+		expect(result).toEqual(curators)
+		expect(result[0]?.tier).toBe("master")
+		expect(result[0]?.topBadge).toEqual({ key: "most-loved", name: "Most Loved", tier: 2 })
+		expect(result[1]?.tier).toBeNull()
+		expect(result[1]?.xpForNext).toBeNull()
+	})
+
 	it("throws on a non-ok response so a failed fetch never strips every role", async () => {
 		const { fn } = makeFetch(new Response("boom", { status: 500 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
@@ -115,6 +174,110 @@ describe("createUnisonClient getBotBlacklist", () => {
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
 		await expect(client.getBotBlacklist()).rejects.toThrow()
+	})
+})
+
+describe("createUnisonClient getUserBadges", () => {
+	it("issues a public GET and returns the user gamification payload", async () => {
+		const keyId = "a".repeat(64)
+		const data = {
+			keyId,
+			level: 12,
+			xp: 3400,
+			xpForNext: 600,
+			tier: "master",
+			tierRank: 7,
+			badges: [
+				{ key: "most-loved", earned: true, earnedAt: 1_700_000_000_000, tier: 2, featured: true },
+				{ key: "sharp-ear", earned: false, progress: { current: 3, next: 10 }, featured: false },
+			],
+			featured: ["most-loved"],
+			counts: { earned: 1, total: 20 },
+			topExpertise: [{ scope: "artist", name: "Radiohead", rank: 1 }],
+		}
+		const { fn, calls } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getUserBadges(keyId)
+
+		expect(calls[0]?.url).toBe(`https://unison.test/api/users/${keyId}/badges`)
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBeNull()
+		expect(result).toEqual(data)
+	})
+
+	it("throws on a non-ok response", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		await expect(client.getUserBadges("a".repeat(64))).rejects.toThrow()
+	})
+})
+
+describe("createUnisonClient getBadgeCatalogue", () => {
+	it("issues a public GET and returns the catalogue with its display block", async () => {
+		const data = {
+			badges: [
+				{
+					key: "most-loved",
+					name: "Most Loved",
+					description: "A lyric you submitted earned a high score with strong community support.",
+					category: "acclaim",
+					kind: "medal",
+					image: {
+						color: "/badges/most-loved/image.svg?variant=color",
+						mono: "/badges/most-loved/image.svg?variant=mono",
+					},
+				},
+				{
+					key: "prolific",
+					name: "Prolific",
+					description: "Submitted many accepted lyrics.",
+					category: "output",
+					kind: "medal",
+					rarity: 0.05,
+					secret: false,
+					tiers: [
+						{
+							level: 1,
+							threshold: 10,
+							image: {
+								color: "/badges/prolific/image.svg?variant=color&tier=1",
+								mono: "/badges/prolific/image.svg?variant=mono",
+							},
+						},
+					],
+					image: {
+						color: "/badges/prolific/image.svg?variant=color",
+						mono: "/badges/prolific/image.svg?variant=mono",
+					},
+				},
+			],
+			display: {
+				inlineGlyphs: 1,
+				featuredMax: 5,
+				rarityThreshold: 0.1,
+				categoryOrder: ["tier", "output", "acclaim", "special"],
+			},
+		}
+		const { fn, calls } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getBadgeCatalogue()
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/badges")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBeNull()
+		expect(result).toEqual(data)
+		expect(result.badges[0]?.kind).toBe("medal")
+		expect(result.display.featuredMax).toBe(5)
+	})
+
+	it("throws on a non-ok response", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 503 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		await expect(client.getBadgeCatalogue()).rejects.toThrow()
 	})
 })
 
