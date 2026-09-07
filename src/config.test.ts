@@ -1,4 +1,4 @@
-import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIERS, TIER_ORDER, loadConfig } from "@/config"
+import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIER_ORDER, loadConfig } from "@/config"
 import { describe, expect, it } from "vitest"
 
 const REQUIRED_KEYS = [
@@ -127,12 +127,6 @@ describe("loadConfig ANNOUNCE_BATCH_THRESHOLD", () => {
 })
 
 describe("tunables", () => {
-	it("exposes TIERS with the expected podium and percentages", () => {
-		expect(TIERS.podium).toEqual(["legendary", "grandmaster", "master"])
-		expect(TIERS.special).toEqual({ topPercent: 5, tier: "elite" })
-		expect(TIERS.base).toEqual({ topPercent: 20, tier: "lyricist" })
-	})
-
 	it("orders tiers lowest to highest", () => {
 		expect(TIER_ORDER).toEqual(["lyricist", "elite", "master", "grandmaster", "legendary"])
 	})

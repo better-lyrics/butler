@@ -1,5 +1,3 @@
-import type { TierConfig } from "@/roles/tiers"
-
 export interface Config {
 	discordBotToken: string
 	databaseUrl: string
@@ -59,12 +57,6 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 		guildId: required(env, "GUILD_ID"),
 		announce: { batchThreshold: withDefaultNumber(env, "ANNOUNCE_BATCH_THRESHOLD", 5) },
 	}
-}
-
-export const TIERS: TierConfig = {
-	podium: ["legendary", "grandmaster", "master"],
-	special: { topPercent: 5, tier: "elite" },
-	base: { topPercent: 20, tier: "lyricist" },
 }
 
 export const TIER_ORDER: string[] = ["lyricist", "elite", "master", "grandmaster", "legendary"]

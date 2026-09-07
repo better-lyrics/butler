@@ -562,4 +562,87 @@ describe("runSync", () => {
 			expect(result.announced).toBe(0)
 		})
 	})
+
+	describe("end-to-end", () => {
+		it("folds promotions, new medals, silent seeds, and skips into one summary card", async () => {
+			const nightOwl = makeBadgeDef(
+				"night-owl",
+				"medal",
+				"Night Owl",
+				"Fixed lyrics after midnight."
+			)
+			const polyglot = makeBadgeDef(
+				"polyglot",
+				"medal",
+				"Polyglot",
+				"Fixed lyrics in five languages."
+			)
+			const firstFix = makeBadgeDef("first-fix", "medal", "First Fix", "Landed a first correction.")
+
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+				["k3", "d3"],
+				["k4", "d4"],
+			])
+			const holdings = new Map([
+				["d2", "grandmaster"],
+				["d3", "master"],
+			])
+			const leaderboard = [
+				makeEntry("k1", 1, "legendary"),
+				makeEntry("k2", 2, "grandmaster"),
+				makeEntry("k3", 3, "master"),
+				makeEntry("k4", 0, null),
+			]
+			const catalogue = makeCatalogue([nightOwl, polyglot, firstFix])
+			const userBadges = new Map([
+				["k1", []],
+				["k2", [makeUserBadge("night-owl", true)]],
+				["k3", [makeUserBadge("polyglot", true), makeUserBadge("first-fix", true)]],
+				["k4", [makeUserBadge("night-owl", true)]],
+			])
+			const seeded = new Set(["d1", "d2"])
+			const { deps, rec } = buildDeps({
+				links,
+				holdings,
+				leaderboard,
+				catalogue,
+				userBadges,
+				seeded,
+				batchThreshold: 1,
+			})
+
+			const result = await runSync(deps)
+
+			expect(rec.applied).toContainEqual({ discordId: "d1", tier: "legendary" })
+			expect(rec.applied.some((c) => c.discordId === "d3")).toBe(false)
+			expect(rec.applied.some((c) => c.discordId === "d4")).toBe(false)
+
+			expect(rec.markedSeeded).toContainEqual({ discordId: "d3", seededAt: NOW })
+			expect(rec.recordedBadges).toContainEqual({
+				discordId: "d3",
+				badgeKey: "polyglot",
+				tier: null,
+				awardedAt: NOW,
+			})
+			expect(rec.recordedBadges).toContainEqual({
+				discordId: "d3",
+				badgeKey: "first-fix",
+				tier: null,
+				awardedAt: NOW,
+			})
+
+			expect(rec.badgesFetched).not.toContain("k4")
+
+			expect(rec.summaries).toHaveLength(1)
+			expect(rec.summaries[0]).toEqual({
+				promotions: [{ displayName: "curator-k1", tier: "legendary" }],
+				badges: [{ displayName: "curator-k2", badgeName: "Night Owl" }],
+			})
+			expect(rec.announced).toEqual([])
+			expect(rec.announcedBadges).toEqual([])
+			expect(result.announced).toBe(2)
+		})
+	})
 })
