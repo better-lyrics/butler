@@ -13,8 +13,8 @@ export interface SyncDeps {
 		entry: LeaderboardEntry
 		tier: string
 	}): Promise<void>
-	getUserBadges(keyId: string): Promise<UserGamification>
-	getBadgeCatalogue(): Promise<BadgeCatalogue>
+	getUserBadges(keyId: string): Promise<UserGamification | null>
+	getBadgeCatalogue(): Promise<BadgeCatalogue | null>
 	getBadgeHoldings(discordId: string): Promise<BadgeEntry[]>
 	recordBadge(
 		discordId: string,
@@ -26,11 +26,11 @@ export interface SyncDeps {
 		discordId: string
 		badgeName: string
 		badgeDescription: string
-	}): Promise<void>
+	}): Promise<boolean>
 	announceSummary(input: {
 		promotions: Array<{ displayName: string; tier: string }>
 		badges: Array<{ displayName: string; badgeName: string }>
-	}): Promise<void>
+	}): Promise<boolean>
 	now(): number
 	tierOrder: string[]
 	batchThreshold: number
@@ -86,62 +86,82 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 		promotions.push({ discordId: promo.discordId, entry, tier: promo.tier })
 	}
 
-	const catalogue = await deps.getBadgeCatalogue()
-	const defByKey = new Map<string, BadgeDef>()
-	for (const def of catalogue.badges) defByKey.set(def.key, def)
-
 	const awards: Array<{
 		discordId: string
 		displayName: string
 		badgeName: string
 		badgeDescription: string
+		badgeKey: string
+		tier: number | null
 	}> = []
 
-	for (const [discordId, entry] of entryByDiscord) {
-		const gamification = await deps.getUserBadges(entry.keyId)
-		const earnedMedals: BadgeEntry[] = gamification.badges
-			.filter((b) => b.earned && defByKey.get(b.key)?.kind !== "title")
-			.map((b) => ({ key: b.key, tier: b.tier ?? null }))
+	const catalogue = await deps.getBadgeCatalogue()
+	if (catalogue !== null) {
+		const defByKey = new Map<string, BadgeDef>()
+		for (const def of catalogue.badges) defByKey.set(def.key, def)
 
-		const held = await deps.getBadgeHoldings(discordId)
-		const seeded = await deps.isSeeded(discordId)
+		for (const [discordId, entry] of entryByDiscord) {
+			const gamification = await deps.getUserBadges(entry.keyId)
+			if (gamification === null) continue
+			const earnedMedals: BadgeEntry[] = gamification.badges
+				.filter((b) => b.earned && defByKey.get(b.key)?.kind !== "title")
+				.map((b) => ({ key: b.key, tier: b.tier ?? null }))
 
-		if (!seeded) {
-			for (const medal of earnedMedals) {
-				await deps.recordBadge(discordId, {
-					badgeKey: medal.key,
-					tier: medal.tier,
-					awardedAt: deps.now(),
+			const held = await deps.getBadgeHoldings(discordId)
+			const seeded = await deps.isSeeded(discordId)
+
+			if (!seeded) {
+				for (const medal of earnedMedals) {
+					await deps.recordBadge(discordId, {
+						badgeKey: medal.key,
+						tier: medal.tier,
+						awardedAt: deps.now(),
+					})
+				}
+				await deps.markSeeded(discordId, deps.now())
+				continue
+			}
+
+			const { newlyEarned } = diffBadges({ earned: earnedMedals, held })
+			for (const badge of newlyEarned) {
+				const def = defByKey.get(badge.key)
+				if (def === undefined) {
+					await deps.recordBadge(discordId, {
+						badgeKey: badge.key,
+						tier: badge.tier,
+						awardedAt: deps.now(),
+					})
+					continue
+				}
+				awards.push({
+					discordId,
+					displayName: entry.displayName,
+					badgeName: def.name,
+					badgeDescription: def.description,
+					badgeKey: badge.key,
+					tier: badge.tier,
 				})
 			}
-			await deps.markSeeded(discordId, deps.now())
-			continue
 		}
+	}
 
-		const { newlyEarned } = diffBadges({ earned: earnedMedals, held })
-		for (const badge of newlyEarned) {
-			await deps.recordBadge(discordId, {
-				badgeKey: badge.key,
-				tier: badge.tier,
-				awardedAt: deps.now(),
-			})
-			const def = defByKey.get(badge.key)
-			if (def === undefined) continue
-			awards.push({
-				discordId,
-				displayName: entry.displayName,
-				badgeName: def.name,
-				badgeDescription: def.description,
-			})
-		}
+	async function recordAward(award: (typeof awards)[number]): Promise<void> {
+		await deps.recordBadge(award.discordId, {
+			badgeKey: award.badgeKey,
+			tier: award.tier,
+			awardedAt: deps.now(),
+		})
 	}
 
 	const total = promotions.length + awards.length
 	if (total > deps.batchThreshold) {
-		await deps.announceSummary({
+		const sent = await deps.announceSummary({
 			promotions: promotions.map((p) => ({ displayName: p.entry.displayName, tier: p.tier })),
 			badges: awards.map((a) => ({ displayName: a.displayName, badgeName: a.badgeName })),
 		})
+		if (sent) {
+			for (const award of awards) await recordAward(award)
+		}
 	} else {
 		for (const promo of promotions) {
 			await deps.announcePromotion({
@@ -151,11 +171,12 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 			})
 		}
 		for (const award of awards) {
-			await deps.announceBadge({
+			const sent = await deps.announceBadge({
 				discordId: award.discordId,
 				badgeName: award.badgeName,
 				badgeDescription: award.badgeDescription,
 			})
+			if (sent) await recordAward(award)
 		}
 	}
 

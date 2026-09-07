@@ -87,21 +87,26 @@ interface Overrides {
 	leaderboard?: LeaderboardEntry[]
 	links?: Map<string, string>
 	holdings?: Map<string, string>
-	catalogue?: BadgeCatalogue
+	catalogue?: BadgeCatalogue | null
 	userBadges?: Map<string, UserBadge[]>
 	badgeHoldings?: Map<string, BadgeEntry[]>
 	seeded?: Set<string>
 	batchThreshold?: number
+	failUserBadges?: Set<string>
+	announceBadgeFails?: boolean
+	announceSummaryFails?: boolean
 }
 
 function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders } {
 	const leaderboard = overrides.leaderboard ?? makeLeaderboard()
 	const links = overrides.links ?? new Map<string, string>()
 	const holdings = overrides.holdings ?? new Map<string, string>()
-	const catalogue = overrides.catalogue ?? makeCatalogue([])
+	const catalogue: BadgeCatalogue | null =
+		"catalogue" in overrides ? (overrides.catalogue ?? null) : makeCatalogue([])
 	const userBadges = overrides.userBadges ?? new Map<string, UserBadge[]>()
 	const badgeHoldings = overrides.badgeHoldings ?? new Map<string, BadgeEntry[]>()
 	const seeded = overrides.seeded ?? new Set<string>()
+	const failUserBadges = overrides.failUserBadges ?? new Set<string>()
 
 	const rec: Recorders = {
 		applied: [],
@@ -136,6 +141,7 @@ function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders 
 		},
 		async getUserBadges(keyId) {
 			rec.badgesFetched.push(keyId)
+			if (failUserBadges.has(keyId)) return null
 			const badges = userBadges.get(keyId) ?? []
 			return {
 				keyId,
@@ -171,10 +177,14 @@ function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders 
 			seeded.add(discordId)
 		},
 		async announceBadge(input) {
+			if (overrides.announceBadgeFails) return false
 			rec.announcedBadges.push(input)
+			return true
 		},
 		async announceSummary(input) {
+			if (overrides.announceSummaryFails) return false
 			rec.summaries.push(input)
+			return true
 		},
 		now() {
 			return NOW
@@ -478,6 +488,134 @@ describe("runSync", () => {
 			expect(rec.badgesFetched).not.toContain("k1")
 			expect(rec.recordedBadges.some((r) => r.discordId === "d1")).toBe(false)
 			expect(rec.announcedBadges).toEqual([])
+		})
+	})
+
+	describe("resilience", () => {
+		const nightOwl = makeBadgeDef("night-owl", "medal", "Night Owl", "Fixed lyrics after midnight.")
+
+		it("regression: a failing badge fetch for one member does not abort the sync", async () => {
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+			])
+			const leaderboard = [makeEntry("k1", 1, "legendary"), makeEntry("k2", 2, "grandmaster")]
+			const catalogue = makeCatalogue([nightOwl])
+			const userBadges = new Map([["k2", [makeUserBadge("night-owl", true)]]])
+			const seeded = new Set(["d2"])
+			const { deps, rec } = buildDeps({
+				links,
+				leaderboard,
+				catalogue,
+				userBadges,
+				seeded,
+				failUserBadges: new Set(["k1"]),
+			})
+
+			await runSync(deps)
+
+			expect(rec.announced).toContainEqual({ discordId: "d1", tier: "legendary" })
+			expect(rec.announced).toContainEqual({ discordId: "d2", tier: "grandmaster" })
+			expect(rec.announcedBadges).toContainEqual({
+				discordId: "d2",
+				badgeName: "Night Owl",
+				badgeDescription: "Fixed lyrics after midnight.",
+			})
+			expect(rec.recordedBadges.some((r) => r.discordId === "d1")).toBe(false)
+		})
+
+		it("regression: a null badge catalogue still lets promotions announce", async () => {
+			const links = new Map([["k1", "d1"]])
+			const leaderboard = [makeEntry("k1", 1, "legendary")]
+			const { deps, rec } = buildDeps({ links, leaderboard, catalogue: null })
+
+			await runSync(deps)
+
+			expect(rec.announced).toContainEqual({ discordId: "d1", tier: "legendary" })
+			expect(rec.badgesFetched).toEqual([])
+			expect(rec.recordedBadges).toEqual([])
+		})
+
+		it("regression: does not record a badge whose announcement fails, and announces it next sync", async () => {
+			const links = new Map([["k1", "d1"]])
+			const holdings = new Map([["d1", "legendary"]])
+			const leaderboard = [makeEntry("k1", 1, "legendary")]
+			const catalogue = makeCatalogue([nightOwl])
+			const userBadges = new Map([["k1", [makeUserBadge("night-owl", true)]]])
+			const badgeHoldings = new Map<string, BadgeEntry[]>()
+			const seeded = new Set(["d1"])
+			const overrides: Overrides = {
+				links,
+				holdings,
+				leaderboard,
+				catalogue,
+				userBadges,
+				badgeHoldings,
+				seeded,
+				announceBadgeFails: true,
+			}
+			const { deps, rec } = buildDeps(overrides)
+
+			await runSync(deps)
+
+			expect(rec.announcedBadges).toEqual([])
+			expect(rec.recordedBadges.some((r) => r.badgeKey === "night-owl")).toBe(false)
+
+			overrides.announceBadgeFails = false
+			await runSync(deps)
+
+			expect(rec.announcedBadges).toContainEqual({
+				discordId: "d1",
+				badgeName: "Night Owl",
+				badgeDescription: "Fixed lyrics after midnight.",
+			})
+			expect(rec.recordedBadges).toContainEqual({
+				discordId: "d1",
+				badgeKey: "night-owl",
+				tier: null,
+				awardedAt: NOW,
+			})
+		})
+
+		it("regression: records no badge when the batched summary fails, then records it next sync", async () => {
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+			])
+			const holdings = new Map([["d2", "grandmaster"]])
+			const leaderboard = [makeEntry("k1", 1, "legendary"), makeEntry("k2", 2, "grandmaster")]
+			const catalogue = makeCatalogue([nightOwl])
+			const userBadges = new Map([["k2", [makeUserBadge("night-owl", true)]]])
+			const badgeHoldings = new Map<string, BadgeEntry[]>()
+			const seeded = new Set(["d2"])
+			const overrides: Overrides = {
+				links,
+				holdings,
+				leaderboard,
+				catalogue,
+				userBadges,
+				badgeHoldings,
+				seeded,
+				batchThreshold: 1,
+				announceSummaryFails: true,
+			}
+			const { deps, rec } = buildDeps(overrides)
+
+			await runSync(deps)
+
+			expect(rec.summaries).toEqual([])
+			expect(rec.recordedBadges.some((r) => r.badgeKey === "night-owl")).toBe(false)
+
+			overrides.announceSummaryFails = false
+			await runSync(deps)
+
+			expect(rec.summaries).toHaveLength(1)
+			expect(rec.recordedBadges).toContainEqual({
+				discordId: "d2",
+				badgeKey: "night-owl",
+				tier: null,
+				awardedAt: NOW,
+			})
 		})
 	})
 

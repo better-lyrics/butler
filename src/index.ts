@@ -202,8 +202,8 @@ async function runSyncForGuild(
 				})
 				await channel.send(card)
 			},
-			getUserBadges: (keyId) => unison.getUserBadges(keyId),
-			getBadgeCatalogue: () => unison.getBadgeCatalogue(),
+			getUserBadges: (keyId) => unison.getUserBadges(keyId).catch(() => null),
+			getBadgeCatalogue: () => unison.getBadgeCatalogue().catch(() => null),
 			getBadgeHoldings: (discordId) => getBadgeHoldings(pool, discordId, gc.guildId),
 			recordBadge: (discordId, badge) =>
 				setBadgeHolding(pool, {
@@ -216,9 +216,9 @@ async function runSyncForGuild(
 			isSeeded: (discordId) => isSeeded(pool, discordId, gc.guildId),
 			markSeeded: (discordId, seededAt) => markSeeded(pool, discordId, gc.guildId, seededAt),
 			announceBadge: async (input) => {
-				if (!gc.announceChannelId) return
+				if (!gc.announceChannelId) return true
 				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
-				if (!channel?.isTextBased() || !channel.isSendable()) return
+				if (!channel?.isTextBased() || !channel.isSendable()) return true
 				const member = await guild.members.fetch(input.discordId).catch(() => null)
 				const card = buildBadgeAwardCard({
 					discordId: input.discordId,
@@ -226,17 +226,23 @@ async function runSyncForGuild(
 					badgeName: input.badgeName,
 					badgeDescription: input.badgeDescription,
 				})
-				await channel.send(card)
+				return channel
+					.send(card)
+					.then(() => true)
+					.catch(() => false)
 			},
 			announceSummary: async (input) => {
-				if (!gc.announceChannelId) return
+				if (!gc.announceChannelId) return true
 				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
-				if (!channel?.isTextBased() || !channel.isSendable()) return
+				if (!channel?.isTextBased() || !channel.isSendable()) return true
 				const card = buildAnnounceSummaryCard({
 					promotions: input.promotions,
 					badges: input.badges,
 				})
-				await channel.send(card)
+				return channel
+					.send(card)
+					.then(() => true)
+					.catch(() => false)
 			},
 			now: () => Date.now(),
 			tierOrder: TIER_ORDER,
