@@ -2,7 +2,6 @@ import {
 	ALBUM_ART_SIZE,
 	MIGRATE_COOLDOWN_MS,
 	SYNC_INTERVAL_MS,
-	TIERS,
 	TIER_ORDER,
 	loadConfig,
 } from "@/config"
@@ -173,7 +172,6 @@ async function runSyncForGuild(
 
 		const result = await runSync({
 			getLeaderboard: () => unison.getLeaderboard(),
-			getBlacklist: () => unison.getBotBlacklist(),
 			resolveMember: async (keyId) => {
 				const discordId = keyToDiscord.get(keyId)
 				if (!discordId) return null
@@ -201,7 +199,6 @@ async function runSyncForGuild(
 				})
 				await channel.send(card)
 			},
-			tiers: TIERS,
 			tierOrder: TIER_ORDER,
 		})
 

@@ -1,10 +1,8 @@
 import { type RoleTransition, diffHoldings, roleTransitions } from "@/roles/diff"
-import { type TierConfig, computeTiers } from "@/roles/tiers"
 import type { LeaderboardEntry } from "@/unison/client"
 
 export interface SyncDeps {
 	getLeaderboard(): Promise<LeaderboardEntry[]>
-	getBlacklist(): Promise<Set<string>>
 	resolveMember(keyId: string): Promise<{ discordId: string } | null>
 	getHoldings(): Promise<Map<string, string>>
 	applyMemberRoles(discordId: string, tier: string | null): Promise<void>
@@ -14,7 +12,6 @@ export interface SyncDeps {
 		entry: LeaderboardEntry
 		tier: string
 	}): Promise<void>
-	tiers: TierConfig
 	tierOrder: string[]
 }
 
@@ -28,25 +25,15 @@ export interface SyncResult {
 
 export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 	const leaderboard = await deps.getLeaderboard()
-	const byKey = new Map(leaderboard.map((entry) => [entry.keyId, entry]))
-
-	const blacklist = await deps.getBlacklist()
-
-	const tierByKey = computeTiers(
-		leaderboard.map((entry) => ({ keyId: entry.keyId, rank: entry.rank, score: entry.score })),
-		blacklist,
-		deps.tiers
-	)
 
 	const desired = new Map<string, string>()
 	const entryByDiscord = new Map<string, LeaderboardEntry>()
 
-	for (const [keyId, tier] of tierByKey) {
-		const member = await deps.resolveMember(keyId)
+	for (const entry of leaderboard) {
+		if (entry.tier === null) continue
+		const member = await deps.resolveMember(entry.keyId)
 		if (member === null) continue
-		const entry = byKey.get(keyId)
-		if (entry === undefined) continue
-		desired.set(member.discordId, tier)
+		desired.set(member.discordId, entry.tier)
 		entryByDiscord.set(member.discordId, entry)
 	}
 
