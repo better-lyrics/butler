@@ -1,5 +1,13 @@
 import type { BotRequestBody } from "@/requests/payload"
 
+export type TierName = "lyricist" | "elite" | "master" | "grandmaster" | "legendary"
+
+export interface BadgeRef {
+	key: string
+	name: string
+	tier?: number
+}
+
 export interface LeaderboardEntry {
 	keyId: string
 	reputation: number
@@ -9,7 +17,65 @@ export interface LeaderboardEntry {
 	fulfilledCount: number
 	fulfilledDemand: number
 	rank: number
+	community: boolean
+	discordLinked: boolean
+	tier: TierName | null
+	level: number
+	xp: number
+	xpForNext: number | null
+	badgeCount: number
+	topBadge: BadgeRef | null
+	featured: BadgeRef[]
 	displayName: string
+}
+
+export interface BadgeImage {
+	color: string
+	mono: string
+}
+
+export interface BadgeDef {
+	key: string
+	name: string
+	description: string
+	category: string
+	kind: "title" | "medal" | "special"
+	tiers?: Array<{ level: number; name?: string; threshold: number; image?: BadgeImage }>
+	secret?: boolean
+	rarity?: number
+	image: BadgeImage
+}
+
+export interface BadgeCatalogue {
+	badges: BadgeDef[]
+	display: {
+		inlineGlyphs: number
+		featuredMax: number
+		rarityThreshold: number
+		categoryOrder: string[]
+	}
+}
+
+export interface UserBadge {
+	key: string
+	earned: boolean
+	earnedAt?: number
+	tier?: number
+	progress?: { current: number; next: number | null }
+	featured: boolean
+}
+
+export interface UserGamification {
+	keyId: string
+	level: number
+	xp: number
+	xpForNext: number | null
+	tier: TierName | null
+	tierRank: number | null
+	badges: UserBadge[]
+	featured: string[]
+	counts: { earned: number; total: number }
+	topExpertise?: Array<{ scope: "artist" | "language"; name: string; rank: number }>
 }
 
 export type BotRequestResult =
@@ -83,6 +149,8 @@ export interface UnisonClientOptions {
 
 export interface UnisonClient {
 	getLeaderboard(): Promise<LeaderboardEntry[]>
+	getUserBadges(keyId: string): Promise<UserGamification>
+	getBadgeCatalogue(): Promise<BadgeCatalogue>
 	getBotLinks(): Promise<Array<{ discordId: string; keyId: string }>>
 	getBotBlacklist(): Promise<Set<string>>
 	submitBotRequest(body: BotRequestBody): Promise<BotRequestResult>
@@ -98,6 +166,16 @@ export interface UnisonClient {
 interface LeaderboardResponse {
 	success: boolean
 	data: { curators: LeaderboardEntry[] }
+}
+
+interface UserBadgesResponse {
+	success: boolean
+	data: UserGamification
+}
+
+interface BadgeCatalogueResponse {
+	success: boolean
+	data: BadgeCatalogue
 }
 
 interface BotLinksResponse {
@@ -153,6 +231,24 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			}
 			const json = (await res.json()) as LeaderboardResponse
 			return json.data.curators
+		},
+
+		async getUserBadges(keyId) {
+			const res = await doFetch(`${baseUrl}/users/${keyId}/badges`)
+			if (!res.ok) {
+				throw new Error(`Unison user badges fetch failed: ${res.status}`)
+			}
+			const json = (await res.json()) as UserBadgesResponse
+			return json.data
+		},
+
+		async getBadgeCatalogue() {
+			const res = await doFetch(`${baseUrl}/badges`)
+			if (!res.ok) {
+				throw new Error(`Unison badge catalogue fetch failed: ${res.status}`)
+			}
+			const json = (await res.json()) as BadgeCatalogueResponse
+			return json.data
 		},
 
 		async getBotLinks() {

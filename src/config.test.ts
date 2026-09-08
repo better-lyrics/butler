@@ -1,4 +1,4 @@
-import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIERS, TIER_ORDER, loadConfig } from "@/config"
+import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIER_ORDER, loadConfig } from "@/config"
 import { describe, expect, it } from "vitest"
 
 const REQUIRED_KEYS = [
@@ -32,6 +32,7 @@ describe("loadConfig", () => {
 			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
 			guildId: "111111111111111111",
+			announce: { batchThreshold: 5 },
 		})
 	})
 
@@ -101,13 +102,31 @@ describe("loadConfig YTM_COOKIE", () => {
 	})
 })
 
-describe("tunables", () => {
-	it("exposes TIERS with the expected podium and percentages", () => {
-		expect(TIERS.podium).toEqual(["legendary", "grandmaster", "master"])
-		expect(TIERS.special).toEqual({ topPercent: 5, tier: "elite" })
-		expect(TIERS.base).toEqual({ topPercent: 20, tier: "lyricist" })
+describe("loadConfig ANNOUNCE_BATCH_THRESHOLD", () => {
+	it("defaults to 5 when absent", () => {
+		expect(loadConfig(completeEnv()).announce.batchThreshold).toBe(5)
 	})
 
+	it("carries a numeric override", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = "12"
+		expect(loadConfig(env).announce.batchThreshold).toBe(12)
+	})
+
+	it("falls back to the default when the override is empty", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = ""
+		expect(loadConfig(env).announce.batchThreshold).toBe(5)
+	})
+
+	it("falls back to the default when the override is not a number", () => {
+		const env = completeEnv()
+		env.ANNOUNCE_BATCH_THRESHOLD = "loads"
+		expect(loadConfig(env).announce.batchThreshold).toBe(5)
+	})
+})
+
+describe("tunables", () => {
 	it("orders tiers lowest to highest", () => {
 		expect(TIER_ORDER).toEqual(["lyricist", "elite", "master", "grandmaster", "legendary"])
 	})

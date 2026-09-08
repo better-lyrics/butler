@@ -17,3 +17,17 @@ CREATE TABLE IF NOT EXISTS guild_config (
 );
 -- Migration for guild_config tables created before the on/off switch existed.
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS badge_holdings (
+  discord_id TEXT NOT NULL,
+  guild_id   TEXT NOT NULL,
+  badge_key  TEXT NOT NULL,
+  tier       INTEGER,
+  awarded_at BIGINT,
+  PRIMARY KEY (discord_id, guild_id, badge_key)
+);
+CREATE TABLE IF NOT EXISTS badge_seeded (
+  discord_id TEXT NOT NULL,
+  guild_id   TEXT NOT NULL,
+  seeded_at  BIGINT,
+  PRIMARY KEY (discord_id, guild_id)
+);

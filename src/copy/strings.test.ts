@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest"
 import {
+	announceSummaryBadgeLine,
+	announceSummaryPromotionLine,
+	badgeAwardTitle,
 	migrateExpiresLine,
 	migratePreviewBody,
 	migratePreviewCollisions,
@@ -133,6 +136,49 @@ describe("promotionStats", () => {
 			expect(line).toContain("0 submissions")
 			expect(line).toContain("0 upvotes")
 		})
+	})
+})
+
+describe("badgeAwardTitle", () => {
+	it("pings the curator and names the badge", () => {
+		const line = badgeAwardTitle({ discordId, badgeName: "Night Owl" })
+		expect(line).toContain(mention)
+		expect(line).toContain("Night Owl")
+		expect(line.endsWith("!")).toBe(true)
+	})
+})
+
+describe("announceSummaryPromotionLine", () => {
+	describe("happy paths", () => {
+		it("prefixes a known tier with its custom emoji and the tier label", () => {
+			const line = announceSummaryPromotionLine({ displayName: "boidu", tier: "legendary" })
+			expect(line).toContain("<a:PogFishAnimated:1519140120014622731>")
+			expect(line).toContain("**boidu**")
+			expect(line).toContain(tierLabel("legendary"))
+		})
+
+		it("starts each line as a markdown bullet", () => {
+			for (const tier of tiers) {
+				expect(announceSummaryPromotionLine({ displayName: "boidu", tier }).startsWith("- ")).toBe(
+					true
+				)
+			}
+		})
+	})
+
+	describe("edge cases", () => {
+		it("drops the emoji lead for a tier with no custom emoji", () => {
+			const line = announceSummaryPromotionLine({ displayName: "boidu", tier: "wizard" })
+			expect(line).toBe(`- **boidu** reached ${tierLabel("wizard")}`)
+			expect(line).not.toContain("<")
+		})
+	})
+})
+
+describe("announceSummaryBadgeLine", () => {
+	it("names the curator and the badge as a markdown bullet", () => {
+		const line = announceSummaryBadgeLine({ displayName: "boidu", badgeName: "Night Owl" })
+		expect(line).toBe("- **boidu** earned Night Owl")
 	})
 })
 
