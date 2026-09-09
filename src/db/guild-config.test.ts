@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it } from "vitest"
 import {
 	type GuildConfig,
 	getGuildConfig,
+	getReviewLastPostedAt,
 	listGuildConfigs,
+	markReviewPosted,
 	setGuildEnabled,
 	setGuildField,
 	setTierRole,
@@ -30,6 +32,7 @@ function fullConfig(): GuildConfig {
 		roleIds: { gold: "r1", silver: "r2" },
 		tierOverrides: { gold: 90 },
 		councilRoleId: "council-role-1",
+		reviewChannelId: "c5",
 		enabled: false,
 	}
 }
@@ -58,6 +61,7 @@ describe("guild-config", () => {
 				roleIds: {},
 				tierOverrides: null,
 				councilRoleId: null,
+				reviewChannelId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, config)
@@ -85,6 +89,12 @@ describe("guild-config", () => {
 			await upsertGuildConfig(pool, fullConfig())
 			await upsertGuildConfig(pool, { ...fullConfig(), modChannelId: null })
 			expect((await getGuildConfig(pool, "g1"))?.modChannelId).toBe("c4")
+		})
+
+		it("keeps the review channel sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), reviewChannelId: null })
+			expect((await getGuildConfig(pool, "g1"))?.reviewChannelId).toBe("c5")
 		})
 	})
 
@@ -118,12 +128,14 @@ describe("guild-config", () => {
 			await setGuildField(pool, "g1", "announce", "aa")
 			await setGuildField(pool, "g1", "mod", "mm")
 			await setGuildField(pool, "g1", "council", "cr")
+			await setGuildField(pool, "g1", "review", "rv")
 			expect(await getGuildConfig(pool, "g1")).toMatchObject({
 				connectChannelId: "cc",
 				reportChannelId: "rr",
 				announceChannelId: "aa",
 				modChannelId: "mm",
 				councilRoleId: "cr",
+				reviewChannelId: "rv",
 			})
 		})
 	})
@@ -176,6 +188,7 @@ describe("guild-config", () => {
 				roleIds: {},
 				tierOverrides: null,
 				councilRoleId: null,
+				reviewChannelId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, second)
@@ -201,6 +214,39 @@ describe("guild-config", () => {
 			await setGuildEnabled(pool, "g1", true)
 			await upsertGuildConfig(pool, { ...fullConfig(), connectChannelId: "changed" })
 			expect((await getGuildConfig(pool, "g1"))?.enabled).toBe(true)
+		})
+	})
+
+	describe("review digest schedule", () => {
+		it("returns null before any digest has been posted", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			expect(await getReviewLastPostedAt(pool, "g1")).toBeNull()
+		})
+
+		it("returns null for a guild with no config row", async () => {
+			expect(await getReviewLastPostedAt(pool, "nope")).toBeNull()
+		})
+
+		it("round-trips the last-posted timestamp as a number", async () => {
+			await markReviewPosted(pool, "g1", 1_725_000_000_000)
+			expect(await getReviewLastPostedAt(pool, "g1")).toBe(1_725_000_000_000)
+		})
+
+		it("creates the row when marking a guild that has no config yet", async () => {
+			await markReviewPosted(pool, "fresh", 42)
+			expect(await getReviewLastPostedAt(pool, "fresh")).toBe(42)
+		})
+
+		it("overwrites the previous timestamp on a later post", async () => {
+			await markReviewPosted(pool, "g1", 100)
+			await markReviewPosted(pool, "g1", 200)
+			expect(await getReviewLastPostedAt(pool, "g1")).toBe(200)
+		})
+
+		it("does not disturb the rest of the config", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await markReviewPosted(pool, "g1", 999)
+			expect(await getGuildConfig(pool, "g1")).toEqual(fullConfig())
 		})
 	})
 

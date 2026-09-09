@@ -10,6 +10,8 @@ import {
 	configModChannelSet,
 	configNoPermission,
 	configReportSet,
+	configReviewChannelCleared,
+	configReviewChannelSet,
 	configTierRoleSet,
 } from "@/copy/strings"
 import type { GuildConfig, GuildTextField } from "@/db/guild-config"
@@ -27,6 +29,7 @@ function sampleConfig(overrides: Partial<GuildConfig> = {}): GuildConfig {
 		roleIds: { legendary: "1", grandmaster: "2", master: "3", elite: "4", lyricist: "5" },
 		tierOverrides: null,
 		councilRoleId: "council-1",
+		reviewChannelId: "review-1",
 		enabled: true,
 		...overrides,
 	}
@@ -195,6 +198,17 @@ describe("handleConfig channel setters", () => {
 		expect(replies[0]?.content).toBe(configModChannelSet)
 	})
 
+	it("sets the review channel", async () => {
+		const { interaction: int, replies } = interaction({
+			sub: "review-channel",
+			channelId: "review-9",
+		})
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["review", "review-9"]])
+		expect(replies[0]?.content).toBe(configReviewChannelSet)
+	})
+
 	it("never posts the connect card for a non-connect channel", async () => {
 		const { interaction: int } = interaction({ sub: "report-channel", channelId: "report-9" })
 		const d = deps()
@@ -245,6 +259,14 @@ describe("handleConfig clear", () => {
 		expect(d.calls.setField).toEqual([["council", null]])
 		expect(replies[0]?.content).toBe(configCouncilRoleCleared)
 	})
+
+	it("clears the review channel", async () => {
+		const { interaction: int, replies } = interaction({ sub: "clear", field: "review-channel" })
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["review", null]])
+		expect(replies[0]?.content).toBe(configReviewChannelCleared)
+	})
 })
 
 describe("handleConfig view", () => {
@@ -256,6 +278,7 @@ describe("handleConfig view", () => {
 		const content = replies[0]?.content ?? ""
 		expect(content).toContain("butler configuration")
 		expect(content).toContain("<#connect-1>")
+		expect(content).toContain("<#review-1>")
 		expect(content).toContain("<@&council-1>")
 		expect(content).toContain("master: <@&3>")
 	})

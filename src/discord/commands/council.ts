@@ -170,7 +170,8 @@ export async function handleCouncil(
 
 	const keyId = await deps.resolveKeyId(target.id)
 	if (!keyId) {
-		await interaction.reply(ephemeralText(councilNotLinked(mention)))
+		const message = sub === "add" ? councilNotLinked(mention) : councilNotFound(mention)
+		await interaction.reply(ephemeralText(message))
 		return
 	}
 

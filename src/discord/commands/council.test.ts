@@ -192,6 +192,16 @@ describe("handleCouncil remove", () => {
 		expect(d.calls.revoke).toEqual([])
 	})
 
+	it("reports an unresolvable account instead of the add-oriented copy for an unlinked target", async () => {
+		const { interaction: int, replies } = interaction({ sub: "remove" })
+		const d = deps({ resolveKeyId: async () => null })
+		await handleCouncil(int, d.deps)
+		expect(replies[0]?.content).toBe(councilNotFound(`<@${TARGET}>`))
+		expect(replies[0]?.content).not.toBe(councilNotLinked(`<@${TARGET}>`))
+		expect(d.calls.remove).toEqual([])
+		expect(d.calls.revoke).toEqual([])
+	})
+
 	it("shows a generic error when the remove fails", async () => {
 		const { interaction: int, replies } = interaction({ sub: "remove" })
 		const failing: CouncilRemoveResult = { status: "error", code: 500 }

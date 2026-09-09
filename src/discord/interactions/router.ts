@@ -9,6 +9,13 @@ export type HandlerName =
 	| "migrate.commit"
 	| "seal.pick"
 	| "seal.unpick"
+	| "queue.seal"
+	| "queue.seal.confirm"
+	| "queue.seal.cancel"
+	| "queue.seal.undo"
+	| "queue.reject"
+	| "queue.reject.submit"
+	| "queue.reject.undo"
 
 const HANDLERS: readonly HandlerName[] = [
 	"report.add",
@@ -18,6 +25,13 @@ const HANDLERS: readonly HandlerName[] = [
 	"migrate.commit",
 	"seal.pick",
 	"seal.unpick",
+	"queue.seal",
+	"queue.seal.confirm",
+	"queue.seal.cancel",
+	"queue.seal.undo",
+	"queue.reject",
+	"queue.reject.submit",
+	"queue.reject.undo",
 ]
 
 /** A resolved interaction route: which handler to run and its decoded args. */

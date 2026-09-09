@@ -1,4 +1,12 @@
-import { ALBUM_ART_SIZE, PALETTE, SYNC_INTERVAL_MS, TIER_ORDER, loadConfig } from "@/config"
+import {
+	ALBUM_ART_SIZE,
+	PALETTE,
+	REVIEW_INTERVAL_MS,
+	SYNC_INTERVAL_MS,
+	TIER_ORDER,
+	isReviewDue,
+	loadConfig,
+} from "@/config"
 import { describe, expect, it } from "vitest"
 
 const REQUIRED_KEYS = [
@@ -135,6 +143,10 @@ describe("tunables", () => {
 		expect(SYNC_INTERVAL_MS).toBe(60 * 60 * 1000)
 	})
 
+	it("reviews weekly", () => {
+		expect(REVIEW_INTERVAL_MS).toBe(7 * 24 * 60 * 60 * 1000)
+	})
+
 	it("requests 1024px album art", () => {
 		expect(ALBUM_ART_SIZE).toBe(1024)
 	})
@@ -143,5 +155,30 @@ describe("tunables", () => {
 		expect(PALETTE.betterLyricsRed).toBe(0xf20c33)
 		expect(PALETTE.composerAccent).toBe(0x818cf8)
 		expect(PALETTE.composerDark).toBe(0x1a1a1c)
+	})
+})
+
+describe("isReviewDue", () => {
+	const now = 10 * REVIEW_INTERVAL_MS
+
+	it("treats a never-posted guild as due", () => {
+		expect(isReviewDue(null, now)).toBe(true)
+	})
+
+	it("is due exactly one interval after the last post", () => {
+		expect(isReviewDue(now - REVIEW_INTERVAL_MS, now)).toBe(true)
+	})
+
+	it("is not due one millisecond before the interval elapses", () => {
+		expect(isReviewDue(now - REVIEW_INTERVAL_MS + 1, now)).toBe(false)
+	})
+
+	it("is not due right after a post", () => {
+		expect(isReviewDue(now, now)).toBe(false)
+	})
+
+	it("honors a custom interval", () => {
+		expect(isReviewDue(now - 1000, now, 1000)).toBe(true)
+		expect(isReviewDue(now - 999, now, 1000)).toBe(false)
 	})
 })
