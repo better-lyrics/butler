@@ -141,6 +141,64 @@ export type MigrationCommitResult =
 	| { status: "expired" }
 	| { status: "error"; code: number }
 
+export interface BoostQuota {
+	quota: number
+	used: number
+	remaining: number
+	resetsAt: number
+}
+
+export interface LyricVariant {
+	id: number
+	song: string
+	artist: string
+	format: string
+	score: number
+	submitterName: string | null
+}
+
+export type LyricsVariantsResult =
+	| { status: "ok"; variants: LyricVariant[] }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
+export type SealResult =
+	| { status: "sealed"; quota: BoostQuota }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "self" }
+	| { status: "target_council" }
+	| { status: "over_quota" }
+	| { status: "already_sealed" }
+	| { status: "error"; code: number }
+
+export type UnsealResult =
+	| { status: "unsealed" }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "not_owner" }
+	| { status: "error"; code: number }
+
+export type QuotaResult =
+	| { status: "ok"; quota: BoostQuota }
+	| { status: "not_council" }
+	| { status: "unknown_user" }
+	| { status: "error"; code: number }
+
+export type CouncilAddResult =
+	| { status: "added" }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
+export type CouncilRemoveResult =
+	| { status: "removed" }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
+export type CouncilListResult =
+	| { status: "ok"; keyIds: string[] }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -161,6 +219,13 @@ export interface UnisonClient {
 		discordId: string,
 		keepNickname: NicknameChoice
 	): Promise<MigrationCommitResult>
+	getLyricsVariants(videoId: string): Promise<LyricsVariantsResult>
+	boostLyrics(lyricsId: string, keyId: string): Promise<SealResult>
+	unboostLyrics(lyricsId: string, keyId: string): Promise<UnsealResult>
+	getBoostQuota(keyId: string): Promise<QuotaResult>
+	addCouncilMember(keyId: string): Promise<CouncilAddResult>
+	removeCouncilMember(keyId: string): Promise<CouncilRemoveResult>
+	getCouncil(): Promise<CouncilListResult>
 }
 
 interface LeaderboardResponse {
@@ -216,6 +281,34 @@ async function errorCode(res: Response): Promise<string | null> {
 	} catch {
 		return null
 	}
+}
+
+interface VariantRow {
+	id: number
+	song: string
+	artist: string
+	format: string
+	score: number
+	submitter?: { displayName?: string | null } | null
+}
+
+interface VariantsResponse {
+	success: boolean
+	data: VariantRow[]
+}
+
+function parseBoostQuota(value: unknown): BoostQuota | null {
+	if (!value || typeof value !== "object") return null
+	const q = value as Record<string, unknown>
+	if (
+		typeof q.quota === "number" &&
+		typeof q.used === "number" &&
+		typeof q.remaining === "number" &&
+		typeof q.resetsAt === "number"
+	) {
+		return { quota: q.quota, used: q.used, remaining: q.remaining, resetsAt: q.resetsAt }
+	}
+	return null
 }
 
 export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
@@ -370,6 +463,142 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				default:
 					return { status: "error", code: res.status }
 			}
+		},
+
+		async getLyricsVariants(videoId) {
+			const res = await doFetch(`${baseUrl}/lyrics/variants/${encodeURIComponent(videoId)}`)
+			if (res.status === 404) {
+				return { status: "not_found" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as VariantsResponse | null
+			if (!json || !Array.isArray(json.data)) {
+				return { status: "error", code: res.status }
+			}
+			const variants = json.data.map((row) => ({
+				id: row.id,
+				song: row.song,
+				artist: row.artist,
+				format: row.format,
+				score: row.score,
+				submitterName: row.submitter?.displayName ?? null,
+			}))
+			return { status: "ok", variants }
+		},
+
+		async boostLyrics(lyricsId, keyId) {
+			const res = await doFetch(`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/boost/bot`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId }),
+			})
+			if (res.ok) {
+				const { quota } = (await res.json().catch(() => ({}))) as { quota?: unknown }
+				const parsed = parseBoostQuota(quota)
+				return parsed ? { status: "sealed", quota: parsed } : { status: "error", code: res.status }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_COMMITTEE":
+					return { status: "not_council" }
+				case "NOT_FOUND":
+					return { status: "not_found" }
+				case "BOOST_SELF":
+					return { status: "self" }
+				case "BOOST_TARGET_COMMITTEE":
+					return { status: "target_council" }
+				case "BOOST_QUOTA_EXCEEDED":
+					return { status: "over_quota" }
+				case "BOOST_ALREADY_ACTIVE":
+					return { status: "already_sealed" }
+				default:
+					return { status: "error", code: res.status }
+			}
+		},
+
+		async unboostLyrics(lyricsId, keyId) {
+			const res = await doFetch(`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/boost/bot`, {
+				method: "DELETE",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId }),
+			})
+			if (res.ok) {
+				return { status: "unsealed" }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_COMMITTEE":
+					return { status: "not_council" }
+				case "NOT_FOUND":
+					return { status: "not_found" }
+				case "BOOST_NOT_OWNER":
+					return { status: "not_owner" }
+				default:
+					return { status: "error", code: res.status }
+			}
+		},
+
+		async getBoostQuota(keyId) {
+			const res = await doFetch(
+				`${baseUrl}/lyrics/boost/quota/bot?keyId=${encodeURIComponent(keyId)}`,
+				{ headers: authHeaders }
+			)
+			if (res.ok) {
+				const { quota } = (await res.json().catch(() => ({}))) as { quota?: unknown }
+				const parsed = parseBoostQuota(quota)
+				return parsed ? { status: "ok", quota: parsed } : { status: "error", code: res.status }
+			}
+			const code = await errorCode(res)
+			if (code === "NOT_COMMITTEE") {
+				return { status: "not_council" }
+			}
+			if (code === "NOT_FOUND") {
+				return { status: "unknown_user" }
+			}
+			return { status: "error", code: res.status }
+		},
+
+		async addCouncilMember(keyId) {
+			const res = await doFetch(`${baseUrl}/committee/bot`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId }),
+			})
+			if (res.ok) {
+				return { status: "added" }
+			}
+			if ((await errorCode(res)) === "NOT_FOUND") {
+				return { status: "not_found" }
+			}
+			return { status: "error", code: res.status }
+		},
+
+		async removeCouncilMember(keyId) {
+			const res = await doFetch(`${baseUrl}/committee/bot`, {
+				method: "DELETE",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId }),
+			})
+			if (res.ok) {
+				return { status: "removed" }
+			}
+			if ((await errorCode(res)) === "NOT_FOUND") {
+				return { status: "not_found" }
+			}
+			return { status: "error", code: res.status }
+		},
+
+		async getCouncil() {
+			const res = await doFetch(`${baseUrl}/committee/bot`, { headers: authHeaders })
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { keyIds?: unknown } } | null
+			const keyIds = json?.data?.keyIds
+			if (!Array.isArray(keyIds)) {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", keyIds: keyIds.map(String) }
 		},
 	}
 }

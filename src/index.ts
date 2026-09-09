@@ -6,10 +6,17 @@ import {
 	loadConfig,
 } from "@/config"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
-import { type GuildConfig, getGuildConfig, listGuildConfigs } from "@/db/guild-config"
+import {
+	type GuildConfig,
+	getGuildConfig,
+	listGuildConfigs,
+	setCouncilRoleId,
+} from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
+import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
+import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
 import {
 	activateCommand,
@@ -18,6 +25,7 @@ import {
 	handleDeactivate,
 } from "@/discord/commands/power"
 import { handlePreview, previewCommand } from "@/discord/commands/preview"
+import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/discord/commands/seal"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
@@ -52,6 +60,27 @@ const unison = createUnisonClient({
 })
 
 const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
+
+async function resolveKeyId(discordId: string): Promise<string | null> {
+	const links = await unison.getBotLinks()
+	return links.find((l) => l.discordId === discordId)?.keyId ?? null
+}
+
+async function setCouncilRole(discordId: string, on: boolean): Promise<CouncilRoleOutcome> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.councilRoleId) return "not_configured"
+	try {
+		const guild = await discord.guilds.fetch(config.guildId)
+		const member = await guild.members.fetch(discordId).catch(() => null)
+		if (!member) return "failed"
+		if (on) await member.roles.add(gc.councilRoleId)
+		else await member.roles.remove(gc.councilRoleId)
+		return "done"
+	} catch (err) {
+		console.error("council role change failed", err)
+		return "failed"
+	}
+}
 
 const ytmSource = createYoutubeiSource(config.ytmCookie)
 const fetchMeta = (videoId: string) => fetchTrackMeta(ytmSource, videoId, ALBUM_ART_SIZE)
@@ -114,6 +143,20 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			return
 		case "migrate.confirm":
 			await handleMigrateConfirm(interaction)
+			return
+		case "seal.pick":
+			await handleSealPick(interaction, route.args[0] ?? "", {
+				resolveKeyId,
+				boostLyrics: (lyricsId, keyId) => unison.boostLyrics(lyricsId, keyId),
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "seal.unpick":
+			await handleSealUnpick(interaction, route.args[0] ?? "", {
+				resolveKeyId,
+				unboostLyrics: (lyricsId, keyId) => unison.unboostLyrics(lyricsId, keyId),
+				linkPageUrl: config.linkPageUrl,
+			})
 			return
 	}
 }
@@ -313,6 +356,9 @@ discord.once(Events.ClientReady, async (client) => {
 			activateCommand.toJSON(),
 			deactivateCommand.toJSON(),
 			migrateCommand.toJSON(),
+			sealCommand.toJSON(),
+			councilCommand.toJSON(),
+			helpCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
 		await client.application.commands.set([])
@@ -397,8 +443,52 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		}).catch((err) => console.error("migrate handler failed", err))
 		return
 	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "seal") {
+		handleSeal(interaction, {
+			resolveKeyId,
+			getBoostQuota: (keyId) => unison.getBoostQuota(keyId),
+			getVariants: (videoId) => unison.getLyricsVariants(videoId),
+			linkPageUrl: config.linkPageUrl,
+		}).catch((err) => console.error("seal handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "help") {
+		handleHelp(interaction).catch((err) => console.error("help handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "council") {
+		handleCouncil(interaction, {
+			resolveKeyId,
+			listLinks: () => unison.getBotLinks(),
+			addCouncilMember: (keyId) => unison.addCouncilMember(keyId),
+			removeCouncilMember: (keyId) => unison.removeCouncilMember(keyId),
+			getCouncil: () => unison.getCouncil(),
+			grantCouncilRole: (id) => setCouncilRole(id, true),
+			revokeCouncilRole: (id) => setCouncilRole(id, false),
+			setCouncilRoleId: (roleId) => setCouncilRoleId(pool, config.guildId, roleId),
+		}).catch((err) => console.error("council handler failed", err))
+		return
+	}
 	if (interaction.isButton()) {
 		handleButton(interaction).catch((err) => console.error("button handler failed", err))
+		return
+	}
+	if (interaction.isStringSelectMenu()) {
+		const route = routeInteraction(interaction.customId)
+		const lyricsId = interaction.values[0] ?? ""
+		if (route?.handler === "seal.pick") {
+			handleSealPick(interaction, lyricsId, {
+				resolveKeyId,
+				boostLyrics: (id, keyId) => unison.boostLyrics(id, keyId),
+				linkPageUrl: config.linkPageUrl,
+			}).catch((err) => console.error("seal pick handler failed", err))
+		} else if (route?.handler === "seal.unpick") {
+			handleSealUnpick(interaction, lyricsId, {
+				resolveKeyId,
+				unboostLyrics: (id, keyId) => unison.unboostLyrics(id, keyId),
+				linkPageUrl: config.linkPageUrl,
+			}).catch((err) => console.error("seal unpick handler failed", err))
+		}
 		return
 	}
 	if (interaction.isModalSubmit()) {

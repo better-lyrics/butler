@@ -5,6 +5,7 @@ import {
 	type GuildConfig,
 	getGuildConfig,
 	listGuildConfigs,
+	setCouncilRoleId,
 	setGuildEnabled,
 	upsertGuildConfig,
 } from "./guild-config"
@@ -27,6 +28,7 @@ function fullConfig(): GuildConfig {
 		modChannelId: "c4",
 		roleIds: { gold: "r1", silver: "r2" },
 		tierOverrides: { gold: 90 },
+		councilRoleId: "council-role-1",
 		enabled: false,
 	}
 }
@@ -54,6 +56,7 @@ describe("guild-config", () => {
 				modChannelId: null,
 				roleIds: {},
 				tierOverrides: null,
+				councilRoleId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, config)
@@ -69,6 +72,35 @@ describe("guild-config", () => {
 			}
 			await upsertGuildConfig(pool, updated)
 			expect(await getGuildConfig(pool, "g1")).toEqual(updated)
+		})
+
+		it("keeps the council role sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), councilRoleId: null })
+			expect((await getGuildConfig(pool, "g1"))?.councilRoleId).toBe("council-role-1")
+		})
+
+		it("keeps the mod channel sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), modChannelId: null })
+			expect((await getGuildConfig(pool, "g1"))?.modChannelId).toBe("c4")
+		})
+	})
+
+	describe("setCouncilRoleId", () => {
+		it("sets the council role without disturbing the rest of the config", async () => {
+			await upsertGuildConfig(pool, { ...fullConfig(), councilRoleId: null })
+			await setCouncilRoleId(pool, "g1", "council-role-9")
+			expect(await getGuildConfig(pool, "g1")).toEqual({
+				...fullConfig(),
+				councilRoleId: "council-role-9",
+			})
+		})
+
+		it("clears the council role, which the sticky upsert cannot do", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await setCouncilRoleId(pool, "g1", null)
+			expect((await getGuildConfig(pool, "g1"))?.councilRoleId).toBeNull()
 		})
 	})
 
@@ -87,6 +119,7 @@ describe("guild-config", () => {
 				modChannelId: null,
 				roleIds: {},
 				tierOverrides: null,
+				councilRoleId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, second)
@@ -126,6 +159,7 @@ describe("guild-config", () => {
 			expect(config?.roleIds).toEqual({})
 			expect(config?.tierOverrides).toBeNull()
 			expect(config?.connectChannelId).toBeNull()
+			expect(config?.councilRoleId).toBeNull()
 			expect(config?.enabled).toBe(false)
 		})
 	})

@@ -1,3 +1,5 @@
+import { TimestampStyles, time } from "discord.js"
+
 const TIER_LABELS: Record<string, string> = {
 	legendary: "#1 Legendary Lyricist",
 	grandmaster: "#2 Grandmaster Lyricist",
@@ -276,3 +278,111 @@ export const migrateGenericError =
 export const migrateConfirmModalTitle = "Confirm migration"
 
 export const migrateConfirmInputLabel = "Type the new key id to confirm"
+
+export const sealPickHeading = "**Seal a lyric**"
+
+export const sealPickBody =
+	"Pick which version to seal. A seal marks the lyric as council-approved and gives its ranking a boost."
+
+export const sealPickPlaceholder = "Choose a version to seal"
+
+export const unsealPickHeading = "**Lift a seal**"
+
+export const unsealPickBody = "Pick which version to unseal. You can only lift a seal you placed."
+
+export const unsealPickPlaceholder = "Choose a version to unseal"
+
+export const sealConfirmButtonLabel = "Seal this version"
+
+export const unsealConfirmButtonLabel = "Lift this seal"
+
+export function sealVariantLabel(song: string): string {
+	return song
+}
+
+export function sealVariantDescription(params: {
+	artist: string
+	format: string
+	score: number
+	submitterName: string | null
+}): string {
+	const parts = [params.artist, params.format]
+	if (params.submitterName) parts.push(params.submitterName)
+	parts.push(`score ${params.score}`)
+	return parts.join(" · ")
+}
+
+export function sealQuotaSummary(quota: {
+	quota: number
+	used: number
+	remaining: number
+}): string {
+	return `${quota.used} of ${quota.quota} seals used this month. ${quota.remaining} left.`
+}
+
+export function sealResetsLine(resetsAt: number): string {
+	return `Resets ${time(resetsAt, TimestampStyles.RelativeTime)}.`
+}
+
+export const sealSuccessHeading = "**Sealed**"
+
+export const sealSuccessBody = "This lyric now carries a council seal and a ranking boost."
+
+export const unsealSuccessHeading = "**Seal lifted**"
+
+export const unsealSuccessBody = "The council seal and its boost are off this lyric."
+
+export const sealQuotaHeading = "**Your council seals**"
+
+export const sealNotCouncil = "Sealing is for Better Lyrics Council members only."
+
+export const sealUnknownUser =
+	"I could not find your Better Lyrics account. If it was removed, link again and retry."
+
+export const sealOverQuota =
+	"You are out of seals for this month. They reset at the start of next month."
+
+export const sealNotFound = "Could not find that lyric. It may have been removed."
+
+export const sealSelf = "You cannot seal a lyric you submitted yourself."
+
+export const sealTargetCouncil =
+	"That lyric was submitted by a council member, so it cannot be sealed."
+
+export const sealAlreadyActive = "That lyric already has an active seal."
+
+export const sealNotOwner = "You can only lift a seal you placed."
+
+export const sealNoVariants = "No lyrics found for that video yet."
+
+export const sealBadVideo =
+	"That does not look like a YouTube Music link or video id. Paste the song's link or its 11-character id."
+
+export const sealError = "Something went wrong. Give it another try in a moment."
+
+export const helpHeading = "**What butler can do**"
+
+export const helpEveryoneLabel = "**For everyone**"
+
+export const helpReportLine =
+	"Spot wrong lyrics? Drop the YouTube Music link in the report channel and butler cards it up for a curator to pick up."
+
+export const helpMigrateLine = "`/migrate` moves your history from an old key onto a new one."
+
+export const helpCouncilLabel = "**For the council**"
+
+export const helpSealLine =
+	"`/seal add` seals a lyric variant as council-approved, `/seal remove` lifts a seal you placed, and `/seal quota` shows how many seals you have left this month."
+
+export const helpAdminLabel = "**For server admins**"
+
+export const helpSetupLine = "`/setup` sets butler's channels and tier roles for this server."
+
+export const helpCouncilLine =
+	"`/council add` and `/council remove` manage council members, `/council list` shows them, and `/council role` picks the role they get."
+
+export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
+
+export const helpPowerLine = "`/activate` and `/deactivate` turn butler on and off here."
+
+export const helpPreviewLine = "`/preview` shows a card without waiting for a real trigger."

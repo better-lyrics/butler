@@ -39,6 +39,20 @@ describe("routeInteraction", () => {
 				args: ["sess-1", "new"],
 			})
 		})
+
+		it('routes a "seal.pick" select id with no args', () => {
+			expect(routeInteraction(encodeCustomId("seal.pick", []))).toEqual({
+				handler: "seal.pick",
+				args: [],
+			})
+		})
+
+		it('routes a "seal.unpick" select id with no args', () => {
+			expect(routeInteraction(encodeCustomId("seal.unpick", []))).toEqual({
+				handler: "seal.unpick",
+				args: [],
+			})
+		})
 	})
 
 	describe("unknown and unparseable ids", () => {

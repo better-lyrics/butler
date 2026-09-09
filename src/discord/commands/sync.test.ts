@@ -58,6 +58,7 @@ function seededConfig(guildId: string): GuildConfig {
 		modChannelId: null,
 		roleIds: { legendary: "1", grandmaster: "2", master: "3", elite: "4", lyricist: "5" },
 		tierOverrides: null,
+		councilRoleId: null,
 		enabled: false,
 	}
 }
