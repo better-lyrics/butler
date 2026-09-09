@@ -150,6 +150,14 @@ describe("guild-config", () => {
 			await setTierRole(pool, "g1", "master", "new")
 			expect((await getGuildConfig(pool, "g1"))?.roleIds).toEqual({ master: "new", elite: "e1" })
 		})
+
+		it("regression: concurrent writes for different tiers do not clobber each other", async () => {
+			await Promise.all([
+				setTierRole(pool, "g1", "gold", "r1"),
+				setTierRole(pool, "g1", "silver", "r2"),
+			])
+			expect((await getGuildConfig(pool, "g1"))?.roleIds).toEqual({ gold: "r1", silver: "r2" })
+		})
 	})
 
 	describe("listGuildConfigs", () => {

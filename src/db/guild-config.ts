@@ -132,7 +132,24 @@ export async function setGuildField(
 	await pool.query(TEXT_FIELD_UPSERT[field], [guildId, value])
 }
 
+const tierRoleWrites = new Map<string, Promise<unknown>>()
+
 export async function setTierRole(
+	pool: Pool,
+	guildId: string,
+	tier: string,
+	roleId: string
+): Promise<void> {
+	const prior = tierRoleWrites.get(guildId) ?? Promise.resolve()
+	const next = prior.then(() => writeTierRole(pool, guildId, tier, roleId))
+	tierRoleWrites.set(
+		guildId,
+		next.catch(() => {})
+	)
+	return next
+}
+
+async function writeTierRole(
 	pool: Pool,
 	guildId: string,
 	tier: string,

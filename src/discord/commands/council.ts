@@ -20,7 +20,7 @@ export function councilAdded(mention: string): string {
 }
 
 export function councilAddedNoRole(mention: string): string {
-	return `${mention} is on the council now. No council role is set for this server, so set one with /council role or /setup if you want it assigned automatically.`
+	return `${mention} is on the council now. No council role is set for this server, so set one with /config council-role or /setup if you want it assigned automatically.`
 }
 
 export function councilAddedRoleFailed(mention: string): string {
