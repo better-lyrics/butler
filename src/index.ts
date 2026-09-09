@@ -1,16 +1,18 @@
 import {
 	ALBUM_ART_SIZE,
 	MIGRATE_COOLDOWN_MS,
-	REVIEW_INTERVAL_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
+	isReviewDue,
 	loadConfig,
 } from "@/config"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
 import {
 	type GuildConfig,
 	getGuildConfig,
+	getReviewLastPostedAt,
 	listGuildConfigs,
+	markReviewPosted,
 	setGuildField,
 	setTierRole,
 } from "@/db/guild-config"
@@ -401,9 +403,10 @@ async function runAll(): Promise<void> {
 	}
 }
 
-async function postReviewDigest(): Promise<void> {
+async function postReviewDigest(now = Date.now()): Promise<void> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	if (!gc?.reviewChannelId || !gc.enabled) return
+	if (!isReviewDue(await getReviewLastPostedAt(pool, config.guildId), now)) return
 	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
 	if (!channel?.isTextBased() || !channel.isSendable()) return
 	const result = await unison.getLyricsQueue("top-rated", QUEUE_LIMIT)
@@ -413,6 +416,7 @@ async function postReviewDigest(): Promise<void> {
 			.send(buildQueueCard(entry))
 			.catch((err) => console.error("review digest post failed", err))
 	}
+	await markReviewPosted(pool, config.guildId, now)
 }
 
 discord.once(Events.ClientReady, async (client) => {
@@ -439,12 +443,13 @@ discord.once(Events.ClientReady, async (client) => {
 		console.error("failed to register slash commands", err)
 	}
 	await runAll()
+	await postReviewDigest().catch((err) => console.error("startup review digest failed", err))
 	syncHandle = setInterval(() => {
 		runAll().catch((err) => console.error("scheduled sync failed", err))
 	}, SYNC_INTERVAL_MS)
 	reviewHandle = setInterval(() => {
 		postReviewDigest().catch((err) => console.error("scheduled review digest failed", err))
-	}, REVIEW_INTERVAL_MS)
+	}, SYNC_INTERVAL_MS)
 })
 
 discord.on(Events.MessageCreate, (message) => {

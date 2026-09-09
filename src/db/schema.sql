@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS guild_config (
   tier_overrides      JSONB,
   council_role_id     TEXT,
   review_channel_id   TEXT,
+  review_last_posted_at BIGINT,
   enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );
 -- Migration for guild_config tables created before the on/off switch existed.
@@ -23,6 +24,8 @@ ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAU
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS council_role_id TEXT;
 -- Migration for guild_config tables created before the review channel existed.
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_channel_id TEXT;
+-- Migration for guild_config tables created before the review digest schedule existed.
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_last_posted_at BIGINT;
 CREATE TABLE IF NOT EXISTS badge_holdings (
   discord_id TEXT NOT NULL,
   guild_id   TEXT NOT NULL,

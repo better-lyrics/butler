@@ -139,6 +139,23 @@ export async function setGuildField(
 	await pool.query(TEXT_FIELD_UPSERT[field], [guildId, value])
 }
 
+export async function getReviewLastPostedAt(pool: Pool, guildId: string): Promise<number | null> {
+	const result = await pool.query<{ review_last_posted_at: string | number | null }>(
+		"SELECT review_last_posted_at FROM guild_config WHERE guild_id = $1",
+		[guildId]
+	)
+	const value = result.rows[0]?.review_last_posted_at
+	return value === null || value === undefined ? null : Number(value)
+}
+
+export async function markReviewPosted(pool: Pool, guildId: string, at: number): Promise<void> {
+	await pool.query(
+		`INSERT INTO guild_config (guild_id, review_last_posted_at) VALUES ($1, $2)
+		 ON CONFLICT (guild_id) DO UPDATE SET review_last_posted_at = EXCLUDED.review_last_posted_at`,
+		[guildId, at]
+	)
+}
+
 const tierRoleWrites = new Map<string, Promise<unknown>>()
 
 export async function setTierRole(

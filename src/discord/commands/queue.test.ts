@@ -15,8 +15,11 @@ import {
 	sealAlreadyActive,
 	sealError,
 	sealNotCouncil,
+	sealNotFound,
 	sealNotOwner,
 	sealOverQuota,
+	sealSelf,
+	sealTargetCouncil,
 } from "@/copy/strings"
 import type {
 	QueueEntry,
@@ -258,22 +261,24 @@ describe("handleQueueSealConfirm", () => {
 		expect(undo?.custom_id).toBe("queue.seal.undo:4210")
 	})
 
-	it("surfaces an over-quota result", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealConfirm(int, "4210", sealDeps({ status: "over_quota" }).deps)
-		expect(payloadText(updates[0])).toBe(sealOverQuota)
-	})
+	describe("error paths", () => {
+		const cases: Array<[SealResult, string]> = [
+			[{ status: "not_council" }, sealNotCouncil],
+			[{ status: "not_found" }, sealNotFound],
+			[{ status: "self" }, sealSelf],
+			[{ status: "target_council" }, sealTargetCouncil],
+			[{ status: "over_quota" }, sealOverQuota],
+			[{ status: "already_sealed" }, sealAlreadyActive],
+			[{ status: "error", code: 500 }, sealError],
+		]
 
-	it("surfaces an already-sealed result", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealConfirm(int, "4210", sealDeps({ status: "already_sealed" }).deps)
-		expect(payloadText(updates[0])).toBe(sealAlreadyActive)
-	})
-
-	it("surfaces a not-council result", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealConfirm(int, "4210", sealDeps({ status: "not_council" }).deps)
-		expect(payloadText(updates[0])).toBe(sealNotCouncil)
+		for (const [result, copy] of cases) {
+			it(`maps ${result.status} to its message`, async () => {
+				const { int, updates } = updateInteraction()
+				await handleQueueSealConfirm(int, "4210", sealDeps(result).deps)
+				expect(payloadText(updates[0])).toBe(copy)
+			})
+		}
 	})
 
 	it("shows the connect card and never seals when unlinked", async () => {
@@ -308,16 +313,21 @@ describe("handleQueueSealUndo", () => {
 		expect(payloadText(updates[0])).toBe(queueSealUndone)
 	})
 
-	it("reports when the caller does not own the seal", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealUndo(int, "4210", undoDeps({ status: "not_owner" }))
-		expect(payloadText(updates[0])).toBe(sealNotOwner)
-	})
+	describe("error paths", () => {
+		const cases: Array<[UnsealResult, string]> = [
+			[{ status: "not_owner" }, sealNotOwner],
+			[{ status: "not_found" }, sealNotFound],
+			[{ status: "not_council" }, sealNotCouncil],
+			[{ status: "error", code: 500 }, sealError],
+		]
 
-	it("shows a generic error on failure", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealUndo(int, "4210", undoDeps({ status: "error", code: 500 }))
-		expect(payloadText(updates[0])).toBe(sealError)
+		for (const [result, copy] of cases) {
+			it(`maps ${result.status} to its message`, async () => {
+				const { int, updates } = updateInteraction()
+				await handleQueueSealUndo(int, "4210", undoDeps(result))
+				expect(payloadText(updates[0])).toBe(copy)
+			})
+		}
 	})
 })
 
@@ -378,16 +388,21 @@ describe("handleQueueRejectSubmit", () => {
 		expect(calls).toEqual([["4210", KEY_ID, undefined]])
 	})
 
-	it("reports an already-rejected lyric", async () => {
-		const { int, replies } = modalSubmit("dupe")
-		await handleQueueRejectSubmit(int, "4210", rejectDeps({ status: "already_rejected" }).deps)
-		expect(payloadText(replies[0])).toBe(queueAlreadyRejected)
-	})
+	describe("error paths", () => {
+		const cases: Array<[RejectResult, string]> = [
+			[{ status: "not_council" }, queueNotCouncil],
+			[{ status: "not_found" }, sealNotFound],
+			[{ status: "already_rejected" }, queueAlreadyRejected],
+			[{ status: "error", code: 500 }, queueError],
+		]
 
-	it("refuses a non-council member", async () => {
-		const { int, replies } = modalSubmit("nope")
-		await handleQueueRejectSubmit(int, "4210", rejectDeps({ status: "not_council" }).deps)
-		expect(payloadText(replies[0])).toBe(queueNotCouncil)
+		for (const [result, copy] of cases) {
+			it(`maps ${result.status} to its message`, async () => {
+				const { int, replies } = modalSubmit("note")
+				await handleQueueRejectSubmit(int, "4210", rejectDeps(result).deps)
+				expect(payloadText(replies[0])).toBe(copy)
+			})
+		}
 	})
 
 	it("shows the connect card and never rejects when unlinked", async () => {
@@ -414,17 +429,51 @@ describe("handleQueueRejectUndo", () => {
 		expect(payloadText(updates[0])).toBe(queueRejectUndone)
 	})
 
-	it("shows a generic error on failure", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueRejectUndo(int, "4210", undoDeps({ status: "error", code: 500 }))
-		expect(payloadText(updates[0])).toBe(queueError)
+	describe("error paths", () => {
+		const cases: Array<[UnrejectResult, string]> = [
+			[{ status: "not_council" }, queueNotCouncil],
+			[{ status: "not_found" }, sealNotFound],
+			[{ status: "error", code: 500 }, queueError],
+		]
+
+		for (const [result, copy] of cases) {
+			it(`maps ${result.status} to its message`, async () => {
+				const { int, updates } = updateInteraction()
+				await handleQueueRejectUndo(int, "4210", undoDeps(result))
+				expect(payloadText(updates[0])).toBe(copy)
+			})
+		}
 	})
 })
 
 describe("invariants", () => {
-	it("never leaks the keyId into a seal reply", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealConfirm(int, "4210", sealDeps({ status: "not_council" }).deps)
-		expect(JSON.stringify(updates)).not.toContain(KEY_ID)
+	it("never leaks the keyId into any reply or update payload", async () => {
+		const seal = updateInteraction()
+		await handleQueueSealConfirm(
+			seal.int,
+			"4210",
+			sealDeps({ status: "sealed", quota: { quota: 10, used: 2, remaining: 8, resetsAt: 1 } }).deps
+		)
+		expect(JSON.stringify(seal.updates)).not.toContain(KEY_ID)
+
+		const sealUndo = updateInteraction()
+		await handleQueueSealUndo(sealUndo.int, "4210", {
+			resolveKeyId: async () => KEY_ID,
+			unboostLyrics: async () => ({ status: "unsealed" }),
+			linkPageUrl: "https://unison.test/link",
+		})
+		expect(JSON.stringify(sealUndo.updates)).not.toContain(KEY_ID)
+
+		const reject = modalSubmit("note")
+		await handleQueueRejectSubmit(reject.int, "4210", rejectDeps({ status: "rejected" }).deps)
+		expect(JSON.stringify(reject.replies)).not.toContain(KEY_ID)
+
+		const rejectUndo = updateInteraction()
+		await handleQueueRejectUndo(rejectUndo.int, "4210", {
+			resolveKeyId: async () => KEY_ID,
+			unrejectLyric: async () => ({ status: "unrejected" }),
+			linkPageUrl: "https://unison.test/link",
+		})
+		expect(JSON.stringify(rejectUndo.updates)).not.toContain(KEY_ID)
 	})
 })
