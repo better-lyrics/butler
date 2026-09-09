@@ -109,8 +109,7 @@ export async function setGuildEnabled(
 	await pool.query("UPDATE guild_config SET enabled = $2 WHERE guild_id = $1", [guildId, enabled])
 }
 
-// Targeted setter so /council role can set or clear the council role on its own. The upsert
-// only ever fills a null council_role_id (COALESCE), so clearing has to live here.
+// Upsert's COALESCE only fills a null council_role_id, so clearing needs its own setter.
 export async function setCouncilRoleId(
 	pool: Pool,
 	guildId: string,
