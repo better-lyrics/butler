@@ -59,6 +59,13 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 	}
 }
 
+// One gateway connection per bot token: preview envs inherit the production token, so only
+// production (or local dev, where the name is unset) may connect.
+export function shouldConnectToDiscord(env: Record<string, string | undefined>): boolean {
+	const railwayEnv = env.RAILWAY_ENVIRONMENT_NAME
+	return !railwayEnv || railwayEnv === "production"
+}
+
 export const TIER_ORDER: string[] = ["lyricist", "elite", "master", "grandmaster", "legendary"]
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000

@@ -5,6 +5,7 @@ import {
 	TIER_ORDER,
 	isReviewDue,
 	loadConfig,
+	shouldConnectToDiscord,
 } from "@/config"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
 import {
@@ -617,4 +618,11 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	})
 }
 
-await discord.login(config.discordBotToken)
+if (shouldConnectToDiscord(process.env)) {
+	await discord.login(config.discordBotToken)
+} else {
+	console.log(
+		`Butler stays offline in ${process.env.RAILWAY_ENVIRONMENT_NAME}; only production connects to Discord.`
+	)
+	await new Promise<never>(() => {})
+}

@@ -6,6 +6,7 @@ import {
 	TIER_ORDER,
 	isReviewDue,
 	loadConfig,
+	shouldConnectToDiscord,
 } from "@/config"
 import { describe, expect, it } from "vitest"
 
@@ -155,6 +156,32 @@ describe("tunables", () => {
 		expect(PALETTE.betterLyricsRed).toBe(0xf20c33)
 		expect(PALETTE.composerAccent).toBe(0x818cf8)
 		expect(PALETTE.composerDark).toBe(0x1a1a1c)
+	})
+})
+
+describe("shouldConnectToDiscord", () => {
+	it("connects when no Railway environment is present (local dev)", () => {
+		expect(shouldConnectToDiscord({})).toBe(true)
+	})
+
+	it("connects in the production Railway environment", () => {
+		expect(shouldConnectToDiscord({ RAILWAY_ENVIRONMENT_NAME: "production" })).toBe(true)
+	})
+
+	it("stays offline in a preview environment so it cannot shadow production", () => {
+		expect(shouldConnectToDiscord({ RAILWAY_ENVIRONMENT_NAME: "unison-pr-68" })).toBe(false)
+	})
+
+	it("stays offline in any named non-production Railway environment", () => {
+		expect(shouldConnectToDiscord({ RAILWAY_ENVIRONMENT_NAME: "staging" })).toBe(false)
+	})
+
+	it("treats an empty environment name as local and connects", () => {
+		expect(shouldConnectToDiscord({ RAILWAY_ENVIRONMENT_NAME: "" })).toBe(true)
+	})
+
+	it("matches production case-sensitively, matching Railway's exact value", () => {
+		expect(shouldConnectToDiscord({ RAILWAY_ENVIRONMENT_NAME: "Production" })).toBe(false)
 	})
 })
 
