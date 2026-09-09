@@ -1,3 +1,4 @@
+import { TIER_ORDER } from "@/config"
 import { TimestampStyles, time } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -379,10 +380,72 @@ export const helpAdminLabel = "**For server admins**"
 export const helpSetupLine = "`/setup` sets butler's channels and tier roles for this server."
 
 export const helpCouncilLine =
-	"`/council add` and `/council remove` manage council members, `/council list` shows them, and `/council role` picks the role they get."
+	"`/council add` and `/council remove` manage council members, and `/council list` shows them."
+
+export const helpConfigLine =
+	"`/config` changes one setting at a time (a channel, a tier role, or the council role), `/config clear` unsets the mod channel or council role, and `/config view` shows the current setup."
 
 export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
 
 export const helpPowerLine = "`/activate` and `/deactivate` turn butler on and off here."
 
 export const helpPreviewLine = "`/preview` shows a card without waiting for a real trigger."
+
+export const configGuildOnly = "This command can only be used in a server."
+
+export const configNoPermission = "You need the Manage Server permission to run this."
+
+export const configError = "Something went wrong. Give it another try in a moment."
+
+export const configConnectSet = "Connect channel set. Posted the connect card there."
+
+export const configConnectFailed =
+	"Connect channel saved, but I could not post the connect card. Check that I can send messages there."
+
+export const configReportSet = "Report channel set."
+
+export const configAnnounceSet = "Announce channel set."
+
+export const configModChannelSet = "Mod channel set."
+
+export const configModChannelCleared = "Mod channel cleared. I will not post moderator logs."
+
+export const configCouncilRoleCleared =
+	"Council role cleared. I will not assign a role when adding members."
+
+export function configCouncilRoleSet(mention: string): string {
+	return `Council role set to ${mention}. I will assign it when you add a member.`
+}
+
+export function configTierRoleSet(tier: string, mention: string): string {
+	return `${TIER_LABELS[tier] ?? tier} role set to ${mention}.`
+}
+
+export function configView(
+	config: {
+		connectChannelId: string | null
+		reportChannelId: string | null
+		announceChannelId: string | null
+		modChannelId: string | null
+		councilRoleId: string | null
+		roleIds: Record<string, string>
+	} | null
+): string {
+	if (!config) {
+		return "Nothing is configured yet. Run `/setup` for the full flow, or set fields one at a time with `/config`."
+	}
+	const channel = (id: string | null) => (id ? `<#${id}>` : "not set")
+	const role = (id: string | null) => (id ? `<@&${id}>` : "not set")
+	const tierRoles = TIER_ORDER.map((tier) => `${tier}: ${role(config.roleIds[tier] ?? null)}`).join(
+		", "
+	)
+	return [
+		"**butler configuration**",
+		`Connect channel: ${channel(config.connectChannelId)}`,
+		`Report channel: ${channel(config.reportChannelId)}`,
+		`Announce channel: ${channel(config.announceChannelId)}`,
+		`Mod channel: ${channel(config.modChannelId)}`,
+		`Council role: ${role(config.councilRoleId)}`,
+		`Tier roles: ${tierRoles}`,
+	].join("\n")
+}

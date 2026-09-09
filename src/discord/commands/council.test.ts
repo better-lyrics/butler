@@ -6,7 +6,6 @@ import {
 	COUNCIL_GUILD_ONLY,
 	COUNCIL_LIST_EMPTY,
 	COUNCIL_NO_PERMISSION,
-	COUNCIL_ROLE_CLEARED,
 	type CouncilCommandDeps,
 	type CouncilRoleOutcome,
 	councilAdded,
@@ -17,7 +16,6 @@ import {
 	councilNotLinked,
 	councilRemoved,
 	councilRemovedRoleFailed,
-	councilRoleSet,
 	handleCouncil,
 } from "./council"
 
@@ -29,7 +27,6 @@ function interaction(opts: {
 	guildId?: string | null
 	manage?: boolean
 	targetId?: string | null
-	roleId?: string | null
 }) {
 	const replies: Array<{ content?: string; flags?: number }> = []
 	const int = {
@@ -39,7 +36,6 @@ function interaction(opts: {
 			getSubcommand: () => opts.sub,
 			getUser: (_name: string, _required?: boolean) =>
 				opts.targetId === null ? null : { id: opts.targetId ?? TARGET },
-			getRole: (_name: string, _required?: boolean) => (opts.roleId ? { id: opts.roleId } : null),
 		},
 		reply: async (p: { content?: string; flags?: number }) => {
 			replies.push(p)
@@ -55,7 +51,6 @@ function deps(overrides: Partial<CouncilCommandDeps> = {}): {
 		remove: string[]
 		grant: string[]
 		revoke: string[]
-		setRole: Array<string | null>
 	}
 } {
 	const calls = {
@@ -63,7 +58,6 @@ function deps(overrides: Partial<CouncilCommandDeps> = {}): {
 		remove: [] as string[],
 		grant: [] as string[],
 		revoke: [] as string[],
-		setRole: [] as Array<string | null>,
 	}
 	const base: CouncilCommandDeps = {
 		resolveKeyId: async () => KEY_ID,
@@ -84,9 +78,6 @@ function deps(overrides: Partial<CouncilCommandDeps> = {}): {
 		revokeCouncilRole: async (discordId) => {
 			calls.revoke.push(discordId)
 			return "done"
-		},
-		setCouncilRoleId: async (roleId) => {
-			calls.setRole.push(roleId)
 		},
 		...overrides,
 	}
@@ -116,41 +107,11 @@ describe("handleCouncil gates", () => {
 					return true
 				},
 			},
-			options: { getSubcommand: () => "list", getUser: () => null, getRole: () => null },
+			options: { getSubcommand: () => "list", getUser: () => null },
 			reply: async () => {},
 		}
 		await handleCouncil(int, deps().deps)
 		expect(checked).toBe(PermissionFlagsBits.ManageGuild)
-	})
-})
-
-describe("handleCouncil role", () => {
-	it("sets the council role to the chosen role", async () => {
-		const { interaction: int, replies } = interaction({ sub: "role", roleId: "council-role-9" })
-		const d = deps()
-		await handleCouncil(int, d.deps)
-		expect(d.calls.setRole).toEqual(["council-role-9"])
-		expect(replies[0]?.content).toBe(councilRoleSet("<@&council-role-9>"))
-	})
-
-	it("clears the council role when no role is given", async () => {
-		const { interaction: int, replies } = interaction({ sub: "role" })
-		const d = deps()
-		await handleCouncil(int, d.deps)
-		expect(d.calls.setRole).toEqual([null])
-		expect(replies[0]?.content).toBe(COUNCIL_ROLE_CLEARED)
-	})
-
-	it("still requires Manage Server", async () => {
-		const { interaction: int, replies } = interaction({
-			sub: "role",
-			roleId: "council-role-9",
-			manage: false,
-		})
-		const d = deps()
-		await handleCouncil(int, d.deps)
-		expect(replies[0]?.content).toBe(COUNCIL_NO_PERMISSION)
-		expect(d.calls.setRole).toEqual([])
 	})
 })
 

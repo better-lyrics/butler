@@ -1,6 +1,7 @@
 import { PALETTE } from "@/config"
 import {
 	helpAdminLabel,
+	helpConfigLine,
 	helpCouncilLabel,
 	helpCouncilLine,
 	helpEveryoneLabel,
@@ -35,6 +36,7 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 			.addTextDisplayComponents(
 				text(helpAdminLabel),
 				text(helpSetupLine),
+				text(helpConfigLine),
 				text(helpCouncilLine),
 				text(helpSyncLine),
 				text(helpPowerLine),

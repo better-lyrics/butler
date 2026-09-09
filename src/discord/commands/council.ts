@@ -6,12 +6,6 @@ export const COUNCIL_GUILD_ONLY = "This command can only be used in a server."
 export const COUNCIL_NO_PERMISSION = "You need the Manage Server permission to run this."
 export const COUNCIL_ERROR = "Something went wrong. Give it another try in a moment."
 export const COUNCIL_LIST_EMPTY = "No one is on the Better Lyrics Council yet."
-export const COUNCIL_ROLE_CLEARED =
-	"Council role cleared. I will not assign a role when adding members."
-
-export function councilRoleSet(mention: string): string {
-	return `Council role set to ${mention}. I will assign it when you add a member.`
-}
 
 export function councilNotLinked(mention: string): string {
 	return `${mention} has not linked a Better Lyrics account yet, so they cannot join the council. Ask them to link first, then try again.`
@@ -81,17 +75,6 @@ export const councilCommand = new SlashCommandBuilder()
 			)
 	)
 	.addSubcommand((s) => s.setName("list").setDescription("List the current council members"))
-	.addSubcommand((s) =>
-		s
-			.setName("role")
-			.setDescription("Set the role given to council members (leave empty to clear)")
-			.addRoleOption((o) =>
-				o
-					.setName("role")
-					.setDescription("Role to grant council members; leave empty to clear")
-					.setRequired(false)
-			)
-	)
 
 export type CouncilRoleOutcome = "done" | "not_configured" | "failed"
 
@@ -102,7 +85,6 @@ export interface CouncilCommandInteraction {
 	options: {
 		getSubcommand(): string
 		getUser(name: string, required?: boolean): { id: string } | null
-		getRole(name: string, required?: boolean): { id: string } | null
 	}
 	reply(payload: unknown): Promise<unknown>
 }
@@ -115,7 +97,6 @@ export interface CouncilCommandDeps {
 	getCouncil(): Promise<CouncilListResult>
 	grantCouncilRole(discordId: string): Promise<CouncilRoleOutcome>
 	revokeCouncilRole(discordId: string): Promise<CouncilRoleOutcome>
-	setCouncilRoleId(roleId: string | null): Promise<void>
 }
 
 function addedReply(mention: string, role: CouncilRoleOutcome): string {
@@ -173,14 +154,6 @@ export async function handleCouncil(
 	const sub = interaction.options.getSubcommand()
 	if (sub === "list") {
 		await runList(interaction, deps)
-		return
-	}
-	if (sub === "role") {
-		const role = interaction.options.getRole("role", false)
-		await deps.setCouncilRoleId(role?.id ?? null)
-		await interaction.reply(
-			ephemeralText(role ? councilRoleSet(`<@&${role.id}>`) : COUNCIL_ROLE_CLEARED)
-		)
 		return
 	}
 	if (sub !== "add" && sub !== "remove") {

@@ -1,5 +1,6 @@
 import {
 	helpAdminLabel,
+	helpConfigLine,
 	helpCouncilLabel,
 	helpEveryoneLabel,
 	helpMigrateLine,
@@ -47,6 +48,7 @@ describe("buildHelpCard", () => {
 			const blob = textBlob(buildHelpCard({ isAdmin: true }))
 			expect(blob).toContain(helpAdminLabel)
 			expect(blob).toContain(helpSetupLine)
+			expect(blob).toContain(helpConfigLine)
 		})
 	})
 

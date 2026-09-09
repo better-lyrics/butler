@@ -10,11 +10,13 @@ import {
 	type GuildConfig,
 	getGuildConfig,
 	listGuildConfigs,
-	setCouncilRoleId,
+	setGuildField,
+	setTierRole,
 } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { createDiscordClient } from "@/discord/client"
+import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
 import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
@@ -30,6 +32,7 @@ import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
+import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
@@ -80,6 +83,15 @@ async function setCouncilRole(discordId: string, on: boolean): Promise<CouncilRo
 		console.error("council role change failed", err)
 		return "failed"
 	}
+}
+
+async function postConnectCard(channelId: string): Promise<boolean> {
+	const channel = await discord.channels.fetch(channelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return false
+	return channel
+		.send(buildConnectCard({ linkPageUrl: config.linkPageUrl }))
+		.then(() => true)
+		.catch(() => false)
 }
 
 const ytmSource = createYoutubeiSource(config.ytmCookie)
@@ -358,6 +370,7 @@ discord.once(Events.ClientReady, async (client) => {
 			migrateCommand.toJSON(),
 			sealCommand.toJSON(),
 			councilCommand.toJSON(),
+			configCommand.toJSON(),
 			helpCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
@@ -465,8 +478,16 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 			getCouncil: () => unison.getCouncil(),
 			grantCouncilRole: (id) => setCouncilRole(id, true),
 			revokeCouncilRole: (id) => setCouncilRole(id, false),
-			setCouncilRoleId: (roleId) => setCouncilRoleId(pool, config.guildId, roleId),
 		}).catch((err) => console.error("council handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "config") {
+		handleConfig(interaction, {
+			setField: (field, value) => setGuildField(pool, config.guildId, field, value),
+			setTierRole: (tier, roleId) => setTierRole(pool, config.guildId, tier, roleId),
+			getConfig: () => getGuildConfig(pool, config.guildId),
+			postConnectCard,
+		}).catch((err) => console.error("config handler failed", err))
 		return
 	}
 	if (interaction.isButton()) {

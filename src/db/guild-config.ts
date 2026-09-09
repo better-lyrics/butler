@@ -109,14 +109,40 @@ export async function setGuildEnabled(
 	await pool.query("UPDATE guild_config SET enabled = $2 WHERE guild_id = $1", [guildId, enabled])
 }
 
-// Upsert's COALESCE only fills a null council_role_id, so clearing needs its own setter.
-export async function setCouncilRoleId(
+export type GuildTextField = "connect" | "report" | "announce" | "mod" | "council"
+
+const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
+	connect:
+		"INSERT INTO guild_config (guild_id, connect_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET connect_channel_id = EXCLUDED.connect_channel_id",
+	report:
+		"INSERT INTO guild_config (guild_id, report_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET report_channel_id = EXCLUDED.report_channel_id",
+	announce:
+		"INSERT INTO guild_config (guild_id, announce_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET announce_channel_id = EXCLUDED.announce_channel_id",
+	mod: "INSERT INTO guild_config (guild_id, mod_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET mod_channel_id = EXCLUDED.mod_channel_id",
+	council:
+		"INSERT INTO guild_config (guild_id, council_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET council_role_id = EXCLUDED.council_role_id",
+}
+
+export async function setGuildField(
 	pool: Pool,
 	guildId: string,
-	councilRoleId: string | null
+	field: GuildTextField,
+	value: string | null
 ): Promise<void> {
-	await pool.query("UPDATE guild_config SET council_role_id = $2 WHERE guild_id = $1", [
-		guildId,
-		councilRoleId,
-	])
+	await pool.query(TEXT_FIELD_UPSERT[field], [guildId, value])
+}
+
+export async function setTierRole(
+	pool: Pool,
+	guildId: string,
+	tier: string,
+	roleId: string
+): Promise<void> {
+	const existing = await getGuildConfig(pool, guildId)
+	const roleIds = { ...(existing?.roleIds ?? {}), [tier]: roleId }
+	await pool.query(
+		`INSERT INTO guild_config (guild_id, role_ids) VALUES ($1, $2)
+		 ON CONFLICT (guild_id) DO UPDATE SET role_ids = EXCLUDED.role_ids`,
+		[guildId, JSON.stringify(roleIds)]
+	)
 }
