@@ -1,6 +1,7 @@
 import {
 	ALBUM_ART_SIZE,
 	MIGRATE_COOLDOWN_MS,
+	REVIEW_INTERVAL_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
 	loadConfig,
@@ -27,6 +28,18 @@ import {
 	handleDeactivate,
 } from "@/discord/commands/power"
 import { handlePreview, previewCommand } from "@/discord/commands/preview"
+import {
+	QUEUE_LIMIT,
+	handleQueue,
+	handleQueueReject,
+	handleQueueRejectSubmit,
+	handleQueueRejectUndo,
+	handleQueueSeal,
+	handleQueueSealCancel,
+	handleQueueSealConfirm,
+	handleQueueSealUndo,
+	queueCommand,
+} from "@/discord/commands/queue"
 import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/discord/commands/seal"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
@@ -34,6 +47,7 @@ import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
+import { buildQueueCard } from "@/discord/components/queue-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
 import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
@@ -167,6 +181,36 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleSealUnpick(interaction, route.args[0] ?? "", {
 				resolveKeyId,
 				unboostLyrics: (lyricsId, keyId) => unison.unboostLyrics(lyricsId, keyId),
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "queue.seal":
+			await handleQueueSeal(interaction, route.args[0] ?? "")
+			return
+		case "queue.seal.confirm":
+			await handleQueueSealConfirm(interaction, route.args[0] ?? "", {
+				resolveKeyId,
+				boostLyrics: (lyricsId, keyId) => unison.boostLyrics(lyricsId, keyId),
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "queue.seal.cancel":
+			await handleQueueSealCancel(interaction)
+			return
+		case "queue.seal.undo":
+			await handleQueueSealUndo(interaction, route.args[0] ?? "", {
+				resolveKeyId,
+				unboostLyrics: (lyricsId, keyId) => unison.unboostLyrics(lyricsId, keyId),
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "queue.reject":
+			await handleQueueReject(interaction, route.args[0] ?? "")
+			return
+		case "queue.reject.undo":
+			await handleQueueRejectUndo(interaction, route.args[0] ?? "", {
+				resolveKeyId,
+				unrejectLyric: (lyricsId, keyId) => unison.unrejectLyric(lyricsId, keyId),
 				linkPageUrl: config.linkPageUrl,
 			})
 			return
@@ -347,12 +391,27 @@ async function runSyncForGuild(
 }
 
 let syncHandle: ReturnType<typeof setInterval> | null = null
+let reviewHandle: ReturnType<typeof setInterval> | null = null
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
 		if (gc.guildId !== config.guildId) continue
 		if (!gc.enabled) continue
 		await runSyncForGuild(gc)
+	}
+}
+
+async function postReviewDigest(): Promise<void> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId || !gc.enabled) return
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return
+	const result = await unison.getLyricsQueue("top-rated", QUEUE_LIMIT)
+	if (result.status !== "ok" || result.entries.length === 0) return
+	for (const entry of result.entries) {
+		await channel
+			.send(buildQueueCard(entry))
+			.catch((err) => console.error("review digest post failed", err))
 	}
 }
 
@@ -371,6 +430,7 @@ discord.once(Events.ClientReady, async (client) => {
 			sealCommand.toJSON(),
 			councilCommand.toJSON(),
 			configCommand.toJSON(),
+			queueCommand.toJSON(),
 			helpCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
@@ -382,6 +442,9 @@ discord.once(Events.ClientReady, async (client) => {
 	syncHandle = setInterval(() => {
 		runAll().catch((err) => console.error("scheduled sync failed", err))
 	}, SYNC_INTERVAL_MS)
+	reviewHandle = setInterval(() => {
+		postReviewDigest().catch((err) => console.error("scheduled review digest failed", err))
+	}, REVIEW_INTERVAL_MS)
 })
 
 discord.on(Events.MessageCreate, (message) => {
@@ -481,6 +544,15 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		}).catch((err) => console.error("council handler failed", err))
 		return
 	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "queue") {
+		handleQueue(interaction, {
+			resolveKeyId,
+			getBoostQuota: (keyId) => unison.getBoostQuota(keyId),
+			getQueue: () => unison.getLyricsQueue("top-rated", QUEUE_LIMIT),
+			linkPageUrl: config.linkPageUrl,
+		}).catch((err) => console.error("queue handler failed", err))
+		return
+	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "config") {
 		handleConfig(interaction, {
 			setField: (field, value) => setGuildField(pool, config.guildId, field, value),
@@ -513,12 +585,19 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		return
 	}
 	if (interaction.isModalSubmit()) {
-		if (routeInteraction(interaction.customId)?.handler === "migrate.commit") {
+		const modalRoute = routeInteraction(interaction.customId)
+		if (modalRoute?.handler === "migrate.commit") {
 			handleMigrateCommit(interaction, {
 				getMigrationStatus: (sessionId) => unison.getMigrationStatus(sessionId),
 				commitMigration: (sessionId, discordId, keepNickname) =>
 					unison.commitMigration(sessionId, discordId, keepNickname),
 			}).catch((err) => console.error("migrate commit handler failed", err))
+		} else if (modalRoute?.handler === "queue.reject.submit") {
+			handleQueueRejectSubmit(interaction, modalRoute.args[0] ?? "", {
+				resolveKeyId,
+				rejectLyric: (id, keyId, note) => unison.rejectLyric(id, keyId, note),
+				linkPageUrl: config.linkPageUrl,
+			}).catch((err) => console.error("queue reject submit handler failed", err))
 		}
 	}
 })
@@ -526,6 +605,7 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	process.on(sig, async () => {
 		if (syncHandle) clearInterval(syncHandle)
+		if (reviewHandle) clearInterval(reviewHandle)
 		await discord.destroy()
 		await pool.end()
 		process.exit(0)

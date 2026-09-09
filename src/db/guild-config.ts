@@ -9,6 +9,7 @@ export interface GuildConfig {
 	roleIds: Record<string, string>
 	tierOverrides: unknown | null
 	councilRoleId: string | null
+	reviewChannelId: string | null
 	enabled: boolean
 }
 
@@ -21,6 +22,7 @@ interface GuildConfigRow {
 	role_ids: unknown
 	tier_overrides: unknown
 	council_role_id: string | null
+	review_channel_id: string | null
 	enabled: boolean
 }
 
@@ -48,6 +50,7 @@ function mapConfig(row: GuildConfigRow): GuildConfig {
 		roleIds: parseJson<Record<string, string>>(row.role_ids, {}),
 		tierOverrides: parseJsonOrNull(row.tier_overrides),
 		councilRoleId: row.council_role_id,
+		reviewChannelId: row.review_channel_id,
 		enabled: row.enabled === true,
 	}
 }
@@ -55,7 +58,7 @@ function mapConfig(row: GuildConfigRow): GuildConfig {
 export async function getGuildConfig(pool: Pool, guildId: string): Promise<GuildConfig | null> {
 	const result = await pool.query<GuildConfigRow>(
 		`SELECT guild_id, connect_channel_id, report_channel_id, announce_channel_id,
-		        mod_channel_id, role_ids, tier_overrides, council_role_id, enabled
+		        mod_channel_id, role_ids, tier_overrides, council_role_id, review_channel_id, enabled
 		 FROM guild_config WHERE guild_id = $1`,
 		[guildId]
 	)
@@ -66,7 +69,7 @@ export async function getGuildConfig(pool: Pool, guildId: string): Promise<Guild
 export async function listGuildConfigs(pool: Pool): Promise<GuildConfig[]> {
 	const result = await pool.query<GuildConfigRow>(
 		`SELECT guild_id, connect_channel_id, report_channel_id, announce_channel_id,
-		        mod_channel_id, role_ids, tier_overrides, council_role_id, enabled
+		        mod_channel_id, role_ids, tier_overrides, council_role_id, review_channel_id, enabled
 		 FROM guild_config ORDER BY guild_id ASC`
 	)
 	return result.rows.map(mapConfig)
@@ -76,8 +79,8 @@ export async function upsertGuildConfig(pool: Pool, config: GuildConfig): Promis
 	await pool.query(
 		`INSERT INTO guild_config (guild_id, connect_channel_id, report_channel_id,
 		                           announce_channel_id, mod_channel_id, role_ids, tier_overrides,
-		                           council_role_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		                           council_role_id, review_channel_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (guild_id)
 		 DO UPDATE SET connect_channel_id = EXCLUDED.connect_channel_id,
 		               report_channel_id = EXCLUDED.report_channel_id,
@@ -85,7 +88,8 @@ export async function upsertGuildConfig(pool: Pool, config: GuildConfig): Promis
 		               mod_channel_id = COALESCE(EXCLUDED.mod_channel_id, guild_config.mod_channel_id),
 		               role_ids = EXCLUDED.role_ids,
 		               tier_overrides = EXCLUDED.tier_overrides,
-		               council_role_id = COALESCE(EXCLUDED.council_role_id, guild_config.council_role_id)`,
+		               council_role_id = COALESCE(EXCLUDED.council_role_id, guild_config.council_role_id),
+		               review_channel_id = COALESCE(EXCLUDED.review_channel_id, guild_config.review_channel_id)`,
 		[
 			config.guildId,
 			config.connectChannelId,
@@ -95,6 +99,7 @@ export async function upsertGuildConfig(pool: Pool, config: GuildConfig): Promis
 			JSON.stringify(config.roleIds),
 			config.tierOverrides === null ? null : JSON.stringify(config.tierOverrides),
 			config.councilRoleId,
+			config.reviewChannelId,
 		]
 	)
 }
@@ -109,7 +114,7 @@ export async function setGuildEnabled(
 	await pool.query("UPDATE guild_config SET enabled = $2 WHERE guild_id = $1", [guildId, enabled])
 }
 
-export type GuildTextField = "connect" | "report" | "announce" | "mod" | "council"
+export type GuildTextField = "connect" | "report" | "announce" | "mod" | "council" | "review"
 
 const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 	connect:
@@ -121,6 +126,8 @@ const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 	mod: "INSERT INTO guild_config (guild_id, mod_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET mod_channel_id = EXCLUDED.mod_channel_id",
 	council:
 		"INSERT INTO guild_config (guild_id, council_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET council_role_id = EXCLUDED.council_role_id",
+	review:
+		"INSERT INTO guild_config (guild_id, review_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET review_channel_id = EXCLUDED.review_channel_id",
 }
 
 export async function setGuildField(

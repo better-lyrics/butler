@@ -53,6 +53,27 @@ describe("routeInteraction", () => {
 				args: [],
 			})
 		})
+
+		it('routes a "queue.seal" button id carrying the lyrics id', () => {
+			expect(routeInteraction(encodeCustomId("queue.seal", ["4210"]))).toEqual({
+				handler: "queue.seal",
+				args: ["4210"],
+			})
+		})
+
+		it('routes a "queue.reject.submit" modal id carrying the lyrics id', () => {
+			expect(routeInteraction(encodeCustomId("queue.reject.submit", ["4210"]))).toEqual({
+				handler: "queue.reject.submit",
+				args: ["4210"],
+			})
+		})
+
+		it('routes a "queue.seal.cancel" button id with no args', () => {
+			expect(routeInteraction(encodeCustomId("queue.seal.cancel", []))).toEqual({
+				handler: "queue.seal.cancel",
+				args: [],
+			})
+		})
 	})
 
 	describe("unknown and unparseable ids", () => {

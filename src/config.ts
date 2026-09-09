@@ -63,6 +63,8 @@ export const TIER_ORDER: string[] = ["lyricist", "elite", "master", "grandmaster
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000
 
+export const REVIEW_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
+
 export const MIGRATE_COOLDOWN_MS = 15 * 1000
 
 // keep in sync with unison sessionTtlSeconds (900s); the start-card expiry is derived from this

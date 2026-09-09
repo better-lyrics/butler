@@ -383,7 +383,7 @@ export const helpCouncilLine =
 	"`/council add` and `/council remove` manage council members, and `/council list` shows them."
 
 export const helpConfigLine =
-	"`/config` changes one setting at a time (a channel, a tier role, or the council role), `/config clear` unsets the mod channel or council role, and `/config view` shows the current setup."
+	"`/config` changes one setting at a time (a channel, a tier role, the council role, or the review channel), `/config clear` unsets the mod channel, council role, or review channel, and `/config view` shows the current setup."
 
 export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
 
@@ -410,6 +410,12 @@ export const configModChannelSet = "Mod channel set."
 
 export const configModChannelCleared = "Mod channel cleared. I will not post moderator logs."
 
+export const configReviewChannelSet =
+	"Review channel set. I will post sealing candidates there for the council each week."
+
+export const configReviewChannelCleared =
+	"Review channel cleared. I will not post the weekly review digest."
+
 export const configCouncilRoleCleared =
 	"Council role cleared. I will not assign a role when adding members."
 
@@ -428,6 +434,7 @@ export function configView(
 		announceChannelId: string | null
 		modChannelId: string | null
 		councilRoleId: string | null
+		reviewChannelId: string | null
 		roleIds: Record<string, string>
 	} | null
 ): string {
@@ -445,7 +452,94 @@ export function configView(
 		`Report channel: ${channel(config.reportChannelId)}`,
 		`Announce channel: ${channel(config.announceChannelId)}`,
 		`Mod channel: ${channel(config.modChannelId)}`,
+		`Review channel: ${channel(config.reviewChannelId)}`,
 		`Council role: ${role(config.councilRoleId)}`,
 		`Tier roles: ${tierRoles}`,
 	].join("\n")
+}
+
+export const queueEmpty = "The review queue is clear. Nothing is waiting to be sealed right now."
+
+export const queueError = "Something went wrong loading the queue. Try again in a moment."
+
+export const queueNotCouncil = "The review queue is for Better Lyrics Council members only."
+
+export const queueUnknownUser =
+	"I could not find your Better Lyrics account. If it was removed, link again and retry."
+
+export const queueVerifyButtonLabel = "Open in YT Music"
+
+export const queueSealButtonLabel = "Seal"
+
+export const queueRejectButtonLabel = "Reject"
+
+export const queueConfirmSealButtonLabel = "Confirm seal"
+
+export const queueCancelButtonLabel = "Cancel"
+
+export const queueUndoSealButtonLabel = "Undo seal"
+
+export const queueUndoRejectButtonLabel = "Undo reject"
+
+export const queueConfirmSealBody =
+	"Seal this lyric as council-approved? This marks it approved and boosts its ranking."
+
+export const queueSealCancelled = "Cancelled. Nothing was sealed."
+
+export const queueSealUndone = "Seal removed."
+
+export const queueRejectModalTitle = "Reject lyric"
+
+export const queueRejectNoteLabel = "Reason (optional)"
+
+export const queueRejectUndone = "Rejection lifted. The lyric can surface in the queue again."
+
+export const queueAlreadyRejected = "That lyric is already rejected."
+
+export function queueSealedBy(userId: string): string {
+	return `Sealed by <@${userId}>. It now carries a council seal and a ranking boost.`
+}
+
+export function queueRejectedBy(userId: string): string {
+	return `Rejected by <@${userId}>. It will not surface in the queue again.`
+}
+
+export function queueEntryHeading(song: string): string {
+	return `**${song}**`
+}
+
+export function queueEntryDetails(entry: {
+	artist: string
+	voteCount: number
+	score: number
+	submitterName: string | null
+}): string {
+	const parts = [entry.artist, `${entry.voteCount} votes`, `score ${entry.score}`]
+	if (entry.submitterName) parts.push(`by ${entry.submitterName}`)
+	return parts.join(" · ")
+}
+
+const QUEUE_SIGNAL_LABELS: Record<string, string> = {
+	"line-synced": "line-synced (not word-by-word)",
+	"filler-line": "filler/instrumental lines",
+	"not-sentence-case": "capitalization",
+	"unbracketed-bg": "unbracketed background vocals",
+	"multi-bracket-bg": "multiple bracket pairs",
+	"distant-adlib": "distant ad-lib",
+	"handoff-candidate": "mid-line voice change",
+	"possible-unison-mistag": "possible unison mistag",
+	"stretched-spelling": "stretched spelling",
+	"split-without-stretch": "syllable split without a stretch",
+	"flattened-pauses": "flattened pauses",
+	"linked-repeat-drift": "linked-repeat drift",
+}
+
+export function queueSignalLabel(code: string): string {
+	return QUEUE_SIGNAL_LABELS[code] ?? code
+}
+
+export function queueSignalsLine(format: string, signals: string[]): string | null {
+	if (format !== "ttml") return null
+	if (signals.length === 0) return "TTML: no issues flagged."
+	return `TTML signals: ${signals.map(queueSignalLabel).join(", ")}`
 }

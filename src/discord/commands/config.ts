@@ -11,6 +11,8 @@ import {
 	configModChannelSet,
 	configNoPermission,
 	configReportSet,
+	configReviewChannelCleared,
+	configReviewChannelSet,
 	configTierRoleSet,
 	configView,
 } from "@/copy/strings"
@@ -56,6 +58,14 @@ export const configCommand = new SlashCommandBuilder()
 	)
 	.addSubcommand((s) =>
 		s
+			.setName("review-channel")
+			.setDescription("Set the channel for the weekly council review digest")
+			.addChannelOption((o) =>
+				o.setName("channel").setDescription("Review digest channel").setRequired(true)
+			)
+	)
+	.addSubcommand((s) =>
+		s
 			.setName("council-role")
 			.setDescription("Set the role granted to council members")
 			.addRoleOption((o) => o.setName("role").setDescription("Council role").setRequired(true))
@@ -86,6 +96,7 @@ export const configCommand = new SlashCommandBuilder()
 					.setRequired(true)
 					.addChoices(
 						{ name: "mod channel", value: "mod-channel" },
+						{ name: "review channel", value: "review-channel" },
 						{ name: "council role", value: "council-role" }
 					)
 			)
@@ -139,7 +150,12 @@ export async function handleConfig(
 		return
 	}
 
-	if (sub === "report-channel" || sub === "announce-channel" || sub === "mod-channel") {
+	if (
+		sub === "report-channel" ||
+		sub === "announce-channel" ||
+		sub === "mod-channel" ||
+		sub === "review-channel"
+	) {
 		const channel = interaction.options.getChannel("channel", true)
 		if (!channel) {
 			await interaction.reply(ephemeralText(configError))
@@ -153,6 +169,11 @@ export async function handleConfig(
 		if (sub === "announce-channel") {
 			await deps.setField("announce", channel.id)
 			await interaction.reply(ephemeralText(configAnnounceSet))
+			return
+		}
+		if (sub === "review-channel") {
+			await deps.setField("review", channel.id)
+			await interaction.reply(ephemeralText(configReviewChannelSet))
 			return
 		}
 		await deps.setField("mod", channel.id)
@@ -188,6 +209,11 @@ export async function handleConfig(
 		if (field === "mod-channel") {
 			await deps.setField("mod", null)
 			await interaction.reply(ephemeralText(configModChannelCleared))
+			return
+		}
+		if (field === "review-channel") {
+			await deps.setField("review", null)
+			await interaction.reply(ephemeralText(configReviewChannelCleared))
 			return
 		}
 		if (field === "council-role") {

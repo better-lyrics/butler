@@ -199,6 +199,37 @@ export type CouncilListResult =
 	| { status: "ok"; keyIds: string[] }
 	| { status: "error"; code: number }
 
+export type QueueSort = "top-rated" | "most-voted"
+
+export interface QueueEntry {
+	id: number
+	videoId: string
+	song: string
+	artist: string
+	format: string
+	score: number
+	voteCount: number
+	submitterName: string | null
+	ttmlSignals: string[]
+}
+
+export type QueueResult =
+	| { status: "ok"; entries: QueueEntry[] }
+	| { status: "error"; code: number }
+
+export type RejectResult =
+	| { status: "rejected" }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "already_rejected" }
+	| { status: "error"; code: number }
+
+export type UnrejectResult =
+	| { status: "unrejected" }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -226,6 +257,9 @@ export interface UnisonClient {
 	addCouncilMember(keyId: string): Promise<CouncilAddResult>
 	removeCouncilMember(keyId: string): Promise<CouncilRemoveResult>
 	getCouncil(): Promise<CouncilListResult>
+	getLyricsQueue(sort?: QueueSort, limit?: number): Promise<QueueResult>
+	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
+	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
 }
 
 interface LeaderboardResponse {
@@ -295,6 +329,23 @@ interface VariantRow {
 interface VariantsResponse {
 	success: boolean
 	data: VariantRow[]
+}
+
+interface QueueRow {
+	id: number
+	videoId: string
+	song: string
+	artist: string
+	format: string
+	score: number
+	voteCount: number
+	submitter?: { displayName?: string | null } | null
+	ttmlSignals?: string[]
+}
+
+interface QueueResponse {
+	success: boolean
+	data: QueueRow[]
 }
 
 function parseBoostQuota(value: unknown): BoostQuota | null {
@@ -599,6 +650,75 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "error", code: res.status }
 			}
 			return { status: "ok", keyIds: keyIds.map(String) }
+		},
+
+		async getLyricsQueue(sort, limit) {
+			const params = new URLSearchParams()
+			if (sort) params.set("sort", sort)
+			if (typeof limit === "number") params.set("limit", String(limit))
+			const query = params.toString()
+			const res = await doFetch(`${baseUrl}/lyrics/queue/bot${query ? `?${query}` : ""}`, {
+				headers: authHeaders,
+			})
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as QueueResponse | null
+			if (!json || !Array.isArray(json.data)) {
+				return { status: "error", code: res.status }
+			}
+			const entries = json.data.map((row) => ({
+				id: row.id,
+				videoId: row.videoId,
+				song: row.song,
+				artist: row.artist,
+				format: row.format,
+				score: row.score,
+				voteCount: row.voteCount,
+				submitterName: row.submitter?.displayName ?? null,
+				ttmlSignals: Array.isArray(row.ttmlSignals) ? row.ttmlSignals : [],
+			}))
+			return { status: "ok", entries }
+		},
+
+		async rejectLyric(lyricsId, keyId, note) {
+			const res = await doFetch(`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/reject/bot`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify(note ? { keyId, note } : { keyId }),
+			})
+			if (res.ok) {
+				return { status: "rejected" }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_COMMITTEE":
+					return { status: "not_council" }
+				case "NOT_FOUND":
+					return { status: "not_found" }
+				case "REJECT_ALREADY_ACTIVE":
+					return { status: "already_rejected" }
+				default:
+					return { status: "error", code: res.status }
+			}
+		},
+
+		async unrejectLyric(lyricsId, keyId) {
+			const res = await doFetch(`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/reject/bot`, {
+				method: "DELETE",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId }),
+			})
+			if (res.ok) {
+				return { status: "unrejected" }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_COMMITTEE":
+					return { status: "not_council" }
+				case "NOT_FOUND":
+					return { status: "not_found" }
+				default:
+					return { status: "error", code: res.status }
+			}
 		},
 	}
 }

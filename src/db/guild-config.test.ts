@@ -30,6 +30,7 @@ function fullConfig(): GuildConfig {
 		roleIds: { gold: "r1", silver: "r2" },
 		tierOverrides: { gold: 90 },
 		councilRoleId: "council-role-1",
+		reviewChannelId: "c5",
 		enabled: false,
 	}
 }
@@ -58,6 +59,7 @@ describe("guild-config", () => {
 				roleIds: {},
 				tierOverrides: null,
 				councilRoleId: null,
+				reviewChannelId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, config)
@@ -85,6 +87,12 @@ describe("guild-config", () => {
 			await upsertGuildConfig(pool, fullConfig())
 			await upsertGuildConfig(pool, { ...fullConfig(), modChannelId: null })
 			expect((await getGuildConfig(pool, "g1"))?.modChannelId).toBe("c4")
+		})
+
+		it("keeps the review channel sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), reviewChannelId: null })
+			expect((await getGuildConfig(pool, "g1"))?.reviewChannelId).toBe("c5")
 		})
 	})
 
@@ -118,12 +126,14 @@ describe("guild-config", () => {
 			await setGuildField(pool, "g1", "announce", "aa")
 			await setGuildField(pool, "g1", "mod", "mm")
 			await setGuildField(pool, "g1", "council", "cr")
+			await setGuildField(pool, "g1", "review", "rv")
 			expect(await getGuildConfig(pool, "g1")).toMatchObject({
 				connectChannelId: "cc",
 				reportChannelId: "rr",
 				announceChannelId: "aa",
 				modChannelId: "mm",
 				councilRoleId: "cr",
+				reviewChannelId: "rv",
 			})
 		})
 	})
@@ -176,6 +186,7 @@ describe("guild-config", () => {
 				roleIds: {},
 				tierOverrides: null,
 				councilRoleId: null,
+				reviewChannelId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, second)
