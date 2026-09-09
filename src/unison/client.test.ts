@@ -662,3 +662,331 @@ describe("createUnisonClient commitMigration", () => {
 		})
 	})
 })
+
+const keyId = "a".repeat(64)
+const quota = { quota: 8, used: 3, remaining: 5, resetsAt: 1_790_000_000 }
+
+describe("createUnisonClient getLyricsVariants", () => {
+	function variantRow(overrides: Record<string, unknown> = {}) {
+		return {
+			id: 21,
+			videoId: "dQw4w9WgXcQ",
+			song: "Never Gonna Give You Up",
+			artist: "Rick Astley",
+			format: "ttml",
+			syncType: "line",
+			score: 42,
+			effectiveScore: 40,
+			voteCount: 12,
+			confidence: "high",
+			submitter: { keyId: "b".repeat(64), reputation: 900, displayName: "quiet-fern" },
+			...overrides,
+		}
+	}
+
+	it("issues a public GET (no auth) and maps rows to the trimmed variant shape", async () => {
+		const data = [variantRow({ id: 21 }), variantRow({ id: 22, submitter: null })]
+		const { fn, calls } = makeFetch(Response.json({ success: true, data }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getLyricsVariants("dQw4w9WgXcQ")
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/variants/dQw4w9WgXcQ")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBeNull()
+		expect(result).toEqual({
+			status: "ok",
+			variants: [
+				{
+					id: 21,
+					song: "Never Gonna Give You Up",
+					artist: "Rick Astley",
+					format: "ttml",
+					score: 42,
+					submitterName: "quiet-fern",
+				},
+				{
+					id: 22,
+					song: "Never Gonna Give You Up",
+					artist: "Rick Astley",
+					format: "ttml",
+					score: 42,
+					submitterName: null,
+				},
+			],
+		})
+	})
+
+	it("percent-encodes the videoId into the path", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		await client.getLyricsVariants("weird/id?x")
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/variants/weird%2Fid%3Fx")
+	})
+
+	it("maps a 404 to not_found", async () => {
+		const { fn } = makeFetch(new Response("nope", { status: 404 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getLyricsVariants("missing")).toEqual({ status: "not_found" })
+	})
+
+	it("maps another non-ok response to an error result", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getLyricsVariants("vid")).toEqual({ status: "error", code: 500 })
+	})
+
+	it("maps a 200 whose data is not an array to an error", async () => {
+		const { fn } = makeFetch(Response.json({ success: true, data: { nope: 1 } }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getLyricsVariants("vid")).toEqual({ status: "error", code: 200 })
+	})
+
+	it("returns an empty variant list for a 200 with an empty array", async () => {
+		const { fn } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getLyricsVariants("vid")).toEqual({ status: "ok", variants: [] })
+	})
+})
+
+describe("createUnisonClient boostLyrics", () => {
+	it("posts the keyId with bearer auth and parses a sealed result carrying quota", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, quota }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.boostLyrics("42", keyId)
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/42/boost/bot")
+		expect(calls[0]?.method).toBe("POST")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId })
+		expect(result).toEqual({ status: "sealed", quota })
+	})
+
+	it("never puts the keyId in the url", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, quota }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		await client.boostLyrics("42", keyId)
+		expect(calls[0]?.url).not.toContain(keyId)
+	})
+
+	it("maps 403 NOT_COMMITTEE to not_council", async () => {
+		const { fn } = makeFetch(errorResponse(403, "NOT_COMMITTEE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "not_council" })
+	})
+
+	it("maps 404 NOT_FOUND to not_found", async () => {
+		const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "not_found" })
+	})
+
+	it("maps 400 BOOST_SELF to self", async () => {
+		const { fn } = makeFetch(errorResponse(400, "BOOST_SELF"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "self" })
+	})
+
+	it("maps 400 BOOST_TARGET_COMMITTEE to target_council", async () => {
+		const { fn } = makeFetch(errorResponse(400, "BOOST_TARGET_COMMITTEE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "target_council" })
+	})
+
+	it("maps 429 BOOST_QUOTA_EXCEEDED to over_quota", async () => {
+		const { fn } = makeFetch(errorResponse(429, "BOOST_QUOTA_EXCEEDED"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "over_quota" })
+	})
+
+	it("maps 409 BOOST_ALREADY_ACTIVE to already_sealed", async () => {
+		const { fn } = makeFetch(errorResponse(409, "BOOST_ALREADY_ACTIVE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "already_sealed" })
+	})
+
+	it("maps an unknown error code to a generic error carrying the http status", async () => {
+		const { fn } = makeFetch(errorResponse(418, "SURPRISE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "error", code: 418 })
+	})
+
+	it("maps a 200 that omits the quota to an error rather than a bad seal", async () => {
+		const { fn } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "error", code: 200 })
+	})
+})
+
+describe("createUnisonClient unboostLyrics", () => {
+	it("sends a DELETE with the keyId body and bearer auth and parses unsealed", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.unboostLyrics("42", keyId)
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/42/boost/bot")
+		expect(calls[0]?.method).toBe("DELETE")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId })
+		expect(result).toEqual({ status: "unsealed" })
+	})
+
+	it("maps 403 BOOST_NOT_OWNER to not_owner", async () => {
+		const { fn } = makeFetch(errorResponse(403, "BOOST_NOT_OWNER"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.unboostLyrics("42", keyId)).toEqual({ status: "not_owner" })
+	})
+
+	it("maps 403 NOT_COMMITTEE to not_council", async () => {
+		const { fn } = makeFetch(errorResponse(403, "NOT_COMMITTEE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.unboostLyrics("42", keyId)).toEqual({ status: "not_council" })
+	})
+
+	it("maps 404 NOT_FOUND to not_found", async () => {
+		const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.unboostLyrics("42", keyId)).toEqual({ status: "not_found" })
+	})
+
+	it("maps an unknown error code to a generic error carrying the http status", async () => {
+		const { fn } = makeFetch(errorResponse(500, "SURPRISE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.unboostLyrics("42", keyId)).toEqual({ status: "error", code: 500 })
+	})
+})
+
+describe("createUnisonClient getBoostQuota", () => {
+	it("gets the bot quota with the keyId as a query param and bearer auth", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, quota }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getBoostQuota(keyId)
+
+		expect(calls[0]?.url).toBe(`https://unison.test/api/lyrics/boost/quota/bot?keyId=${keyId}`)
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({ status: "ok", quota })
+	})
+
+	it("maps 403 NOT_COMMITTEE to not_council", async () => {
+		const { fn } = makeFetch(errorResponse(403, "NOT_COMMITTEE"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({ status: "not_council" })
+	})
+
+	it("maps 404 NOT_FOUND (keyId has no unison user) to unknown_user", async () => {
+		const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({ status: "unknown_user" })
+	})
+
+	it("maps another non-ok response to an error result", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({ status: "error", code: 500 })
+	})
+
+	it("maps a 200 that omits the quota to an error", async () => {
+		const { fn } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({ status: "error", code: 200 })
+	})
+})
+
+describe("createUnisonClient addCouncilMember", () => {
+	it("posts the keyId with bearer auth and parses an added result", async () => {
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { keyId } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.addCouncilMember(keyId)
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/committee/bot")
+		expect(calls[0]?.method).toBe("POST")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId })
+		expect(result).toEqual({ status: "added" })
+	})
+
+	it("maps 404 NOT_FOUND to not_found", async () => {
+		const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.addCouncilMember(keyId)).toEqual({ status: "not_found" })
+	})
+
+	it("maps an unknown non-ok response to a generic error carrying the http status", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.addCouncilMember(keyId)).toEqual({ status: "error", code: 500 })
+	})
+})
+
+describe("createUnisonClient removeCouncilMember", () => {
+	it("sends a DELETE with the keyId body and bearer auth and parses removed", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.removeCouncilMember(keyId)
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/committee/bot")
+		expect(calls[0]?.method).toBe("DELETE")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId })
+		expect(result).toEqual({ status: "removed" })
+	})
+
+	it("maps 404 NOT_FOUND to not_found", async () => {
+		const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.removeCouncilMember(keyId)).toEqual({ status: "not_found" })
+	})
+
+	it("maps an unknown non-ok response to a generic error", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.removeCouncilMember(keyId)).toEqual({ status: "error", code: 500 })
+	})
+})
+
+describe("createUnisonClient getCouncil", () => {
+	it("gets the council with bearer auth and parses the keyId list", async () => {
+		const keyIds = ["a".repeat(64), "b".repeat(64)]
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { keyIds } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getCouncil()
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/committee/bot")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({ status: "ok", keyIds })
+	})
+
+	it("returns an empty council for a 200 with an empty list", async () => {
+		const { fn } = makeFetch(
+			Response.json({ success: true, data: { keyIds: [] } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getCouncil()).toEqual({ status: "ok", keyIds: [] })
+	})
+
+	it("maps a 200 whose data is not a keyId array to an error", async () => {
+		const { fn } = makeFetch(Response.json({ success: true, data: {} }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getCouncil()).toEqual({ status: "error", code: 200 })
+	})
+
+	it("maps a non-ok response to an error result", async () => {
+		const { fn } = makeFetch(new Response("boom", { status: 500 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getCouncil()).toEqual({ status: "error", code: 500 })
+	})
+})

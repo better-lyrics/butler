@@ -6,6 +6,8 @@ import {
 	getGuildConfig,
 	listGuildConfigs,
 	setGuildEnabled,
+	setGuildField,
+	setTierRole,
 	upsertGuildConfig,
 } from "./guild-config"
 import { applySchema } from "./pool"
@@ -27,6 +29,7 @@ function fullConfig(): GuildConfig {
 		modChannelId: "c4",
 		roleIds: { gold: "r1", silver: "r2" },
 		tierOverrides: { gold: 90 },
+		councilRoleId: "council-role-1",
 		enabled: false,
 	}
 }
@@ -54,6 +57,7 @@ describe("guild-config", () => {
 				modChannelId: null,
 				roleIds: {},
 				tierOverrides: null,
+				councilRoleId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, config)
@@ -69,6 +73,90 @@ describe("guild-config", () => {
 			}
 			await upsertGuildConfig(pool, updated)
 			expect(await getGuildConfig(pool, "g1")).toEqual(updated)
+		})
+
+		it("keeps the council role sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), councilRoleId: null })
+			expect((await getGuildConfig(pool, "g1"))?.councilRoleId).toBe("council-role-1")
+		})
+
+		it("keeps the mod channel sticky when a re-run omits it", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await upsertGuildConfig(pool, { ...fullConfig(), modChannelId: null })
+			expect((await getGuildConfig(pool, "g1"))?.modChannelId).toBe("c4")
+		})
+	})
+
+	describe("setGuildField", () => {
+		it("sets a nullable text field without disturbing the rest of the config", async () => {
+			await upsertGuildConfig(pool, { ...fullConfig(), councilRoleId: null })
+			await setGuildField(pool, "g1", "council", "council-role-9")
+			expect(await getGuildConfig(pool, "g1")).toEqual({
+				...fullConfig(),
+				councilRoleId: "council-role-9",
+			})
+		})
+
+		it("clears a nullable text field, which the sticky upsert cannot do", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await setGuildField(pool, "g1", "mod", null)
+			expect((await getGuildConfig(pool, "g1"))?.modChannelId).toBeNull()
+		})
+
+		it("creates the row when the guild has no config yet", async () => {
+			await setGuildField(pool, "fresh", "connect", "connect-1")
+			const config = await getGuildConfig(pool, "fresh")
+			expect(config?.connectChannelId).toBe("connect-1")
+			expect(config?.roleIds).toEqual({})
+			expect(config?.enabled).toBe(false)
+		})
+
+		it("routes each field to its own column", async () => {
+			await setGuildField(pool, "g1", "connect", "cc")
+			await setGuildField(pool, "g1", "report", "rr")
+			await setGuildField(pool, "g1", "announce", "aa")
+			await setGuildField(pool, "g1", "mod", "mm")
+			await setGuildField(pool, "g1", "council", "cr")
+			expect(await getGuildConfig(pool, "g1")).toMatchObject({
+				connectChannelId: "cc",
+				reportChannelId: "rr",
+				announceChannelId: "aa",
+				modChannelId: "mm",
+				councilRoleId: "cr",
+			})
+		})
+	})
+
+	describe("setTierRole", () => {
+		it("sets a single tier role, creating the row when missing", async () => {
+			await setTierRole(pool, "fresh", "master", "role-m")
+			expect((await getGuildConfig(pool, "fresh"))?.roleIds).toEqual({ master: "role-m" })
+		})
+
+		it("merges into existing tier roles without dropping the others", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await setTierRole(pool, "g1", "master", "role-m")
+			expect((await getGuildConfig(pool, "g1"))?.roleIds).toEqual({
+				gold: "r1",
+				silver: "r2",
+				master: "role-m",
+			})
+		})
+
+		it("overwrites an existing tier without touching its siblings", async () => {
+			await setTierRole(pool, "g1", "master", "old")
+			await setTierRole(pool, "g1", "elite", "e1")
+			await setTierRole(pool, "g1", "master", "new")
+			expect((await getGuildConfig(pool, "g1"))?.roleIds).toEqual({ master: "new", elite: "e1" })
+		})
+
+		it("regression: concurrent writes for different tiers do not clobber each other", async () => {
+			await Promise.all([
+				setTierRole(pool, "g1", "gold", "r1"),
+				setTierRole(pool, "g1", "silver", "r2"),
+			])
+			expect((await getGuildConfig(pool, "g1"))?.roleIds).toEqual({ gold: "r1", silver: "r2" })
 		})
 	})
 
@@ -87,6 +175,7 @@ describe("guild-config", () => {
 				modChannelId: null,
 				roleIds: {},
 				tierOverrides: null,
+				councilRoleId: null,
 				enabled: false,
 			}
 			await upsertGuildConfig(pool, second)
@@ -126,6 +215,7 @@ describe("guild-config", () => {
 			expect(config?.roleIds).toEqual({})
 			expect(config?.tierOverrides).toBeNull()
 			expect(config?.connectChannelId).toBeNull()
+			expect(config?.councilRoleId).toBeNull()
 			expect(config?.enabled).toBe(false)
 		})
 	})

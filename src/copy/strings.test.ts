@@ -10,6 +10,9 @@ import {
 	promotionSubtitle,
 	promotionTitle,
 	reportHelp,
+	sealQuotaSummary,
+	sealResetsLine,
+	sealVariantDescription,
 	selfFixInstructions,
 	tierLabel,
 } from "./strings"
@@ -209,5 +212,61 @@ describe("migrateExpiresLine", () => {
 
 	it("frames the timestamp as the migration expiry while the window is active", () => {
 		expect(migrateExpiresLine("<t:1788394920:R>")).toContain("This migration expires")
+	})
+})
+
+describe("sealQuotaSummary", () => {
+	describe("happy paths", () => {
+		it("states used out of quota and what is left", () => {
+			const line = sealQuotaSummary({ quota: 8, used: 3, remaining: 5 })
+			expect(line).toContain("3 of 8 seals used this month")
+			expect(line).toContain("5 left")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("reads correctly at a full quota with nothing left", () => {
+			const line = sealQuotaSummary({ quota: 4, used: 4, remaining: 0 })
+			expect(line).toContain("4 of 4 seals used this month")
+			expect(line).toContain("0 left")
+		})
+
+		it("reads correctly for a fresh quota with nothing used", () => {
+			expect(sealQuotaSummary({ quota: 6, used: 0, remaining: 6 })).toContain(
+				"0 of 6 seals used this month"
+			)
+		})
+	})
+})
+
+describe("sealResetsLine", () => {
+	it("embeds the reset instant as a relative discord timestamp token", () => {
+		expect(sealResetsLine(1_790_000_000)).toBe("Resets <t:1790000000:R>.")
+	})
+})
+
+describe("sealVariantDescription", () => {
+	describe("happy paths", () => {
+		it("joins artist, format, submitter, and score with a middle dot", () => {
+			const line = sealVariantDescription({
+				artist: "Deftones",
+				format: "ttml",
+				score: 42,
+				submitterName: "quiet-fern",
+			})
+			expect(line).toBe("Deftones · ttml · quiet-fern · score 42")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("drops the submitter segment when the name is unknown", () => {
+			const line = sealVariantDescription({
+				artist: "Deftones",
+				format: "lrc",
+				score: 0,
+				submitterName: null,
+			})
+			expect(line).toBe("Deftones · lrc · score 0")
+		})
 	})
 })

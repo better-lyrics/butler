@@ -13,10 +13,13 @@ CREATE TABLE IF NOT EXISTS guild_config (
   mod_channel_id      TEXT,
   role_ids            JSONB NOT NULL DEFAULT '{}',
   tier_overrides      JSONB,
+  council_role_id     TEXT,
   enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );
 -- Migration for guild_config tables created before the on/off switch existed.
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE;
+-- Migration for guild_config tables created before the council role existed.
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS council_role_id TEXT;
 CREATE TABLE IF NOT EXISTS badge_holdings (
   discord_id TEXT NOT NULL,
   guild_id   TEXT NOT NULL,

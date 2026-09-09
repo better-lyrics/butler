@@ -73,6 +73,12 @@ export const setupCommand = new SlashCommandBuilder()
 			.setDescription("Channel for moderator log messages")
 			.setRequired(false)
 	)
+	.addRoleOption((option) =>
+		option
+			.setName("council_role")
+			.setDescription("Role granted to Better Lyrics Council members")
+			.setRequired(false)
+	)
 
 export interface SetupDeps {
 	pool: Pool
@@ -96,6 +102,7 @@ export async function handleSetup(
 	const reportChannel = interaction.options.getChannel("report_channel", true)
 	const announceChannel = interaction.options.getChannel("announce_channel", true)
 	const modChannel = interaction.options.getChannel("mod_channel", false)
+	const councilRole = interaction.options.getRole("council_role", false)
 
 	const config: GuildConfig = {
 		guildId: interaction.guildId,
@@ -111,6 +118,7 @@ export async function handleSetup(
 			lyricist: interaction.options.getRole("lyricist_role", true).id,
 		},
 		tierOverrides: null,
+		councilRoleId: councilRole?.id ?? null,
 		// The switch is owned by /activate and /deactivate; upsertGuildConfig leaves it untouched.
 		enabled: false,
 	}

@@ -7,6 +7,8 @@ export type HandlerName =
 	| "migrate.nick"
 	| "migrate.confirm"
 	| "migrate.commit"
+	| "seal.pick"
+	| "seal.unpick"
 
 const HANDLERS: readonly HandlerName[] = [
 	"report.add",
@@ -14,6 +16,8 @@ const HANDLERS: readonly HandlerName[] = [
 	"migrate.nick",
 	"migrate.confirm",
 	"migrate.commit",
+	"seal.pick",
+	"seal.unpick",
 ]
 
 /** A resolved interaction route: which handler to run and its decoded args. */
