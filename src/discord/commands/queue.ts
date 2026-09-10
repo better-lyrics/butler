@@ -7,6 +7,7 @@ import {
 	queueRejectUndone,
 	queueRejectedBy,
 	queueResendEmpty,
+	queueResendFailed,
 	queueResendPosted,
 	queueSealCancelled,
 	queueSealUndone,
@@ -40,6 +41,7 @@ import type {
 } from "@/unison/client"
 import {
 	ActionRowBuilder,
+	MessageFlags,
 	ModalBuilder,
 	SlashCommandBuilder,
 	TextInputBuilder,
@@ -57,6 +59,8 @@ export const QUEUE_LIMIT = 10
 /** Minimal shape of the /queue chat command interaction. */
 export interface QueueCommandInteraction {
 	user: { id: string }
+	deferReply(options: unknown): Promise<unknown>
+	editReply(payload: unknown): Promise<unknown>
 	reply(payload: unknown): Promise<unknown>
 }
 
@@ -94,7 +98,7 @@ export interface QueueModalSubmitInteraction {
 export interface QueueCommandDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	getBoostQuota(keyId: string): Promise<QuotaResult>
-	resendBoard(): Promise<"posted" | "empty">
+	resendBoard(): Promise<"posted" | "empty" | "failed">
 	linkPageUrl: string
 }
 
@@ -153,8 +157,16 @@ export async function handleQueue(
 		return
 	}
 
+	// Reposting the board sends a message per lyric, which can exceed the 3 second reply window.
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 	const result = await deps.resendBoard()
-	await interaction.reply(ephemeralText(result === "posted" ? queueResendPosted : queueResendEmpty))
+	await interaction.editReply({ content: RESEND_COPY[result] })
+}
+
+const RESEND_COPY: Record<"posted" | "empty" | "failed", string> = {
+	posted: queueResendPosted,
+	empty: queueResendEmpty,
+	failed: queueResendFailed,
 }
 
 export async function handleQueueSeal(

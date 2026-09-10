@@ -20,13 +20,8 @@ import {
 } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
-import {
-	type BoardCard,
-	getBoard,
-	getBoardCard,
-	replaceBoard,
-	updateBoardCard,
-} from "@/db/review-board"
+import { getBoard, getBoardCard, replaceBoard, updateBoardCard } from "@/db/review-board"
+import { type PlannedCard, syncBoard } from "@/discord/board-sync"
 import { createDiscordClient } from "@/discord/client"
 import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
@@ -422,16 +417,20 @@ async function runAll(): Promise<void> {
 	}
 }
 
-async function deleteBoardMessages(cards: BoardCard[]): Promise<void> {
+async function deleteBoardMessages(
+	refs: { channelId: string; messageId: string }[]
+): Promise<void> {
 	const byChannel = new Map<string, string[]>()
-	for (const c of cards) {
-		byChannel.set(c.channelId, [...(byChannel.get(c.channelId) ?? []), c.messageId])
+	for (const ref of refs) {
+		byChannel.set(ref.channelId, [...(byChannel.get(ref.channelId) ?? []), ref.messageId])
 	}
 	for (const [channelId, ids] of byChannel) {
 		const channel = await discord.channels.fetch(channelId).catch(() => null)
 		if (!channel?.isTextBased()) continue
 		for (const id of ids) {
-			await channel.messages.delete(id).catch(() => {})
+			await channel.messages
+				.delete(id)
+				.catch((err) => console.error("board message delete failed", err))
 		}
 	}
 }
@@ -489,9 +488,9 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 	if (result.status !== "ok") return "skipped"
 
 	const previous = await getBoard(pool, config.guildId)
-	await deleteBoardMessages(previous)
 
 	if (result.entries.length === 0) {
+		await deleteBoardMessages(previous)
 		await replaceBoard(pool, config.guildId, [])
 		if (previous.length > 0) {
 			await channel.send(queueEmpty).catch((err) => console.error("review board post failed", err))
@@ -500,32 +499,34 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 		return "empty"
 	}
 
-	const cards: BoardCard[] = []
-	let position = 0
-	for (const entry of result.entries) {
-		const message = await channel.send(buildQueueCard(entry)).catch((err) => {
-			console.error("review board post failed", err)
-			return null
-		})
-		if (!message) continue
-		cards.push({
+	const planned: PlannedCard[] = result.entries.map((entry) => ({
+		send: async () => {
+			const message = await channel.send(buildQueueCard(entry)).catch((err) => {
+				console.error("review board post failed", err)
+				return null
+			})
+			return message?.id ?? null
+		},
+		build: (messageId) => ({
 			lyricId: String(entry.id),
-			messageId: message.id,
+			messageId,
 			channelId: channel.id,
-			position: position++,
 			state: "pending",
 			actorId: null,
 			note: null,
 			entry,
-		})
-	}
-	if (cards.length === 0) return "skipped"
-	await replaceBoard(pool, config.guildId, cards)
+		}),
+	}))
+	const synced = await syncBoard(previous, planned, {
+		deleteMessages: deleteBoardMessages,
+		persist: (cards) => replaceBoard(pool, config.guildId, cards),
+	})
+	if (synced === "failed") return "skipped"
 	await markReviewPosted(pool, config.guildId, now)
 	return "posted"
 }
 
-async function resendBoard(): Promise<"posted" | "empty"> {
+async function resendBoard(): Promise<"posted" | "empty" | "failed"> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	if (!gc?.reviewChannelId) return "empty"
 	const rows = await getBoard(pool, config.guildId)
@@ -533,21 +534,20 @@ async function resendBoard(): Promise<"posted" | "empty"> {
 	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
 	if (!channel?.isTextBased() || !channel.isSendable()) return "empty"
 
-	await deleteBoardMessages(rows)
-
-	const cards: BoardCard[] = []
-	let position = 0
-	for (const row of rows) {
-		const message = await channel.send(buildBoardCard(row)).catch((err) => {
-			console.error("review board resend failed", err)
-			return null
-		})
-		if (!message) continue
-		cards.push({ ...row, messageId: message.id, channelId: channel.id, position: position++ })
-	}
-	if (cards.length === 0) return "empty"
-	await replaceBoard(pool, config.guildId, cards)
-	return "posted"
+	const planned: PlannedCard[] = rows.map((row) => ({
+		send: async () => {
+			const message = await channel.send(buildBoardCard(row)).catch((err) => {
+				console.error("review board resend failed", err)
+				return null
+			})
+			return message?.id ?? null
+		},
+		build: (messageId) => ({ ...row, messageId, channelId: channel.id }),
+	}))
+	return syncBoard(rows, planned, {
+		deleteMessages: deleteBoardMessages,
+		persist: (cards) => replaceBoard(pool, config.guildId, cards),
+	})
 }
 
 discord.once(Events.ClientReady, async (client) => {

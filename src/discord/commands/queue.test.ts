@@ -8,6 +8,7 @@ import {
 	queueRejectUndone,
 	queueRejectedBy,
 	queueResendEmpty,
+	queueResendFailed,
 	queueResendPosted,
 	queueSealCancelled,
 	queueSealUndone,
@@ -98,14 +99,24 @@ function entry(overrides: Partial<QueueEntry> = {}): QueueEntry {
 
 function commandInteraction() {
 	const replies: unknown[] = []
+	const defers: unknown[] = []
+	const edits: unknown[] = []
 	return {
 		int: {
 			user: { id: "disc-1" },
+			deferReply: async (o: unknown) => {
+				defers.push(o)
+			},
+			editReply: async (p: unknown) => {
+				edits.push(p)
+			},
 			reply: async (p: unknown) => {
 				replies.push(p)
 			},
 		},
 		replies,
+		defers,
+		edits,
 	}
 }
 
@@ -143,7 +154,7 @@ function updateInteraction(userId = "disc-1") {
 function commandDeps(overrides: {
 	keyId?: string | null
 	quota?: QuotaResult
-	resend?: "posted" | "empty"
+	resend?: "posted" | "empty" | "failed"
 }) {
 	const resendCalls: number[] = []
 	return {
@@ -194,18 +205,26 @@ describe("handleQueue", () => {
 	})
 
 	describe("resend", () => {
-		it("acks that the board was reposted", async () => {
-			const { int, replies } = commandInteraction()
+		it("defers before the slow resend and edits the reply once done", async () => {
+			const { int, replies, defers, edits } = commandInteraction()
 			const { deps, resendCalls } = commandDeps({ resend: "posted" })
 			await handleQueue(int, deps)
+			expect(defers).toHaveLength(1)
 			expect(resendCalls).toHaveLength(1)
-			expect(payloadText(replies[0])).toBe(queueResendPosted)
+			expect(replies).toHaveLength(0)
+			expect(payloadText(edits[0])).toBe(queueResendPosted)
 		})
 
 		it("tells the caller there is no board to resend", async () => {
-			const { int, replies } = commandInteraction()
+			const { int, edits } = commandInteraction()
 			await handleQueue(int, commandDeps({ resend: "empty" }).deps)
-			expect(payloadText(replies[0])).toBe(queueResendEmpty)
+			expect(payloadText(edits[0])).toBe(queueResendEmpty)
+		})
+
+		it("reports a failed repost without claiming the board is empty", async () => {
+			const { int, edits } = commandInteraction()
+			await handleQueue(int, commandDeps({ resend: "failed" }).deps)
+			expect(payloadText(edits[0])).toBe(queueResendFailed)
 		})
 	})
 })

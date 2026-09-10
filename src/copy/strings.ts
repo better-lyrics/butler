@@ -566,6 +566,9 @@ export const queueResendPosted =
 export const queueResendEmpty =
 	"There is no review board yet. An admin can run `/digest` to post one."
 
+export const queueResendFailed =
+	"Could not repost the review board. The current one is still in place, so try again in a moment."
+
 export const digestNoPermission = "You need the Manage Server permission to run this."
 
 export const digestNoChannel =
