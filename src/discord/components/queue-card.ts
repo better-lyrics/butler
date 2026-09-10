@@ -164,22 +164,9 @@ export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {
 	return { components: [container], flags: FLAGS }
 }
 
-export function buildQueueResultCard(
-	line: string,
-	undo?: { action: string; lyricsId: string; label: string }
-): CardPayload {
+export function buildQueueResultCard(line: string): CardPayload {
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(text(line))
-	if (undo) {
-		container.addActionRowComponents(
-			new ActionRowBuilder<ButtonBuilder>().addComponents(
-				new ButtonBuilder()
-					.setStyle(ButtonStyle.Secondary)
-					.setCustomId(encodeCustomId(undo.action, [undo.lyricsId]))
-					.setLabel(undo.label)
-			)
-		)
-	}
 	return { components: [container], flags: FLAGS }
 }

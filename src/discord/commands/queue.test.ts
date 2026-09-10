@@ -251,7 +251,7 @@ describe("handleQueueSealCancel", () => {
 	})
 })
 
-function sealDeps(result: SealResult, keyId: string | null = KEY_ID) {
+function sealDeps(result: SealResult, keyId: string | null = KEY_ID, boardError?: Error) {
 	const calls: Array<[string, string]> = []
 	const boardCalls: Array<[string, string]> = []
 	return {
@@ -265,6 +265,7 @@ function sealDeps(result: SealResult, keyId: string | null = KEY_ID) {
 			},
 			sealBoardCard: async (lyricsId: string, actorId: string) => {
 				boardCalls.push([lyricsId, actorId])
+				if (boardError) throw boardError
 			},
 			linkPageUrl: "https://unison.test/link",
 		},
@@ -283,6 +284,18 @@ describe("handleQueueSealConfirm", () => {
 		expect(boardCalls).toEqual([["4210", "disc-1"]])
 		expect(payloadText(updates[0])).toBe(queueSealedBy("disc-1"))
 		expect(payloadButtons(updates[0])).toHaveLength(0)
+	})
+
+	it("acks the ephemeral reply before flipping the board so a board failure cannot swallow it", async () => {
+		const { int, updates } = updateInteraction()
+		const { deps } = sealDeps(
+			{ status: "sealed", quota: { quota: 10, used: 2, remaining: 8, resetsAt: 1 } },
+			KEY_ID,
+			new Error("board down")
+		)
+		await expect(handleQueueSealConfirm(int, "4210", deps)).rejects.toThrow("board down")
+		expect(updates).toHaveLength(1)
+		expect(payloadText(updates[0])).toBe(queueSealedBy("disc-1"))
 	})
 
 	describe("error paths", () => {

@@ -1,7 +1,7 @@
 import type { BoardCard } from "@/db/review-board"
 import type { QueueEntry } from "@/unison/client"
 import { describe, expect, it } from "vitest"
-import { type PlannedCard, type SyncBoardDeps, syncBoard } from "./board-sync"
+import { type PlannedCard, type SyncBoardDeps, carryForwardStates, syncBoard } from "./board-sync"
 
 function entry(id: number): QueueEntry {
 	return {
@@ -167,6 +167,75 @@ describe("syncBoard", () => {
 			await syncBoard([], planned, deps)
 
 			expect(persisted).toEqual([])
+		})
+	})
+})
+
+describe("carryForwardStates", () => {
+	describe("happy paths", () => {
+		it("carries a sealed decision forward onto the fresh entry", () => {
+			const previous = [card({ lyricId: "4210", state: "sealed", actorId: "777" })]
+
+			const carried = carryForwardStates(previous, [entry(4210)])
+
+			expect(carried).toEqual([{ entry: entry(4210), state: "sealed", actorId: "777", note: null }])
+		})
+
+		it("carries a rejected decision forward with its actor and note", () => {
+			const previous = [
+				card({ lyricId: "4210", state: "rejected", actorId: "777", note: "bad sync" }),
+			]
+
+			const carried = carryForwardStates(previous, [entry(4210)])
+
+			expect(carried).toEqual([
+				{ entry: entry(4210), state: "rejected", actorId: "777", note: "bad sync" },
+			])
+		})
+	})
+
+	describe("edge cases", () => {
+		it("marks a brand-new entry pending with no actor or note", () => {
+			const carried = carryForwardStates([], [entry(99)])
+
+			expect(carried).toEqual([{ entry: entry(99), state: "pending", actorId: null, note: null }])
+		})
+
+		it("returns nothing when there are no entries", () => {
+			expect(carryForwardStates([card({ lyricId: "4210", state: "sealed" })], [])).toEqual([])
+		})
+
+		it("marks everything pending when there is no previous board", () => {
+			const carried = carryForwardStates([], [entry(1), entry(2)])
+
+			expect(carried.map((c) => c.state)).toEqual(["pending", "pending"])
+		})
+	})
+
+	describe("invariants", () => {
+		it("orders by the fresh entries, not the previous board", () => {
+			const previous = [
+				card({ lyricId: "2", state: "sealed" }),
+				card({ lyricId: "1", state: "rejected" }),
+			]
+
+			const carried = carryForwardStates(previous, [entry(1), entry(2)])
+
+			expect(carried.map((c) => [c.entry.id, c.state])).toEqual([
+				[1, "rejected"],
+				[2, "sealed"],
+			])
+		})
+
+		it("drops a decided card that is no longer in the queue", () => {
+			const previous = [
+				card({ lyricId: "1", state: "sealed" }),
+				card({ lyricId: "2", state: "rejected" }),
+			]
+
+			const carried = carryForwardStates(previous, [entry(1)])
+
+			expect(carried.map((c) => c.entry.id)).toEqual([1])
 		})
 	})
 })

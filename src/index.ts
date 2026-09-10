@@ -21,7 +21,7 @@ import {
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { getBoard, getBoardCard, replaceBoard, updateBoardCard } from "@/db/review-board"
-import { type PlannedCard, syncBoard } from "@/discord/board-sync"
+import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
 import { createDiscordClient } from "@/discord/client"
 import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
@@ -56,7 +56,7 @@ import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import {
 	buildBoardCard,
-	buildQueueCard,
+	type buildQueueCard,
 	buildQueueSealedCard,
 } from "@/discord/components/queue-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
@@ -499,22 +499,22 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 		return "empty"
 	}
 
-	const planned: PlannedCard[] = result.entries.map((entry) => ({
+	const planned: PlannedCard[] = carryForwardStates(previous, result.entries).map((card) => ({
 		send: async () => {
-			const message = await channel.send(buildQueueCard(entry)).catch((err) => {
+			const message = await channel.send(buildBoardCard(card)).catch((err) => {
 				console.error("review board post failed", err)
 				return null
 			})
 			return message?.id ?? null
 		},
 		build: (messageId) => ({
-			lyricId: String(entry.id),
+			lyricId: String(card.entry.id),
 			messageId,
 			channelId: channel.id,
-			state: "pending",
-			actorId: null,
-			note: null,
-			entry,
+			state: card.state,
+			actorId: card.actorId,
+			note: card.note,
+			entry: card.entry,
 		}),
 	}))
 	const synced = await syncBoard(previous, planned, {

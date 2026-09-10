@@ -227,20 +227,9 @@ describe("buildBoardCard", () => {
 })
 
 describe("buildQueueResultCard", () => {
-	it("renders just the line with no buttons when no undo is given", () => {
+	it("renders just the line with no buttons", () => {
 		const card = buildQueueResultCard("Cancelled.")
 		expect(textBlob(card)).toContain("Cancelled.")
 		expect(buttons(card)).toHaveLength(0)
-	})
-
-	it("adds an undo button carrying the action and lyrics id", () => {
-		const card = buildQueueResultCard("Sealed.", {
-			action: "queue.seal.undo",
-			lyricsId: "4210",
-			label: queueUndoSealButtonLabel,
-		})
-		const btn = buttons(card)[0]
-		expect(btn?.label).toBe(queueUndoSealButtonLabel)
-		expect(btn?.custom_id).toBe("queue.seal.undo:4210")
 	})
 })

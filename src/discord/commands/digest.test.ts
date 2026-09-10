@@ -11,17 +11,19 @@ import { PermissionFlagsBits } from "discord.js"
 import { describe, expect, it } from "vitest"
 import { type DigestResult, handleDigest } from "./digest"
 
-function interaction(opts: { guildId?: string | null; admin?: boolean } = {}) {
+function interaction(opts: { guildId?: string | null; admin?: boolean; noPerms?: boolean } = {}) {
 	const deferred: unknown[] = []
 	const edits: unknown[] = []
 	const replies: unknown[] = []
 	return {
 		int: {
 			guildId: opts.guildId === undefined ? "g1" : opts.guildId,
-			memberPermissions: {
-				has: (flag: bigint) =>
-					flag === PermissionFlagsBits.ManageGuild ? (opts.admin ?? true) : false,
-			},
+			memberPermissions: opts.noPerms
+				? null
+				: {
+						has: (flag: bigint) =>
+							flag === PermissionFlagsBits.ManageGuild ? (opts.admin ?? true) : false,
+					},
 			deferReply: async (p: unknown) => {
 				deferred.push(p)
 			},
@@ -91,5 +93,45 @@ describe("handleDigest", () => {
 				expect(content(edits[0])).toBe(copy)
 			})
 		}
+	})
+
+	describe("edge cases", () => {
+		it("refuses when member permissions are unavailable and never runs", async () => {
+			const { int, replies } = interaction({ noPerms: true })
+			const { deps: d, calls } = deps("posted")
+			await handleDigest(int, d)
+			expect(content(replies[0])).toBe(digestNoPermission)
+			expect(calls).toHaveLength(0)
+		})
+
+		it("treats an empty guild id as no guild and never runs", async () => {
+			const { int, replies } = interaction({ guildId: "" })
+			const { deps: d, calls } = deps("posted")
+			await handleDigest(int, d)
+			expect(content(replies[0])).toBe(configGuildOnly)
+			expect(calls).toHaveLength(0)
+		})
+	})
+
+	describe("invariants", () => {
+		const results: DigestResult[] = ["posted", "empty", "no_channel", "disabled", "skipped"]
+
+		it("maps every result to a non-empty message", async () => {
+			for (const result of results) {
+				const { int, edits } = interaction()
+				await handleDigest(int, deps(result).deps)
+				expect(content(edits[0]).length).toBeGreaterThan(0)
+			}
+		})
+
+		it("always acknowledges through defer then edit, never a direct reply", async () => {
+			for (const result of results) {
+				const { int, deferred, edits, replies } = interaction()
+				await handleDigest(int, deps(result).deps)
+				expect(deferred).toHaveLength(1)
+				expect(edits).toHaveLength(1)
+				expect(replies).toHaveLength(0)
+			}
+		})
 	})
 })

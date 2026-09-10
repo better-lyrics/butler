@@ -203,8 +203,8 @@ export async function handleQueueSealConfirm(
 	const result = await deps.boostLyrics(lyricsId, keyId)
 	switch (result.status) {
 		case "sealed":
-			await deps.sealBoardCard(lyricsId, interaction.user.id)
 			await interaction.update(buildQueueResultCard(queueSealedBy(interaction.user.id)))
+			await deps.sealBoardCard(lyricsId, interaction.user.id)
 			return
 		case "not_council":
 			await interaction.update(buildQueueResultCard(sealNotCouncil))
