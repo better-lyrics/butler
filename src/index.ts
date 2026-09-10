@@ -772,5 +772,6 @@ if (shouldConnectToDiscord(process.env)) {
 	console.log(
 		`Butler stays offline in ${process.env.RAILWAY_ENVIRONMENT_NAME}; only production connects to Discord.`
 	)
-	await new Promise<never>(() => {})
+	// Keep alive without a gateway; a never-resolving top-level await exits with code 13 here.
+	setInterval(() => {}, 1 << 30)
 }
