@@ -3,7 +3,13 @@ import {
 	queueConfirmSealButtonLabel,
 	queueEntryHeading,
 	queueRejectButtonLabel,
+	queueRejectNoteLine,
+	queueRejectedBy,
+	queueRejectedGeneric,
 	queueSealButtonLabel,
+	queueSealedBy,
+	queueSealedGeneric,
+	queueUndoRejectButtonLabel,
 	queueUndoSealButtonLabel,
 	queueVerifyButtonLabel,
 } from "@/copy/strings"
@@ -11,7 +17,14 @@ import type { QueueEntry } from "@/unison/client"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
-import { buildQueueCard, buildQueueResultCard, buildQueueSealConfirmCard } from "./queue-card"
+import {
+	buildBoardCard,
+	buildQueueCard,
+	buildQueueRejectedCard,
+	buildQueueResultCard,
+	buildQueueSealConfirmCard,
+	buildQueueSealedCard,
+} from "./queue-card"
 
 interface ComponentNode {
 	type: number
@@ -113,6 +126,23 @@ describe("buildQueueCard", () => {
 	})
 })
 
+describe("board cards suppress mentions", () => {
+	it("regression: a rejected card renders its note but pings nobody", () => {
+		const card = buildQueueRejectedCard(entry(), "777", "@everyone drop everything")
+		expect(textBlob(card)).toContain(queueRejectNoteLine("@everyone drop everything"))
+		expect(card.allowedMentions).toEqual({ parse: [] })
+	})
+
+	it("suppresses mentions on pending and sealed cards too", () => {
+		expect(buildQueueCard(entry()).allowedMentions).toEqual({ parse: [] })
+		expect(buildQueueSealedCard(entry(), "777").allowedMentions).toEqual({ parse: [] })
+		expect(
+			buildBoardCard({ state: "rejected", entry: entry(), actorId: "777", note: "@here" })
+				.allowedMentions
+		).toEqual({ parse: [] })
+	})
+})
+
 describe("buildQueueSealConfirmCard", () => {
 	it("offers confirm and cancel buttons, with the lyrics id only on confirm", () => {
 		const btns = buttons(buildQueueSealConfirmCard("4210"))
@@ -125,21 +155,81 @@ describe("buildQueueSealConfirmCard", () => {
 	})
 })
 
+describe("buildQueueSealedCard", () => {
+	it("shows the song, a sealed-by line, a verify link, and an undo-seal button, no seal/reject", () => {
+		const card = buildQueueSealedCard(entry(), "777")
+		const blob = textBlob(card)
+		expect(blob).toContain(queueEntryHeading("Never Gonna Give You Up"))
+		expect(blob).toContain(queueSealedBy("777"))
+
+		const btns = buttons(card)
+		expect(btns.find((b) => b.label === queueVerifyButtonLabel)?.url).toBe(
+			"https://music.youtube.com/watch?v=dQw4w9WgXcQ"
+		)
+		expect(btns.find((b) => b.label === queueUndoSealButtonLabel)?.custom_id).toBe(
+			"queue.seal.undo:4210"
+		)
+		expect(btns.find((b) => b.label === queueSealButtonLabel)).toBeUndefined()
+		expect(btns.find((b) => b.label === queueRejectButtonLabel)).toBeUndefined()
+	})
+
+	it("falls back to a generic sealed line when no actor is known", () => {
+		expect(textBlob(buildQueueSealedCard(entry(), null))).toContain(queueSealedGeneric)
+	})
+})
+
+describe("buildQueueRejectedCard", () => {
+	it("shows a rejected-by line, the reason note, and an undo-reject button", () => {
+		const card = buildQueueRejectedCard(entry(), "777", "line-synced only")
+		const blob = textBlob(card)
+		expect(blob).toContain(queueRejectedBy("777"))
+		expect(blob).toContain(queueRejectNoteLine("line-synced only"))
+		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)?.custom_id).toBe(
+			"queue.reject.undo:4210"
+		)
+	})
+
+	it("omits the reason line when there is no note", () => {
+		expect(textBlob(buildQueueRejectedCard(entry(), "777", null))).not.toContain("Reason:")
+	})
+
+	it("falls back to a generic rejected line when no actor is known", () => {
+		expect(textBlob(buildQueueRejectedCard(entry(), null, null))).toContain(queueRejectedGeneric)
+	})
+})
+
+describe("buildBoardCard", () => {
+	it("renders a pending card with seal and reject buttons", () => {
+		const btns = buttons(
+			buildBoardCard({ state: "pending", entry: entry(), actorId: null, note: null })
+		)
+		expect(btns.find((b) => b.label === queueSealButtonLabel)).toBeDefined()
+		expect(btns.find((b) => b.label === queueRejectButtonLabel)).toBeDefined()
+	})
+
+	it("renders a sealed card with an undo-seal button", () => {
+		const btns = buttons(
+			buildBoardCard({ state: "sealed", entry: entry(), actorId: "777", note: null })
+		)
+		expect(btns.find((b) => b.label === queueUndoSealButtonLabel)).toBeDefined()
+	})
+
+	it("renders a rejected card with an undo-reject button and the note", () => {
+		const card = buildBoardCard({
+			state: "rejected",
+			entry: entry(),
+			actorId: "777",
+			note: "capitalization",
+		})
+		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)).toBeDefined()
+		expect(textBlob(card)).toContain(queueRejectNoteLine("capitalization"))
+	})
+})
+
 describe("buildQueueResultCard", () => {
-	it("renders just the line with no buttons when no undo is given", () => {
+	it("renders just the line with no buttons", () => {
 		const card = buildQueueResultCard("Cancelled.")
 		expect(textBlob(card)).toContain("Cancelled.")
 		expect(buttons(card)).toHaveLength(0)
-	})
-
-	it("adds an undo button carrying the action and lyrics id", () => {
-		const card = buildQueueResultCard("Sealed.", {
-			action: "queue.seal.undo",
-			lyricsId: "4210",
-			label: queueUndoSealButtonLabel,
-		})
-		const btn = buttons(card)[0]
-		expect(btn?.label).toBe(queueUndoSealButtonLabel)
-		expect(btn?.custom_id).toBe("queue.seal.undo:4210")
 	})
 })

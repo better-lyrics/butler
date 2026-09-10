@@ -375,6 +375,9 @@ export const helpCouncilLabel = "**For the council**"
 export const helpSealLine =
 	"`/seal add` seals a lyric variant as council-approved, `/seal remove` lifts a seal you placed, and `/seal quota` shows how many seals you have left this month."
 
+export const helpQueueLine =
+	"`/queue` reposts the current review board so the council can pick it back up, with each card marked open, sealed, or rejected."
+
 export const helpAdminLabel = "**For server admins**"
 
 export const helpSetupLine = "`/setup` sets butler's channels and tier roles for this server."
@@ -386,6 +389,9 @@ export const helpConfigLine =
 	"`/config` changes one setting at a time (a channel, a tier role, the council role, or the review channel), `/config clear` unsets the mod channel, council role, or review channel, and `/config view` shows the current setup."
 
 export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
+
+export const helpDigestLine =
+	"`/digest` posts a fresh review board now instead of waiting for the weekly run."
 
 export const helpPowerLine = "`/activate` and `/deactivate` turn butler on and off here."
 
@@ -543,3 +549,33 @@ export function queueSignalsLine(format: string, signals: string[]): string | nu
 	if (signals.length === 0) return "TTML: no issues flagged."
 	return `TTML signals: ${signals.map(queueSignalLabel).join(", ")}`
 }
+
+export const queueSealedGeneric =
+	"Sealed by the council. It carries a council seal and a ranking boost."
+
+export const queueRejectedGeneric =
+	"Rejected by the council. It will not surface in the queue again."
+
+export function queueRejectNoteLine(note: string): string {
+	return `Reason: ${note}`
+}
+
+export const queueResendPosted =
+	"Reposted the review board so it is back at the bottom of the channel."
+
+export const queueResendEmpty =
+	"There is no review board yet. An admin can run `/digest` to post one."
+
+export const queueResendFailed =
+	"Could not repost the review board. The current one is still in place, so try again in a moment."
+
+export const digestNoPermission = "You need the Manage Server permission to run this."
+
+export const digestNoChannel =
+	"No review channel is set. Point one with `/config review-channel` first."
+
+export const digestPosted = "Posted a fresh review board to the review channel."
+
+export const digestEmpty = "The review queue is clear. Nothing to post right now."
+
+export const digestDisabled = "butler is off here. Run `/activate` first."

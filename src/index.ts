@@ -7,6 +7,7 @@ import {
 	loadConfig,
 	shouldConnectToDiscord,
 } from "@/config"
+import { queueEmpty } from "@/copy/strings"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
 import {
 	type GuildConfig,
@@ -19,9 +20,12 @@ import {
 } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
+import { getBoard, getBoardCard, replaceBoard, updateBoardCard } from "@/db/review-board"
+import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
 import { createDiscordClient } from "@/discord/client"
 import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
+import { type DigestResult, digestCommand, handleDigest } from "@/discord/commands/digest"
 import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
 import {
@@ -50,7 +54,11 @@ import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
-import { buildQueueCard } from "@/discord/components/queue-card"
+import {
+	buildBoardCard,
+	type buildQueueCard,
+	buildQueueSealedCard,
+} from "@/discord/components/queue-card"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
 import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
@@ -59,7 +67,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
-import { createUnisonClient } from "@/unison/client"
+import { type QueueEntry, createUnisonClient } from "@/unison/client"
 import { createYoutubeiSource, fetchTrackMeta } from "@/ytm/metadata"
 import {
 	type ButtonInteraction,
@@ -194,6 +202,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleQueueSealConfirm(interaction, route.args[0] ?? "", {
 				resolveKeyId,
 				boostLyrics: (lyricsId, keyId) => unison.boostLyrics(lyricsId, keyId),
+				sealBoardCard,
 				linkPageUrl: config.linkPageUrl,
 			})
 			return
@@ -204,6 +213,8 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleQueueSealUndo(interaction, route.args[0] ?? "", {
 				resolveKeyId,
 				unboostLyrics: (lyricsId, keyId) => unison.unboostLyrics(lyricsId, keyId),
+				getEntry: boardEntry,
+				markPending: markBoardPending,
 				linkPageUrl: config.linkPageUrl,
 			})
 			return
@@ -214,6 +225,8 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleQueueRejectUndo(interaction, route.args[0] ?? "", {
 				resolveKeyId,
 				unrejectLyric: (lyricsId, keyId) => unison.unrejectLyric(lyricsId, keyId),
+				getEntry: boardEntry,
+				markPending: markBoardPending,
 				linkPageUrl: config.linkPageUrl,
 			})
 			return
@@ -404,20 +417,137 @@ async function runAll(): Promise<void> {
 	}
 }
 
-async function postReviewDigest(now = Date.now()): Promise<void> {
-	const gc = await getGuildConfig(pool, config.guildId)
-	if (!gc?.reviewChannelId || !gc.enabled) return
-	if (!isReviewDue(await getReviewLastPostedAt(pool, config.guildId), now)) return
-	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
-	if (!channel?.isTextBased() || !channel.isSendable()) return
-	const result = await unison.getLyricsQueue("top-rated", QUEUE_LIMIT)
-	if (result.status !== "ok" || result.entries.length === 0) return
-	for (const entry of result.entries) {
-		await channel
-			.send(buildQueueCard(entry))
-			.catch((err) => console.error("review digest post failed", err))
+async function deleteBoardMessages(
+	refs: { channelId: string; messageId: string }[]
+): Promise<void> {
+	const byChannel = new Map<string, string[]>()
+	for (const ref of refs) {
+		byChannel.set(ref.channelId, [...(byChannel.get(ref.channelId) ?? []), ref.messageId])
 	}
+	for (const [channelId, ids] of byChannel) {
+		const channel = await discord.channels.fetch(channelId).catch(() => null)
+		if (!channel?.isTextBased()) continue
+		for (const id of ids) {
+			await channel.messages
+				.delete(id)
+				.catch((err) => console.error("board message delete failed", err))
+		}
+	}
+}
+
+async function editBoardMessage(
+	channelId: string,
+	messageId: string,
+	payload: ReturnType<typeof buildQueueCard>
+): Promise<void> {
+	const channel = await discord.channels.fetch(channelId).catch(() => null)
+	if (!channel?.isTextBased()) return
+	await channel.messages
+		.edit(messageId, payload)
+		.catch((err) => console.error("board card edit failed", err))
+}
+
+async function sealBoardCard(lyricsId: string, actorId: string): Promise<void> {
+	const card = await getBoardCard(pool, config.guildId, lyricsId)
+	if (!card) return
+	await updateBoardCard(pool, config.guildId, lyricsId, { state: "sealed", actorId })
+	await editBoardMessage(card.channelId, card.messageId, buildQueueSealedCard(card.entry, actorId))
+}
+
+async function boardEntry(lyricsId: string): Promise<QueueEntry | null> {
+	return (await getBoardCard(pool, config.guildId, lyricsId))?.entry ?? null
+}
+
+async function markBoardPending(lyricsId: string): Promise<void> {
+	await updateBoardCard(pool, config.guildId, lyricsId, {
+		state: "pending",
+		actorId: null,
+		note: null,
+	})
+}
+
+async function markBoardRejected(
+	lyricsId: string,
+	actorId: string,
+	note: string | null
+): Promise<void> {
+	await updateBoardCard(pool, config.guildId, lyricsId, { state: "rejected", actorId, note })
+}
+
+async function advanceBoard(opts: { force: boolean; now?: number }): Promise<DigestResult> {
+	const now = opts.now ?? Date.now()
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId) return "no_channel"
+	if (!gc.enabled) return "disabled"
+	if (!opts.force && !isReviewDue(await getReviewLastPostedAt(pool, config.guildId), now)) {
+		return "skipped"
+	}
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return "no_channel"
+	const result = await unison.getLyricsQueue("top-rated", QUEUE_LIMIT)
+	if (result.status !== "ok") return "skipped"
+
+	const previous = await getBoard(pool, config.guildId)
+
+	if (result.entries.length === 0) {
+		await deleteBoardMessages(previous)
+		await replaceBoard(pool, config.guildId, [])
+		if (previous.length > 0) {
+			await channel.send(queueEmpty).catch((err) => console.error("review board post failed", err))
+		}
+		await markReviewPosted(pool, config.guildId, now)
+		return "empty"
+	}
+
+	const planned: PlannedCard[] = carryForwardStates(previous, result.entries).map((card) => ({
+		send: async () => {
+			const message = await channel.send(buildBoardCard(card)).catch((err) => {
+				console.error("review board post failed", err)
+				return null
+			})
+			return message?.id ?? null
+		},
+		build: (messageId) => ({
+			lyricId: String(card.entry.id),
+			messageId,
+			channelId: channel.id,
+			state: card.state,
+			actorId: card.actorId,
+			note: card.note,
+			entry: card.entry,
+		}),
+	}))
+	const synced = await syncBoard(previous, planned, {
+		deleteMessages: deleteBoardMessages,
+		persist: (cards) => replaceBoard(pool, config.guildId, cards),
+	})
+	if (synced === "failed") return "skipped"
 	await markReviewPosted(pool, config.guildId, now)
+	return "posted"
+}
+
+async function resendBoard(): Promise<"posted" | "empty" | "failed"> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId) return "empty"
+	const rows = await getBoard(pool, config.guildId)
+	if (rows.length === 0) return "empty"
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return "empty"
+
+	const planned: PlannedCard[] = rows.map((row) => ({
+		send: async () => {
+			const message = await channel.send(buildBoardCard(row)).catch((err) => {
+				console.error("review board resend failed", err)
+				return null
+			})
+			return message?.id ?? null
+		},
+		build: (messageId) => ({ ...row, messageId, channelId: channel.id }),
+	}))
+	return syncBoard(rows, planned, {
+		deleteMessages: deleteBoardMessages,
+		persist: (cards) => replaceBoard(pool, config.guildId, cards),
+	})
 }
 
 discord.once(Events.ClientReady, async (client) => {
@@ -436,6 +566,7 @@ discord.once(Events.ClientReady, async (client) => {
 			councilCommand.toJSON(),
 			configCommand.toJSON(),
 			queueCommand.toJSON(),
+			digestCommand.toJSON(),
 			helpCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
@@ -444,12 +575,16 @@ discord.once(Events.ClientReady, async (client) => {
 		console.error("failed to register slash commands", err)
 	}
 	await runAll()
-	await postReviewDigest().catch((err) => console.error("startup review digest failed", err))
+	await advanceBoard({ force: false }).catch((err) =>
+		console.error("startup review board failed", err)
+	)
 	syncHandle = setInterval(() => {
 		runAll().catch((err) => console.error("scheduled sync failed", err))
 	}, SYNC_INTERVAL_MS)
 	reviewHandle = setInterval(() => {
-		postReviewDigest().catch((err) => console.error("scheduled review digest failed", err))
+		advanceBoard({ force: false }).catch((err) =>
+			console.error("scheduled review board failed", err)
+		)
 	}, SYNC_INTERVAL_MS)
 })
 
@@ -554,9 +689,25 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		handleQueue(interaction, {
 			resolveKeyId,
 			getBoostQuota: (keyId) => unison.getBoostQuota(keyId),
-			getQueue: () => unison.getLyricsQueue("top-rated", QUEUE_LIMIT),
+			resendBoard,
 			linkPageUrl: config.linkPageUrl,
 		}).catch((err) => console.error("queue handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "digest") {
+		handleDigest(interaction, {
+			runDigest: async () => {
+				const result = await advanceBoard({ force: true })
+				if (result === "posted" || result === "empty") {
+					const gc = await getGuildConfig(pool, config.guildId)
+					modLog(gc?.modChannelId ?? null, {
+						kind: "digest_triggered",
+						discordId: interaction.user.id,
+					})
+				}
+				return result
+			},
+		}).catch((err) => console.error("digest handler failed", err))
 		return
 	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "config") {
@@ -598,10 +749,12 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				commitMigration: (sessionId, discordId, keepNickname) =>
 					unison.commitMigration(sessionId, discordId, keepNickname),
 			}).catch((err) => console.error("migrate commit handler failed", err))
-		} else if (modalRoute?.handler === "queue.reject.submit") {
+		} else if (modalRoute?.handler === "queue.reject.submit" && interaction.isFromMessage()) {
 			handleQueueRejectSubmit(interaction, modalRoute.args[0] ?? "", {
 				resolveKeyId,
 				rejectLyric: (id, keyId, note) => unison.rejectLyric(id, keyId, note),
+				getEntry: boardEntry,
+				markRejected: markBoardRejected,
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("queue reject submit handler failed", err))
 		}
@@ -624,5 +777,6 @@ if (shouldConnectToDiscord(process.env)) {
 	console.log(
 		`Butler stays offline in ${process.env.RAILWAY_ENVIRONMENT_NAME}; only production connects to Discord.`
 	)
-	await new Promise<never>(() => {})
+	// Keep alive without a gateway; a never-resolving top-level await exits with code 13 here.
+	setInterval(() => {}, 1 << 30)
 }

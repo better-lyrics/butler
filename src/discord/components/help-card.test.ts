@@ -2,8 +2,10 @@ import {
 	helpAdminLabel,
 	helpConfigLine,
 	helpCouncilLabel,
+	helpDigestLine,
 	helpEveryoneLabel,
 	helpMigrateLine,
+	helpQueueLine,
 	helpSealLine,
 	helpSetupLine,
 } from "@/copy/strings"
@@ -42,6 +44,7 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpMigrateLine)
 			expect(blob).toContain(helpCouncilLabel)
 			expect(blob).toContain(helpSealLine)
+			expect(blob).toContain(helpQueueLine)
 		})
 
 		it("shows the admin section to an admin", () => {
@@ -49,6 +52,7 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpAdminLabel)
 			expect(blob).toContain(helpSetupLine)
 			expect(blob).toContain(helpConfigLine)
+			expect(blob).toContain(helpDigestLine)
 		})
 	})
 

@@ -6,6 +6,7 @@ import {
 	ButtonStyle,
 	ContainerBuilder,
 	MessageFlags,
+	type MessageMentionOptions,
 	SeparatorBuilder,
 	TextDisplayBuilder,
 } from "discord.js"
@@ -13,6 +14,7 @@ import {
 export interface CardPayload {
 	components: ContainerBuilder[]
 	flags: number | number[]
+	allowedMentions?: MessageMentionOptions
 }
 
 export function buildConnectCard(opts: { linkPageUrl: string }): CardPayload {

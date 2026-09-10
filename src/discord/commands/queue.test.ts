@@ -1,16 +1,18 @@
-import { connectHeading } from "@/copy/strings"
 import {
+	connectHeading,
 	queueAlreadyRejected,
-	queueEmpty,
+	queueEntryHeading,
 	queueError,
 	queueNotCouncil,
+	queueRejectNoteLine,
 	queueRejectUndone,
 	queueRejectedBy,
+	queueResendEmpty,
+	queueResendFailed,
+	queueResendPosted,
 	queueSealCancelled,
 	queueSealUndone,
 	queueSealedBy,
-	queueUndoRejectButtonLabel,
-	queueUndoSealButtonLabel,
 	queueUnknownUser,
 	sealAlreadyActive,
 	sealError,
@@ -23,7 +25,6 @@ import {
 } from "@/copy/strings"
 import type {
 	QueueEntry,
-	QueueResult,
 	QuotaResult,
 	RejectResult,
 	SealResult,
@@ -98,19 +99,42 @@ function entry(overrides: Partial<QueueEntry> = {}): QueueEntry {
 
 function commandInteraction() {
 	const replies: unknown[] = []
-	const followUps: unknown[] = []
+	const defers: unknown[] = []
+	const edits: unknown[] = []
 	return {
 		int: {
 			user: { id: "disc-1" },
+			deferReply: async (o: unknown) => {
+				defers.push(o)
+			},
+			editReply: async (p: unknown) => {
+				edits.push(p)
+			},
 			reply: async (p: unknown) => {
 				replies.push(p)
 			},
-			followUp: async (p: unknown) => {
-				followUps.push(p)
-			},
 		},
 		replies,
-		followUps,
+		defers,
+		edits,
+	}
+}
+
+function boardInteraction(userId = "disc-1") {
+	const updates: unknown[] = []
+	const replies: unknown[] = []
+	return {
+		int: {
+			user: { id: userId },
+			update: async (p: unknown) => {
+				updates.push(p)
+			},
+			reply: async (p: unknown) => {
+				replies.push(p)
+			},
+		},
+		updates,
+		replies,
 	}
 }
 
@@ -130,81 +154,77 @@ function updateInteraction(userId = "disc-1") {
 function commandDeps(overrides: {
 	keyId?: string | null
 	quota?: QuotaResult
-	queue?: QueueResult
+	resend?: "posted" | "empty" | "failed"
 }) {
+	const resendCalls: number[] = []
 	return {
-		resolveKeyId: async () => (overrides.keyId === undefined ? KEY_ID : overrides.keyId),
-		getBoostQuota: async (): Promise<QuotaResult> =>
-			overrides.quota ?? { status: "ok", quota: { quota: 10, used: 1, remaining: 9, resetsAt: 1 } },
-		getQueue: async (): Promise<QueueResult> => overrides.queue ?? { status: "ok", entries: [] },
-		linkPageUrl: "https://unison.test/link",
+		resendCalls,
+		deps: {
+			resolveKeyId: async () => (overrides.keyId === undefined ? KEY_ID : overrides.keyId),
+			getBoostQuota: async (): Promise<QuotaResult> =>
+				overrides.quota ?? {
+					status: "ok",
+					quota: { quota: 10, used: 1, remaining: 9, resetsAt: 1 },
+				},
+			resendBoard: async () => {
+				resendCalls.push(1)
+				return overrides.resend ?? "posted"
+			},
+			linkPageUrl: "https://unison.test/link",
+		},
 	}
 }
 
 describe("handleQueue", () => {
 	describe("gates", () => {
-		it("shows the connect card and never calls the queue when unlinked", async () => {
+		it("shows the connect card and never resends when unlinked", async () => {
 			const { int, replies } = commandInteraction()
-			let queueCalled = 0
-			await handleQueue(int, {
-				...commandDeps({ keyId: null }),
-				getQueue: async () => {
-					queueCalled++
-					return { status: "ok", entries: [] }
-				},
-			})
+			const { deps, resendCalls } = commandDeps({ keyId: null })
+			await handleQueue(int, deps)
 			expect(payloadText(replies[0])).toContain(connectHeading)
-			expect(queueCalled).toBe(0)
+			expect(resendCalls).toHaveLength(0)
 		})
 
 		it("refuses a non-council member", async () => {
 			const { int, replies } = commandInteraction()
-			await handleQueue(int, commandDeps({ quota: { status: "not_council" } }))
+			await handleQueue(int, commandDeps({ quota: { status: "not_council" } }).deps)
 			expect(payloadText(replies[0])).toBe(queueNotCouncil)
 		})
 
 		it("reports an unknown user", async () => {
 			const { int, replies } = commandInteraction()
-			await handleQueue(int, commandDeps({ quota: { status: "unknown_user" } }))
+			await handleQueue(int, commandDeps({ quota: { status: "unknown_user" } }).deps)
 			expect(payloadText(replies[0])).toBe(queueUnknownUser)
 		})
 
 		it("shows a generic error when the quota lookup fails", async () => {
 			const { int, replies } = commandInteraction()
-			await handleQueue(int, commandDeps({ quota: { status: "error", code: 500 } }))
+			await handleQueue(int, commandDeps({ quota: { status: "error", code: 500 } }).deps)
 			expect(payloadText(replies[0])).toBe(queueError)
 		})
 	})
 
-	describe("happy paths", () => {
-		it("replies with the first card and follows up with the rest", async () => {
-			const { int, replies, followUps } = commandInteraction()
-			await handleQueue(
-				int,
-				commandDeps({
-					queue: {
-						status: "ok",
-						entries: [entry({ id: 1, song: "First" }), entry({ id: 2, song: "Second" })],
-					},
-				})
-			)
-			expect(payloadText(replies[0])).toContain("First")
-			expect(followUps).toHaveLength(1)
-			expect(payloadText(followUps[0])).toContain("Second")
-		})
-	})
-
-	describe("edge and error paths", () => {
-		it("shows the empty message when nothing is queued", async () => {
-			const { int, replies } = commandInteraction()
-			await handleQueue(int, commandDeps({ queue: { status: "ok", entries: [] } }))
-			expect(payloadText(replies[0])).toBe(queueEmpty)
+	describe("resend", () => {
+		it("defers before the slow resend and edits the reply once done", async () => {
+			const { int, replies, defers, edits } = commandInteraction()
+			const { deps, resendCalls } = commandDeps({ resend: "posted" })
+			await handleQueue(int, deps)
+			expect(defers).toHaveLength(1)
+			expect(resendCalls).toHaveLength(1)
+			expect(replies).toHaveLength(0)
+			expect(payloadText(edits[0])).toBe(queueResendPosted)
 		})
 
-		it("shows a generic error when the queue lookup fails", async () => {
-			const { int, replies } = commandInteraction()
-			await handleQueue(int, commandDeps({ queue: { status: "error", code: 500 } }))
-			expect(payloadText(replies[0])).toBe(queueError)
+		it("tells the caller there is no board to resend", async () => {
+			const { int, edits } = commandInteraction()
+			await handleQueue(int, commandDeps({ resend: "empty" }).deps)
+			expect(payloadText(edits[0])).toBe(queueResendEmpty)
+		})
+
+		it("reports a failed repost without claiming the board is empty", async () => {
+			const { int, edits } = commandInteraction()
+			await handleQueue(int, commandDeps({ resend: "failed" }).deps)
+			expect(payloadText(edits[0])).toBe(queueResendFailed)
 		})
 	})
 })
@@ -231,15 +251,21 @@ describe("handleQueueSealCancel", () => {
 	})
 })
 
-function sealDeps(result: SealResult, keyId: string | null = KEY_ID) {
+function sealDeps(result: SealResult, keyId: string | null = KEY_ID, boardError?: Error) {
 	const calls: Array<[string, string]> = []
+	const boardCalls: Array<[string, string]> = []
 	return {
 		calls,
+		boardCalls,
 		deps: {
 			resolveKeyId: async () => keyId,
 			boostLyrics: async (lyricsId: string, key: string) => {
 				calls.push([lyricsId, key])
 				return result
+			},
+			sealBoardCard: async (lyricsId: string, actorId: string) => {
+				boardCalls.push([lyricsId, actorId])
+				if (boardError) throw boardError
 			},
 			linkPageUrl: "https://unison.test/link",
 		},
@@ -247,18 +273,29 @@ function sealDeps(result: SealResult, keyId: string | null = KEY_ID) {
 }
 
 describe("handleQueueSealConfirm", () => {
-	it("seals and shows an undo affordance on success", async () => {
+	it("seals, flips the board card, and acks without an undo on the ephemeral reply", async () => {
 		const { int, updates } = updateInteraction()
-		const { deps, calls } = sealDeps({
+		const { deps, calls, boardCalls } = sealDeps({
 			status: "sealed",
 			quota: { quota: 10, used: 2, remaining: 8, resetsAt: 1 },
 		})
 		await handleQueueSealConfirm(int, "4210", deps)
 		expect(calls).toEqual([["4210", KEY_ID]])
+		expect(boardCalls).toEqual([["4210", "disc-1"]])
 		expect(payloadText(updates[0])).toBe(queueSealedBy("disc-1"))
-		const undo = payloadButtons(updates[0])[0]
-		expect(undo?.label).toBe(queueUndoSealButtonLabel)
-		expect(undo?.custom_id).toBe("queue.seal.undo:4210")
+		expect(payloadButtons(updates[0])).toHaveLength(0)
+	})
+
+	it("acks the ephemeral reply before flipping the board so a board failure cannot swallow it", async () => {
+		const { int, updates } = updateInteraction()
+		const { deps } = sealDeps(
+			{ status: "sealed", quota: { quota: 10, used: 2, remaining: 8, resetsAt: 1 } },
+			KEY_ID,
+			new Error("board down")
+		)
+		await expect(handleQueueSealConfirm(int, "4210", deps)).rejects.toThrow("board down")
+		expect(updates).toHaveLength(1)
+		expect(payloadText(updates[0])).toBe(queueSealedBy("disc-1"))
 	})
 
 	describe("error paths", () => {
@@ -273,10 +310,12 @@ describe("handleQueueSealConfirm", () => {
 		]
 
 		for (const [result, copy] of cases) {
-			it(`maps ${result.status} to its message`, async () => {
+			it(`maps ${result.status} to its message and never flips the board`, async () => {
 				const { int, updates } = updateInteraction()
-				await handleQueueSealConfirm(int, "4210", sealDeps(result).deps)
+				const { deps, boardCalls } = sealDeps(result)
+				await handleQueueSealConfirm(int, "4210", deps)
 				expect(payloadText(updates[0])).toBe(copy)
+				expect(boardCalls).toEqual([])
 			})
 		}
 	})
@@ -298,22 +337,40 @@ describe("handleQueueSealConfirm", () => {
 	})
 })
 
-describe("handleQueueSealUndo", () => {
-	function undoDeps(result: UnsealResult) {
-		return {
+function sealUndoDeps(result: UnsealResult, storedEntry: QueueEntry | null = entry()) {
+	const pendingCalls: string[] = []
+	return {
+		pendingCalls,
+		deps: {
 			resolveKeyId: async () => KEY_ID,
 			unboostLyrics: async () => result,
+			getEntry: async () => storedEntry,
+			markPending: async (lyricsId: string) => {
+				pendingCalls.push(lyricsId)
+			},
 			linkPageUrl: "https://unison.test/link",
-		}
+		},
 	}
+}
 
-	it("removes the seal on success", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueSealUndo(int, "4210", undoDeps({ status: "unsealed" }))
+describe("handleQueueSealUndo", () => {
+	it("restores the actionable card and marks the row pending on success", async () => {
+		const { int, updates, replies } = boardInteraction()
+		const { deps, pendingCalls } = sealUndoDeps({ status: "unsealed" })
+		await handleQueueSealUndo(int, "4210", deps)
+		expect(pendingCalls).toEqual(["4210"])
+		expect(payloadText(updates[0])).toContain(queueEntryHeading("Never Gonna Give You Up"))
+		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.seal:4210")
+		expect(replies).toHaveLength(0)
+	})
+
+	it("falls back to a plain notice when the entry is gone", async () => {
+		const { int, updates } = boardInteraction()
+		await handleQueueSealUndo(int, "4210", sealUndoDeps({ status: "unsealed" }, null).deps)
 		expect(payloadText(updates[0])).toBe(queueSealUndone)
 	})
 
-	describe("error paths", () => {
+	describe("error paths keep the card and reply ephemerally", () => {
 		const cases: Array<[UnsealResult, string]> = [
 			[{ status: "not_owner" }, sealNotOwner],
 			[{ status: "not_found" }, sealNotFound],
@@ -323,9 +380,10 @@ describe("handleQueueSealUndo", () => {
 
 		for (const [result, copy] of cases) {
 			it(`maps ${result.status} to its message`, async () => {
-				const { int, updates } = updateInteraction()
-				await handleQueueSealUndo(int, "4210", undoDeps(result))
-				expect(payloadText(updates[0])).toBe(copy)
+				const { int, updates, replies } = boardInteraction()
+				await handleQueueSealUndo(int, "4210", sealUndoDeps(result).deps)
+				expect(payloadText(replies[0])).toBe(copy)
+				expect(updates).toHaveLength(0)
 			})
 		}
 	})
@@ -340,15 +398,25 @@ describe("handleQueueReject", () => {
 	})
 })
 
-function rejectDeps(result: RejectResult, keyId: string | null = KEY_ID) {
+function rejectDeps(
+	result: RejectResult,
+	keyId: string | null = KEY_ID,
+	storedEntry: QueueEntry | null = entry()
+) {
 	const calls: Array<[string, string, string | undefined]> = []
+	const rejectedCalls: Array<[string, string, string | null]> = []
 	return {
 		calls,
+		rejectedCalls,
 		deps: {
 			resolveKeyId: async () => keyId,
 			rejectLyric: async (lyricsId: string, key: string, note?: string) => {
 				calls.push([lyricsId, key, note])
 				return result
+			},
+			getEntry: async () => storedEntry,
+			markRejected: async (lyricsId: string, actorId: string, note: string | null) => {
+				rejectedCalls.push([lyricsId, actorId, note])
 			},
 			linkPageUrl: "https://unison.test/link",
 		},
@@ -356,39 +424,56 @@ function rejectDeps(result: RejectResult, keyId: string | null = KEY_ID) {
 }
 
 function modalSubmit(note: string) {
+	const updates: unknown[] = []
 	const replies: unknown[] = []
 	return {
 		int: {
 			user: { id: "disc-1" },
 			fields: { getTextInputValue: (_id: string) => note },
+			update: async (p: unknown) => {
+				updates.push(p)
+			},
 			reply: async (p: unknown) => {
 				replies.push(p)
 			},
 		},
+		updates,
 		replies,
 	}
 }
 
 describe("handleQueueRejectSubmit", () => {
-	it("rejects with the trimmed note and shows an undo affordance", async () => {
-		const { int, replies } = modalSubmit("  wrong sync throughout  ")
-		const { deps, calls } = rejectDeps({ status: "rejected" })
+	it("rejects, flips the card to rejected with the note, and persists the decision", async () => {
+		const { int, updates } = modalSubmit("  wrong sync throughout  ")
+		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected" })
 		await handleQueueRejectSubmit(int, "4210", deps)
 		expect(calls).toEqual([["4210", KEY_ID, "wrong sync throughout"]])
-		expect(payloadText(replies[0])).toBe(queueRejectedBy("disc-1"))
-		const undo = payloadButtons(replies[0])[0]
-		expect(undo?.label).toBe(queueUndoRejectButtonLabel)
-		expect(undo?.custom_id).toBe("queue.reject.undo:4210")
+		expect(rejectedCalls).toEqual([["4210", "disc-1", "wrong sync throughout"]])
+		const blob = payloadText(updates[0])
+		expect(blob).toContain(queueRejectedBy("disc-1"))
+		expect(blob).toContain(queueRejectNoteLine("wrong sync throughout"))
+		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject.undo:4210")
 	})
 
 	it("omits the note when the field is blank", async () => {
 		const { int } = modalSubmit("   ")
-		const { deps, calls } = rejectDeps({ status: "rejected" })
+		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected" })
 		await handleQueueRejectSubmit(int, "4210", deps)
 		expect(calls).toEqual([["4210", KEY_ID, undefined]])
+		expect(rejectedCalls).toEqual([["4210", "disc-1", null]])
 	})
 
-	describe("error paths", () => {
+	it("falls back to a plain notice when the card entry is gone", async () => {
+		const { int, updates } = modalSubmit("note")
+		await handleQueueRejectSubmit(
+			int,
+			"4210",
+			rejectDeps({ status: "rejected" }, KEY_ID, null).deps
+		)
+		expect(payloadText(updates[0])).toBe(queueRejectedBy("disc-1"))
+	})
+
+	describe("error paths reply ephemerally and never flip the card", () => {
 		const cases: Array<[RejectResult, string]> = [
 			[{ status: "not_council" }, queueNotCouncil],
 			[{ status: "not_found" }, sealNotFound],
@@ -398,9 +483,10 @@ describe("handleQueueRejectSubmit", () => {
 
 		for (const [result, copy] of cases) {
 			it(`maps ${result.status} to its message`, async () => {
-				const { int, replies } = modalSubmit("note")
+				const { int, updates, replies } = modalSubmit("note")
 				await handleQueueRejectSubmit(int, "4210", rejectDeps(result).deps)
 				expect(payloadText(replies[0])).toBe(copy)
+				expect(updates).toHaveLength(0)
 			})
 		}
 	})
@@ -414,22 +500,38 @@ describe("handleQueueRejectSubmit", () => {
 	})
 })
 
-describe("handleQueueRejectUndo", () => {
-	function undoDeps(result: UnrejectResult) {
-		return {
+function rejectUndoDeps(result: UnrejectResult, storedEntry: QueueEntry | null = entry()) {
+	const pendingCalls: string[] = []
+	return {
+		pendingCalls,
+		deps: {
 			resolveKeyId: async () => KEY_ID,
 			unrejectLyric: async () => result,
+			getEntry: async () => storedEntry,
+			markPending: async (lyricsId: string) => {
+				pendingCalls.push(lyricsId)
+			},
 			linkPageUrl: "https://unison.test/link",
-		}
+		},
 	}
+}
 
-	it("lifts the rejection on success", async () => {
-		const { int, updates } = updateInteraction()
-		await handleQueueRejectUndo(int, "4210", undoDeps({ status: "unrejected" }))
+describe("handleQueueRejectUndo", () => {
+	it("restores the actionable card and marks the row pending on success", async () => {
+		const { int, updates } = boardInteraction()
+		const { deps, pendingCalls } = rejectUndoDeps({ status: "unrejected" })
+		await handleQueueRejectUndo(int, "4210", deps)
+		expect(pendingCalls).toEqual(["4210"])
+		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject:4210")
+	})
+
+	it("falls back to a plain notice when the entry is gone", async () => {
+		const { int, updates } = boardInteraction()
+		await handleQueueRejectUndo(int, "4210", rejectUndoDeps({ status: "unrejected" }, null).deps)
 		expect(payloadText(updates[0])).toBe(queueRejectUndone)
 	})
 
-	describe("error paths", () => {
+	describe("error paths reply ephemerally", () => {
 		const cases: Array<[UnrejectResult, string]> = [
 			[{ status: "not_council" }, queueNotCouncil],
 			[{ status: "not_found" }, sealNotFound],
@@ -438,9 +540,10 @@ describe("handleQueueRejectUndo", () => {
 
 		for (const [result, copy] of cases) {
 			it(`maps ${result.status} to its message`, async () => {
-				const { int, updates } = updateInteraction()
-				await handleQueueRejectUndo(int, "4210", undoDeps(result))
-				expect(payloadText(updates[0])).toBe(copy)
+				const { int, updates, replies } = boardInteraction()
+				await handleQueueRejectUndo(int, "4210", rejectUndoDeps(result).deps)
+				expect(payloadText(replies[0])).toBe(copy)
+				expect(updates).toHaveLength(0)
 			})
 		}
 	})
@@ -456,24 +559,20 @@ describe("invariants", () => {
 		)
 		expect(JSON.stringify(seal.updates)).not.toContain(KEY_ID)
 
-		const sealUndo = updateInteraction()
-		await handleQueueSealUndo(sealUndo.int, "4210", {
-			resolveKeyId: async () => KEY_ID,
-			unboostLyrics: async () => ({ status: "unsealed" }),
-			linkPageUrl: "https://unison.test/link",
-		})
+		const sealUndo = boardInteraction()
+		await handleQueueSealUndo(sealUndo.int, "4210", sealUndoDeps({ status: "unsealed" }).deps)
 		expect(JSON.stringify(sealUndo.updates)).not.toContain(KEY_ID)
 
 		const reject = modalSubmit("note")
 		await handleQueueRejectSubmit(reject.int, "4210", rejectDeps({ status: "rejected" }).deps)
-		expect(JSON.stringify(reject.replies)).not.toContain(KEY_ID)
+		expect(JSON.stringify(reject.updates)).not.toContain(KEY_ID)
 
-		const rejectUndo = updateInteraction()
-		await handleQueueRejectUndo(rejectUndo.int, "4210", {
-			resolveKeyId: async () => KEY_ID,
-			unrejectLyric: async () => ({ status: "unrejected" }),
-			linkPageUrl: "https://unison.test/link",
-		})
+		const rejectUndo = boardInteraction()
+		await handleQueueRejectUndo(
+			rejectUndo.int,
+			"4210",
+			rejectUndoDeps({ status: "unrejected" }).deps
+		)
 		expect(JSON.stringify(rejectUndo.updates)).not.toContain(KEY_ID)
 	})
 })
