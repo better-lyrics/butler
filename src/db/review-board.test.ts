@@ -153,4 +153,12 @@ describe("review-board", () => {
 			expect(states).toEqual(["pending", "sealed", "rejected"])
 		})
 	})
+
+	describe("error paths", () => {
+		it("rejects a replaceBoard call that repeats a lyric id (primary key violation)", async () => {
+			await expect(
+				replaceBoard(pool, "g1", [card({ lyricId: "dup" }), card({ lyricId: "dup", position: 1 })])
+			).rejects.toThrow()
+		})
+	})
 })

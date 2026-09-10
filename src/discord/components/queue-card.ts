@@ -25,11 +25,14 @@ import {
 	ButtonStyle,
 	ContainerBuilder,
 	MessageFlags,
+	type MessageMentionOptions,
 	TextDisplayBuilder,
 } from "discord.js"
 import type { CardPayload } from "./connect-card"
 
 const FLAGS = MessageFlags.IsComponentsV2
+
+const NO_MENTIONS: MessageMentionOptions = { parse: [] }
 
 function text(content: string): TextDisplayBuilder {
 	return new TextDisplayBuilder().setContent(content)
@@ -68,7 +71,7 @@ export function buildQueueCard(entry: QueueEntry): CardPayload {
 		)
 	)
 
-	return { components: [container], flags: FLAGS }
+	return { components: [container], flags: FLAGS, allowedMentions: NO_MENTIONS }
 }
 
 export type BoardCardState = "pending" | "sealed" | "rejected"
@@ -108,7 +111,7 @@ function decidedCard(
 		)
 	)
 
-	return { components: [container], flags: FLAGS }
+	return { components: [container], flags: FLAGS, allowedMentions: NO_MENTIONS }
 }
 
 export function buildQueueSealedCard(entry: QueueEntry, actorId: string | null): CardPayload {

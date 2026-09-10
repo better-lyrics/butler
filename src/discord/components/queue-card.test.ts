@@ -126,6 +126,23 @@ describe("buildQueueCard", () => {
 	})
 })
 
+describe("board cards suppress mentions", () => {
+	it("regression: a rejected card renders its note but pings nobody", () => {
+		const card = buildQueueRejectedCard(entry(), "777", "@everyone drop everything")
+		expect(textBlob(card)).toContain(queueRejectNoteLine("@everyone drop everything"))
+		expect(card.allowedMentions).toEqual({ parse: [] })
+	})
+
+	it("suppresses mentions on pending and sealed cards too", () => {
+		expect(buildQueueCard(entry()).allowedMentions).toEqual({ parse: [] })
+		expect(buildQueueSealedCard(entry(), "777").allowedMentions).toEqual({ parse: [] })
+		expect(
+			buildBoardCard({ state: "rejected", entry: entry(), actorId: "777", note: "@here" })
+				.allowedMentions
+		).toEqual({ parse: [] })
+	})
+})
+
 describe("buildQueueSealConfirmCard", () => {
 	it("offers confirm and cancel buttons, with the lyrics id only on confirm", () => {
 		const btns = buttons(buildQueueSealConfirmCard("4210"))

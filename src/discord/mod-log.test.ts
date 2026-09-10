@@ -125,6 +125,14 @@ describe("formatModLogEvent", () => {
 		})
 	})
 
+	describe("digest event", () => {
+		it("names who posted a fresh review board", () => {
+			const line = formatModLogEvent({ kind: "digest_triggered", discordId })
+			expect(line).toContain("Digest")
+			expect(line).toContain(mention)
+		})
+	})
+
 	describe("invariants", () => {
 		const samples: ModLogEvent[] = [
 			{ kind: "sync_triggered", discordId },
@@ -144,6 +152,7 @@ describe("formatModLogEvent", () => {
 			},
 			{ kind: "setup_updated", discordId },
 			{ kind: "power_toggled", discordId, on: true },
+			{ kind: "digest_triggered", discordId },
 		]
 
 		it("every event produces a non-empty single-line message with a bold tag", () => {

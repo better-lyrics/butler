@@ -488,11 +488,14 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 	const result = await unison.getLyricsQueue("top-rated", QUEUE_LIMIT)
 	if (result.status !== "ok") return "skipped"
 
-	await deleteBoardMessages(await getBoard(pool, config.guildId))
+	const previous = await getBoard(pool, config.guildId)
+	await deleteBoardMessages(previous)
 
 	if (result.entries.length === 0) {
 		await replaceBoard(pool, config.guildId, [])
-		await channel.send(queueEmpty).catch((err) => console.error("review board post failed", err))
+		if (previous.length > 0) {
+			await channel.send(queueEmpty).catch((err) => console.error("review board post failed", err))
+		}
 		await markReviewPosted(pool, config.guildId, now)
 		return "empty"
 	}
@@ -516,6 +519,7 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 			entry,
 		})
 	}
+	if (cards.length === 0) return "skipped"
 	await replaceBoard(pool, config.guildId, cards)
 	await markReviewPosted(pool, config.guildId, now)
 	return "posted"
@@ -541,6 +545,7 @@ async function resendBoard(): Promise<"posted" | "empty"> {
 		if (!message) continue
 		cards.push({ ...row, messageId: message.id, channelId: channel.id, position: position++ })
 	}
+	if (cards.length === 0) return "empty"
 	await replaceBoard(pool, config.guildId, cards)
 	return "posted"
 }
