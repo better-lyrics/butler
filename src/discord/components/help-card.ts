@@ -4,11 +4,13 @@ import {
 	helpConfigLine,
 	helpCouncilLabel,
 	helpCouncilLine,
+	helpDigestLine,
 	helpEveryoneLabel,
 	helpHeading,
 	helpMigrateLine,
 	helpPowerLine,
 	helpPreviewLine,
+	helpQueueLine,
 	helpReportLine,
 	helpSealLine,
 	helpSetupLine,
@@ -28,7 +30,7 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(helpEveryoneLabel), text(helpReportLine), text(helpMigrateLine))
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(text(helpCouncilLabel), text(helpSealLine))
+		.addTextDisplayComponents(text(helpCouncilLabel), text(helpSealLine), text(helpQueueLine))
 
 	if (opts.isAdmin) {
 		container
@@ -39,6 +41,7 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 				text(helpConfigLine),
 				text(helpCouncilLine),
 				text(helpSyncLine),
+				text(helpDigestLine),
 				text(helpPowerLine),
 				text(helpPreviewLine)
 			)

@@ -1,17 +1,16 @@
 import {
 	queueAlreadyRejected,
-	queueEmpty,
 	queueError,
 	queueNotCouncil,
 	queueRejectModalTitle,
 	queueRejectNoteLabel,
 	queueRejectUndone,
 	queueRejectedBy,
+	queueResendEmpty,
+	queueResendPosted,
 	queueSealCancelled,
 	queueSealUndone,
 	queueSealedBy,
-	queueUndoRejectButtonLabel,
-	queueUndoSealButtonLabel,
 	queueUnknownUser,
 	sealAlreadyActive,
 	sealError,
@@ -25,13 +24,14 @@ import {
 import { buildConnectCard } from "@/discord/components/connect-card"
 import {
 	buildQueueCard,
+	buildQueueRejectedCard,
 	buildQueueResultCard,
 	buildQueueSealConfirmCard,
 } from "@/discord/components/queue-card"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import { encodeCustomId } from "@/interactions/custom-id"
 import type {
-	QueueResult,
+	QueueEntry,
 	QuotaResult,
 	RejectResult,
 	SealResult,
@@ -48,7 +48,7 @@ import {
 
 export const queueCommand = new SlashCommandBuilder()
 	.setName("queue")
-	.setDescription("Browse top-voted lyrics waiting to be sealed")
+	.setDescription("Repost the current review board so the council can pick it back up")
 
 const NOTE_INPUT = "note"
 
@@ -58,7 +58,6 @@ export const QUEUE_LIMIT = 10
 export interface QueueCommandInteraction {
 	user: { id: string }
 	reply(payload: unknown): Promise<unknown>
-	followUp(payload: unknown): Promise<unknown>
 }
 
 /** Minimal shape of a button interaction that opens an ephemeral reply. */
@@ -72,46 +71,61 @@ export interface QueueUpdateInteraction {
 	update(payload: unknown): Promise<unknown>
 }
 
+/** A board button that can either edit its card or answer with an ephemeral note. */
+export interface QueueBoardInteraction {
+	user: { id: string }
+	update(payload: unknown): Promise<unknown>
+	reply(payload: unknown): Promise<unknown>
+}
+
 /** Minimal shape of the reject button interaction (opens the note modal). */
 export interface QueueModalOpenInteraction {
 	showModal(modal: ModalBuilder): Promise<unknown>
 }
 
-/** Minimal shape of the reject note modal submit. */
+/** Minimal shape of the reject note modal submit (edits its card or replies ephemerally). */
 export interface QueueModalSubmitInteraction {
 	user: { id: string }
 	fields: { getTextInputValue(id: string): string }
+	update(payload: unknown): Promise<unknown>
 	reply(payload: unknown): Promise<unknown>
 }
 
 export interface QueueCommandDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	getBoostQuota(keyId: string): Promise<QuotaResult>
-	getQueue(): Promise<QueueResult>
+	resendBoard(): Promise<"posted" | "empty">
 	linkPageUrl: string
 }
 
 export interface QueueSealDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	boostLyrics(lyricsId: string, keyId: string): Promise<SealResult>
+	sealBoardCard(lyricsId: string, actorId: string): Promise<void>
 	linkPageUrl: string
 }
 
 export interface QueueSealUndoDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	unboostLyrics(lyricsId: string, keyId: string): Promise<UnsealResult>
+	getEntry(lyricsId: string): Promise<QueueEntry | null>
+	markPending(lyricsId: string): Promise<void>
 	linkPageUrl: string
 }
 
 export interface QueueRejectDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
+	getEntry(lyricsId: string): Promise<QueueEntry | null>
+	markRejected(lyricsId: string, actorId: string, note: string | null): Promise<void>
 	linkPageUrl: string
 }
 
 export interface QueueRejectUndoDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
+	getEntry(lyricsId: string): Promise<QueueEntry | null>
+	markPending(lyricsId: string): Promise<void>
 	linkPageUrl: string
 }
 
@@ -139,21 +153,8 @@ export async function handleQueue(
 		return
 	}
 
-	const result = await deps.getQueue()
-	if (result.status !== "ok") {
-		await interaction.reply(ephemeralText(queueError))
-		return
-	}
-	const first = result.entries[0]
-	if (!first) {
-		await interaction.reply(ephemeralText(queueEmpty))
-		return
-	}
-
-	await interaction.reply(ephemeralCard(buildQueueCard(first)))
-	for (const entry of result.entries.slice(1)) {
-		await interaction.followUp(ephemeralCard(buildQueueCard(entry)))
-	}
+	const result = await deps.resendBoard()
+	await interaction.reply(ephemeralText(result === "posted" ? queueResendPosted : queueResendEmpty))
 }
 
 export async function handleQueueSeal(
@@ -190,13 +191,8 @@ export async function handleQueueSealConfirm(
 	const result = await deps.boostLyrics(lyricsId, keyId)
 	switch (result.status) {
 		case "sealed":
-			await interaction.update(
-				buildQueueResultCard(queueSealedBy(interaction.user.id), {
-					action: "queue.seal.undo",
-					lyricsId,
-					label: queueUndoSealButtonLabel,
-				})
-			)
+			await deps.sealBoardCard(lyricsId, interaction.user.id)
+			await interaction.update(buildQueueResultCard(queueSealedBy(interaction.user.id)))
 			return
 		case "not_council":
 			await interaction.update(buildQueueResultCard(sealNotCouncil))
@@ -223,35 +219,40 @@ export async function handleQueueSealConfirm(
 }
 
 export async function handleQueueSealUndo(
-	interaction: QueueUpdateInteraction,
+	interaction: QueueBoardInteraction,
 	lyricsId: string,
 	deps: QueueSealUndoDeps
 ): Promise<void> {
 	if (!lyricsId) {
-		await interaction.update(buildQueueResultCard(sealError))
+		await interaction.reply(ephemeralText(sealError))
 		return
 	}
 	const keyId = await deps.resolveKeyId(interaction.user.id)
 	if (!keyId) {
-		await interaction.update(buildConnectCard({ linkPageUrl: deps.linkPageUrl }))
+		await interaction.reply(ephemeralCard(buildConnectCard({ linkPageUrl: deps.linkPageUrl })))
 		return
 	}
 	const result = await deps.unboostLyrics(lyricsId, keyId)
 	switch (result.status) {
-		case "unsealed":
-			await interaction.update(buildQueueResultCard(queueSealUndone))
+		case "unsealed": {
+			const entry = await deps.getEntry(lyricsId)
+			await deps.markPending(lyricsId)
+			await interaction.update(
+				entry ? buildQueueCard(entry) : buildQueueResultCard(queueSealUndone)
+			)
 			return
+		}
 		case "not_owner":
-			await interaction.update(buildQueueResultCard(sealNotOwner))
+			await interaction.reply(ephemeralText(sealNotOwner))
 			return
 		case "not_found":
-			await interaction.update(buildQueueResultCard(sealNotFound))
+			await interaction.reply(ephemeralText(sealNotFound))
 			return
 		case "not_council":
-			await interaction.update(buildQueueResultCard(sealNotCouncil))
+			await interaction.reply(ephemeralText(sealNotCouncil))
 			return
 		default:
-			await interaction.update(buildQueueResultCard(sealError))
+			await interaction.reply(ephemeralText(sealError))
 			return
 	}
 }
@@ -293,17 +294,16 @@ export async function handleQueueRejectSubmit(
 	}
 	const result = await deps.rejectLyric(lyricsId, keyId, note || undefined)
 	switch (result.status) {
-		case "rejected":
-			await interaction.reply(
-				ephemeralCard(
-					buildQueueResultCard(queueRejectedBy(interaction.user.id), {
-						action: "queue.reject.undo",
-						lyricsId,
-						label: queueUndoRejectButtonLabel,
-					})
-				)
+		case "rejected": {
+			const entry = await deps.getEntry(lyricsId)
+			await deps.markRejected(lyricsId, interaction.user.id, note || null)
+			await interaction.update(
+				entry
+					? buildQueueRejectedCard(entry, interaction.user.id, note || null)
+					: buildQueueResultCard(queueRejectedBy(interaction.user.id))
 			)
 			return
+		}
 		case "not_council":
 			await interaction.reply(ephemeralText(queueNotCouncil))
 			return
@@ -320,32 +320,37 @@ export async function handleQueueRejectSubmit(
 }
 
 export async function handleQueueRejectUndo(
-	interaction: QueueUpdateInteraction,
+	interaction: QueueBoardInteraction,
 	lyricsId: string,
 	deps: QueueRejectUndoDeps
 ): Promise<void> {
 	if (!lyricsId) {
-		await interaction.update(buildQueueResultCard(queueError))
+		await interaction.reply(ephemeralText(queueError))
 		return
 	}
 	const keyId = await deps.resolveKeyId(interaction.user.id)
 	if (!keyId) {
-		await interaction.update(buildConnectCard({ linkPageUrl: deps.linkPageUrl }))
+		await interaction.reply(ephemeralCard(buildConnectCard({ linkPageUrl: deps.linkPageUrl })))
 		return
 	}
 	const result = await deps.unrejectLyric(lyricsId, keyId)
 	switch (result.status) {
-		case "unrejected":
-			await interaction.update(buildQueueResultCard(queueRejectUndone))
+		case "unrejected": {
+			const entry = await deps.getEntry(lyricsId)
+			await deps.markPending(lyricsId)
+			await interaction.update(
+				entry ? buildQueueCard(entry) : buildQueueResultCard(queueRejectUndone)
+			)
 			return
+		}
 		case "not_council":
-			await interaction.update(buildQueueResultCard(queueNotCouncil))
+			await interaction.reply(ephemeralText(queueNotCouncil))
 			return
 		case "not_found":
-			await interaction.update(buildQueueResultCard(sealNotFound))
+			await interaction.reply(ephemeralText(sealNotFound))
 			return
 		default:
-			await interaction.update(buildQueueResultCard(queueError))
+			await interaction.reply(ephemeralText(queueError))
 			return
 	}
 }

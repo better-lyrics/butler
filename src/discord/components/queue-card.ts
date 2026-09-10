@@ -6,8 +6,15 @@ import {
 	queueEntryDetails,
 	queueEntryHeading,
 	queueRejectButtonLabel,
+	queueRejectNoteLine,
+	queueRejectedBy,
+	queueRejectedGeneric,
 	queueSealButtonLabel,
+	queueSealedBy,
+	queueSealedGeneric,
 	queueSignalsLine,
+	queueUndoRejectButtonLabel,
+	queueUndoSealButtonLabel,
 	queueVerifyButtonLabel,
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
@@ -62,6 +69,77 @@ export function buildQueueCard(entry: QueueEntry): CardPayload {
 	)
 
 	return { components: [container], flags: FLAGS }
+}
+
+export type BoardCardState = "pending" | "sealed" | "rejected"
+
+interface DecidedInput {
+	entry: QueueEntry
+	actorId: string | null
+	note: string | null
+}
+
+function decidedCard(
+	input: DecidedInput,
+	line: string,
+	undo: { action: string; label: string }
+): CardPayload {
+	const id = String(input.entry.id)
+	const container = new ContainerBuilder()
+		.setAccentColor(PALETTE.betterLyricsRed)
+		.addTextDisplayComponents(text(queueEntryHeading(input.entry.song)))
+		.addTextDisplayComponents(text(queueEntryDetails(input.entry)))
+		.addTextDisplayComponents(text(line))
+
+	if (input.note) {
+		container.addTextDisplayComponents(text(queueRejectNoteLine(input.note)))
+	}
+
+	container.addActionRowComponents(
+		new ActionRowBuilder<ButtonBuilder>().addComponents(
+			new ButtonBuilder()
+				.setStyle(ButtonStyle.Link)
+				.setURL(ytmUrl(input.entry.videoId))
+				.setLabel(queueVerifyButtonLabel),
+			new ButtonBuilder()
+				.setStyle(ButtonStyle.Secondary)
+				.setCustomId(encodeCustomId(undo.action, [id]))
+				.setLabel(undo.label)
+		)
+	)
+
+	return { components: [container], flags: FLAGS }
+}
+
+export function buildQueueSealedCard(entry: QueueEntry, actorId: string | null): CardPayload {
+	const line = actorId ? queueSealedBy(actorId) : queueSealedGeneric
+	return decidedCard({ entry, actorId, note: null }, line, {
+		action: "queue.seal.undo",
+		label: queueUndoSealButtonLabel,
+	})
+}
+
+export function buildQueueRejectedCard(
+	entry: QueueEntry,
+	actorId: string | null,
+	note: string | null
+): CardPayload {
+	const line = actorId ? queueRejectedBy(actorId) : queueRejectedGeneric
+	return decidedCard({ entry, actorId, note }, line, {
+		action: "queue.reject.undo",
+		label: queueUndoRejectButtonLabel,
+	})
+}
+
+export function buildBoardCard(card: {
+	state: BoardCardState
+	entry: QueueEntry
+	actorId: string | null
+	note: string | null
+}): CardPayload {
+	if (card.state === "sealed") return buildQueueSealedCard(card.entry, card.actorId)
+	if (card.state === "rejected") return buildQueueRejectedCard(card.entry, card.actorId, card.note)
+	return buildQueueCard(card.entry)
 }
 
 export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {

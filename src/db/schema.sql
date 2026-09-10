@@ -40,3 +40,15 @@ CREATE TABLE IF NOT EXISTS badge_seeded (
   seeded_at  BIGINT,
   PRIMARY KEY (discord_id, guild_id)
 );
+CREATE TABLE IF NOT EXISTS review_board_card (
+  guild_id   TEXT NOT NULL,
+  lyric_id   TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  position   INTEGER NOT NULL,
+  state      TEXT NOT NULL DEFAULT 'pending',
+  actor_id   TEXT,
+  note       TEXT,
+  entry      JSONB NOT NULL,
+  PRIMARY KEY (guild_id, lyric_id)
+);

@@ -25,6 +25,7 @@ export type ModLogEvent =
 	  }
 	| { kind: "setup_updated"; discordId: string }
 	| { kind: "power_toggled"; discordId: string; on: boolean }
+	| { kind: "digest_triggered"; discordId: string }
 
 export type ModLog = (event: ModLogEvent) => void
 
@@ -81,5 +82,7 @@ export function formatModLogEvent(event: ModLogEvent): string {
 			return `**Setup** ${mention(event.discordId)} updated butler's configuration.`
 		case "power_toggled":
 			return `**Power** ${mention(event.discordId)} turned butler ${event.on ? "on" : "off"}.`
+		case "digest_triggered":
+			return `**Digest** ${mention(event.discordId)} posted a fresh review board.`
 	}
 }
