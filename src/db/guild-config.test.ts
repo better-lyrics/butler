@@ -3,6 +3,7 @@ import { newDb } from "pg-mem"
 import { beforeEach, describe, expect, it } from "vitest"
 import {
 	type GuildConfig,
+	getExamMinRoleId,
 	getGuildConfig,
 	getReviewLastPostedAt,
 	listGuildConfigs,
@@ -129,6 +130,7 @@ describe("guild-config", () => {
 			await setGuildField(pool, "g1", "mod", "mm")
 			await setGuildField(pool, "g1", "council", "cr")
 			await setGuildField(pool, "g1", "review", "rv")
+			await setGuildField(pool, "g1", "examMinRole", "role-min")
 			expect(await getGuildConfig(pool, "g1")).toMatchObject({
 				connectChannelId: "cc",
 				reportChannelId: "rr",
@@ -137,6 +139,40 @@ describe("guild-config", () => {
 				councilRoleId: "cr",
 				reviewChannelId: "rv",
 			})
+			expect(await getExamMinRoleId(pool, "g1")).toBe("role-min")
+		})
+	})
+
+	describe("exam min role", () => {
+		it("sets and reads back the exam min role", async () => {
+			await setGuildField(pool, "g1", "examMinRole", "role-lyricist")
+			expect(await getExamMinRoleId(pool, "g1")).toBe("role-lyricist")
+		})
+
+		it("clears the exam min role back to null", async () => {
+			await setGuildField(pool, "g1", "examMinRole", "role-lyricist")
+			await setGuildField(pool, "g1", "examMinRole", null)
+			expect(await getExamMinRoleId(pool, "g1")).toBeNull()
+		})
+
+		it("creates the row when the guild has no config yet", async () => {
+			await setGuildField(pool, "fresh", "examMinRole", "role-fresh")
+			expect(await getExamMinRoleId(pool, "fresh")).toBe("role-fresh")
+		})
+
+		it("returns null for a guild with no config row", async () => {
+			expect(await getExamMinRoleId(pool, "nope")).toBeNull()
+		})
+
+		it("returns null before any exam min role has been set", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			expect(await getExamMinRoleId(pool, "g1")).toBeNull()
+		})
+
+		it("does not disturb the rest of the config", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await setGuildField(pool, "g1", "examMinRole", "role-min")
+			expect(await getGuildConfig(pool, "g1")).toEqual(fullConfig())
 		})
 	})
 

@@ -219,11 +219,11 @@ describe("handleCouncilApplicantApprove", () => {
 		expect(updates).toHaveLength(0)
 	})
 
-	it("adds to the council, grants the role, records the decision, welcomes them, then flips the card", async () => {
+	it("records the decision, adds to the council, grants the role, welcomes them, then flips the card", async () => {
 		const { interaction: int, updates } = decisionInteraction()
 		const { deps, order } = approveDeps()
 		await handleCouncilApplicantApprove(int, args, deps)
-		expect(order).toEqual(["resolve", "add", "grant", "decide", "welcome"])
+		expect(order).toEqual(["resolve", "decide", "add", "grant", "welcome"])
 		expect(JSON.stringify(updates)).toContain("approved by")
 	})
 
@@ -248,15 +248,32 @@ describe("handleCouncilApplicantApprove", () => {
 		const { deps, order } = approveDeps({ add: { status: "error", code: 500 } })
 		await handleCouncilApplicantApprove(int, args, deps)
 		expect(replies[0]?.content).toBe(COUNCIL_APPLICANT_DECISION_ERROR)
-		expect(order).toEqual(["resolve", "add"])
+		expect(order).toEqual(["resolve", "decide", "add"])
 	})
 
 	it("still approves and notes the failure when the role grant fails", async () => {
 		const { interaction: int, updates } = decisionInteraction()
 		const { deps, order } = approveDeps({ role: "failed" })
 		await handleCouncilApplicantApprove(int, args, deps)
-		expect(order).toEqual(["resolve", "add", "grant", "decide", "welcome"])
+		expect(order).toEqual(["resolve", "decide", "add", "grant", "welcome"])
 		expect(JSON.stringify(updates)).toContain("Could not assign the Council role")
+	})
+
+	it("regression: never adds to the council when the decision cannot be recorded", async () => {
+		const { interaction: int, replies, updates } = decisionInteraction()
+		const { deps, order } = approveDeps({ decide: { status: "error", code: 500 } })
+		await handleCouncilApplicantApprove(int, args, deps)
+		expect(replies[0]?.content).toBe(COUNCIL_APPLICANT_DECISION_ERROR)
+		expect(order).toEqual(["resolve", "decide"])
+		expect(updates).toHaveLength(0)
+	})
+
+	it("regression: shows the gone card and never adds when the applicant was already decided", async () => {
+		const { interaction: int, updates } = decisionInteraction()
+		const { deps, order } = approveDeps({ decide: { status: "not_found" } })
+		await handleCouncilApplicantApprove(int, args, deps)
+		expect(order).toEqual(["resolve", "decide"])
+		expect(JSON.stringify(updates)).toContain("no longer pending")
 	})
 })
 

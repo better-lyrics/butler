@@ -141,6 +141,16 @@ export async function handleCouncilApplicantApprove(
 		return
 	}
 
+	const decision = await deps.decideExamApplicant(args.applicantId, "approve", interaction.user.id)
+	if (decision.status === "error") {
+		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
+		return
+	}
+	if (decision.status === "not_found") {
+		await interaction.update(buildApplicantGoneCard())
+		return
+	}
+
 	const add = await deps.addCouncilMember(keyId)
 	if (add.status !== "added") {
 		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
@@ -148,7 +158,6 @@ export async function handleCouncilApplicantApprove(
 	}
 
 	const role = await deps.grantCouncilRole(args.discordId)
-	await deps.decideExamApplicant(args.applicantId, "approve", interaction.user.id)
 	await deps.welcomeMember(args.discordId)
 
 	await interaction.update(
