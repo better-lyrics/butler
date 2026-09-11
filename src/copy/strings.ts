@@ -607,6 +607,9 @@ export const examIntroCatch =
 export const examIntroExam =
 	"Well, this exam is your chance to prove you have what it takes. You only get one attempt, so make it count! We highly recommend reviewing the lyrics guide before you start. Once you're ready and confident, hit Begin exam below."
 
+export const examIntroWarning =
+	"One rule above all: the exam questions are confidential. Sharing them anywhere, with anyone, is an instant **permanent ban**."
+
 export function examIntroExpiry(expiresAt: number): string {
 	return `The link expires ${time(expiresAt, TimestampStyles.RelativeTime)}.`
 }

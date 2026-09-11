@@ -1,4 +1,4 @@
-import { examIntroCatch, examIntroExam } from "@/copy/strings"
+import { examIntroCatch, examIntroExam, examIntroWarning } from "@/copy/strings"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
 import { buildCouncilWelcomeCard, buildExamIntroCard } from "./exam-card"
@@ -23,11 +23,12 @@ describe("buildExamIntroCard", () => {
 		expect(c.allowedMentions).toEqual({ parse: [] })
 	})
 
-	it("renders the three intro beats and both link buttons", () => {
+	it("renders the intro beats, the confidentiality warning, and both link buttons", () => {
 		const json = JSON.stringify(card())
 		expect(json).toContain("The Council is an elite team that seals rare, exceptional lyrics.")
 		expect(json).toContain(examIntroCatch)
 		expect(json).toContain(examIntroExam)
+		expect(json).toContain(examIntroWarning)
 		expect(json).toContain(EXAM_URL)
 		expect(json).toContain(GUIDE_URL)
 	})

@@ -22,6 +22,7 @@ import {
 	examIntroExam,
 	examIntroExpiry,
 	examIntroHeading,
+	examIntroWarning,
 	examIntroWhat,
 	examRejectButtonLabel,
 	examRejectConfirm,
@@ -65,6 +66,7 @@ export function buildExamIntroCard(opts: {
 			text(examIntroWhat),
 			text(examIntroCatch),
 			text(examIntroExam),
+			text(examIntroWarning),
 			text(examIntroExpiry(opts.expiresAt))
 		)
 		.addActionRowComponents(
