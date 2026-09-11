@@ -81,8 +81,8 @@ export const setupCommand = new SlashCommandBuilder()
 	)
 	.addChannelOption((option) =>
 		option
-			.setName("review_channel")
-			.setDescription("Channel for the weekly council review digest")
+			.setName("council_channel")
+			.setDescription("The council channel where the weekly review board posts")
 			.setRequired(false)
 	)
 
@@ -109,7 +109,7 @@ export async function handleSetup(
 	const announceChannel = interaction.options.getChannel("announce_channel", true)
 	const modChannel = interaction.options.getChannel("mod_channel", false)
 	const councilRole = interaction.options.getRole("council_role", false)
-	const reviewChannel = interaction.options.getChannel("review_channel", false)
+	const reviewChannel = interaction.options.getChannel("council_channel", false)
 
 	const config: GuildConfig = {
 		guildId: interaction.guildId,

@@ -6,6 +6,8 @@ import {
 	configCouncilRoleCleared,
 	configCouncilRoleSet,
 	configError,
+	configExamMinRoleCleared,
+	configExamMinRoleSet,
 	configGuildOnly,
 	configModChannelCleared,
 	configModChannelSet,
@@ -58,10 +60,10 @@ export const configCommand = new SlashCommandBuilder()
 	)
 	.addSubcommand((s) =>
 		s
-			.setName("review-channel")
-			.setDescription("Set the channel for the weekly council review digest")
+			.setName("council-channel")
+			.setDescription("Set the council channel where the weekly review board posts")
 			.addChannelOption((o) =>
-				o.setName("channel").setDescription("Review digest channel").setRequired(true)
+				o.setName("channel").setDescription("Council channel").setRequired(true)
 			)
 	)
 	.addSubcommand((s) =>
@@ -69,6 +71,14 @@ export const configCommand = new SlashCommandBuilder()
 			.setName("council-role")
 			.setDescription("Set the role granted to council members")
 			.addRoleOption((o) => o.setName("role").setDescription("Council role").setRequired(true))
+	)
+	.addSubcommand((s) =>
+		s
+			.setName("exam-min-role")
+			.setDescription("Set the minimum role to apply for the Council exam (default: Lyricist)")
+			.addRoleOption((o) =>
+				o.setName("role").setDescription("Minimum role to apply").setRequired(true)
+			)
 	)
 	.addSubcommand((s) =>
 		s
@@ -96,8 +106,9 @@ export const configCommand = new SlashCommandBuilder()
 					.setRequired(true)
 					.addChoices(
 						{ name: "mod channel", value: "mod-channel" },
-						{ name: "review channel", value: "review-channel" },
-						{ name: "council role", value: "council-role" }
+						{ name: "council channel", value: "council-channel" },
+						{ name: "council role", value: "council-role" },
+						{ name: "exam min role", value: "exam-min-role" }
 					)
 			)
 	)
@@ -154,7 +165,7 @@ export async function handleConfig(
 		sub === "report-channel" ||
 		sub === "announce-channel" ||
 		sub === "mod-channel" ||
-		sub === "review-channel"
+		sub === "council-channel"
 	) {
 		const channel = interaction.options.getChannel("channel", true)
 		if (!channel) {
@@ -171,7 +182,7 @@ export async function handleConfig(
 			await interaction.reply(ephemeralText(configAnnounceSet))
 			return
 		}
-		if (sub === "review-channel") {
+		if (sub === "council-channel") {
 			await deps.setField("review", channel.id)
 			await interaction.reply(ephemeralText(configReviewChannelSet))
 			return
@@ -189,6 +200,17 @@ export async function handleConfig(
 		}
 		await deps.setField("council", role.id)
 		await interaction.reply(ephemeralText(configCouncilRoleSet(`<@&${role.id}>`)))
+		return
+	}
+
+	if (sub === "exam-min-role") {
+		const role = interaction.options.getRole("role", true)
+		if (!role) {
+			await interaction.reply(ephemeralText(configError))
+			return
+		}
+		await deps.setField("examMinRole", role.id)
+		await interaction.reply(ephemeralText(configExamMinRoleSet(`<@&${role.id}>`)))
 		return
 	}
 
@@ -211,7 +233,7 @@ export async function handleConfig(
 			await interaction.reply(ephemeralText(configModChannelCleared))
 			return
 		}
-		if (field === "review-channel") {
+		if (field === "council-channel") {
 			await deps.setField("review", null)
 			await interaction.reply(ephemeralText(configReviewChannelCleared))
 			return
@@ -219,6 +241,11 @@ export async function handleConfig(
 		if (field === "council-role") {
 			await deps.setField("council", null)
 			await interaction.reply(ephemeralText(configCouncilRoleCleared))
+			return
+		}
+		if (field === "exam-min-role") {
+			await deps.setField("examMinRole", null)
+			await interaction.reply(ephemeralText(configExamMinRoleCleared))
 			return
 		}
 		await interaction.reply(ephemeralText(configError))

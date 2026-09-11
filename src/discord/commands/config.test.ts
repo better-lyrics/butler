@@ -5,6 +5,8 @@ import {
 	configCouncilRoleCleared,
 	configCouncilRoleSet,
 	configError,
+	configExamMinRoleCleared,
+	configExamMinRoleSet,
 	configGuildOnly,
 	configModChannelCleared,
 	configModChannelSet,
@@ -200,7 +202,7 @@ describe("handleConfig channel setters", () => {
 
 	it("sets the review channel", async () => {
 		const { interaction: int, replies } = interaction({
-			sub: "review-channel",
+			sub: "council-channel",
 			channelId: "review-9",
 		})
 		const d = deps()
@@ -227,6 +229,14 @@ describe("handleConfig role setters", () => {
 		await handleConfig(int, d.deps)
 		expect(d.calls.setField).toEqual([["council", "council-9"]])
 		expect(replies[0]?.content).toBe(configCouncilRoleSet("<@&council-9>"))
+	})
+
+	it("sets the exam minimum role", async () => {
+		const { interaction: int, replies } = interaction({ sub: "exam-min-role", roleId: "role-min" })
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["examMinRole", "role-min"]])
+		expect(replies[0]?.content).toBe(configExamMinRoleSet("<@&role-min>"))
 	})
 
 	it("sets a single tier role through setTierRole, not setField", async () => {
@@ -261,11 +271,19 @@ describe("handleConfig clear", () => {
 	})
 
 	it("clears the review channel", async () => {
-		const { interaction: int, replies } = interaction({ sub: "clear", field: "review-channel" })
+		const { interaction: int, replies } = interaction({ sub: "clear", field: "council-channel" })
 		const d = deps()
 		await handleConfig(int, d.deps)
 		expect(d.calls.setField).toEqual([["review", null]])
 		expect(replies[0]?.content).toBe(configReviewChannelCleared)
+	})
+
+	it("clears the exam minimum role", async () => {
+		const { interaction: int, replies } = interaction({ sub: "clear", field: "exam-min-role" })
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["examMinRole", null]])
+		expect(replies[0]?.content).toBe(configExamMinRoleCleared)
 	})
 })
 

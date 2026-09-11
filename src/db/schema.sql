@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS guild_config (
   council_role_id     TEXT,
   review_channel_id   TEXT,
   review_last_posted_at BIGINT,
+  exam_min_role_id    TEXT,
   enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );
 -- Migration for guild_config tables created before the on/off switch existed.
@@ -26,6 +27,8 @@ ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS council_role_id TEXT;
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_channel_id TEXT;
 -- Migration for guild_config tables created before the review digest schedule existed.
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_last_posted_at BIGINT;
+-- Migration for guild_config tables created before the exam minimum role existed.
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS exam_min_role_id TEXT;
 CREATE TABLE IF NOT EXISTS badge_holdings (
   discord_id TEXT NOT NULL,
   guild_id   TEXT NOT NULL,
@@ -51,4 +54,12 @@ CREATE TABLE IF NOT EXISTS review_board_card (
   note       TEXT,
   entry      JSONB NOT NULL,
   PRIMARY KEY (guild_id, lyric_id)
+);
+CREATE TABLE IF NOT EXISTS exam_applicant_post (
+  guild_id     TEXT NOT NULL,
+  applicant_id TEXT NOT NULL,
+  message_id   TEXT NOT NULL,
+  channel_id   TEXT NOT NULL,
+  posted_at    BIGINT NOT NULL,
+  PRIMARY KEY (guild_id, applicant_id)
 );

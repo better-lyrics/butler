@@ -16,6 +16,11 @@ export type HandlerName =
 	| "queue.reject"
 	| "queue.reject.submit"
 	| "queue.reject.undo"
+	| "exam.approve"
+	| "exam.reject"
+	| "exam.approve.go"
+	| "exam.reject.go"
+	| "exam.cancel"
 
 const HANDLERS: readonly HandlerName[] = [
 	"report.add",
@@ -32,6 +37,11 @@ const HANDLERS: readonly HandlerName[] = [
 	"queue.reject",
 	"queue.reject.submit",
 	"queue.reject.undo",
+	"exam.approve",
+	"exam.reject",
+	"exam.approve.go",
+	"exam.reject.go",
+	"exam.cancel",
 ]
 
 /** A resolved interaction route: which handler to run and its decoded args. */

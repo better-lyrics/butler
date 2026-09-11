@@ -230,6 +230,50 @@ export type UnrejectResult =
 	| { status: "not_found" }
 	| { status: "error"; code: number }
 
+export type ExamAttemptState = "in_progress" | "pending_review" | "failed" | "approved" | "rejected"
+
+export interface ExamAttempt {
+	state: ExamAttemptState
+	score: number | null
+	submittedAt: number | null
+}
+
+export type ExamStartResult =
+	| { status: "eligible"; examUrl: string; expiresAt: number }
+	| { status: "already_attempted"; attempt: ExamAttempt }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
+export interface ExamBreakdownRow {
+	section: string
+	score: number
+	max: number
+}
+
+export interface ExamApplicant {
+	applicantId: string
+	discordId: string
+	keyId: string
+	displayName: string
+	score: number
+	maxScore: number
+	cutoff: number
+	breakdown: ExamBreakdownRow[]
+	submittedAt: number
+	state: ExamAttemptState
+}
+
+export type ExamApplicantsResult =
+	| { status: "ok"; applicants: ExamApplicant[] }
+	| { status: "error"; code: number }
+
+export type ExamDecision = "approve" | "reject"
+
+export type ExamDecisionResult =
+	| { status: "recorded" }
+	| { status: "not_found" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -260,6 +304,13 @@ export interface UnisonClient {
 	getLyricsQueue(sort?: QueueSort, limit?: number): Promise<QueueResult>
 	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
 	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
+	startExam(keyId: string, discordId: string): Promise<ExamStartResult>
+	getExamApplicants(includeBelowCutoff?: boolean): Promise<ExamApplicantsResult>
+	decideExamApplicant(
+		applicantId: string,
+		decision: ExamDecision,
+		deciderDiscordId: string
+	): Promise<ExamDecisionResult>
 }
 
 interface LeaderboardResponse {
@@ -360,6 +411,45 @@ function parseBoostQuota(value: unknown): BoostQuota | null {
 		return { quota: q.quota, used: q.used, remaining: q.remaining, resetsAt: q.resetsAt }
 	}
 	return null
+}
+
+const EXAM_STATES: ExamAttemptState[] = [
+	"in_progress",
+	"pending_review",
+	"failed",
+	"approved",
+	"rejected",
+]
+
+function isExamState(value: unknown): value is ExamAttemptState {
+	return typeof value === "string" && (EXAM_STATES as string[]).includes(value)
+}
+
+function parseExamApplicant(value: unknown): ExamApplicant | null {
+	if (!value || typeof value !== "object") return null
+	const row = value as Record<string, unknown>
+	const breakdown: ExamBreakdownRow[] = Array.isArray(row.breakdown)
+		? row.breakdown.map((b) => {
+				const r = (b ?? {}) as Record<string, unknown>
+				return {
+					section: String(r.section ?? ""),
+					score: Number(r.score) || 0,
+					max: Number(r.max) || 0,
+				}
+			})
+		: []
+	return {
+		applicantId: String(row.applicantId ?? ""),
+		discordId: String(row.discordId ?? ""),
+		keyId: String(row.keyId ?? ""),
+		displayName: String(row.displayName ?? ""),
+		score: Number(row.score) || 0,
+		maxScore: Number(row.maxScore) || 0,
+		cutoff: Number(row.cutoff) || 0,
+		breakdown,
+		submittedAt: Number(row.submittedAt) || 0,
+		state: isExamState(row.state) ? row.state : "pending_review",
+	}
 }
 
 export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
@@ -719,6 +809,84 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				default:
 					return { status: "error", code: res.status }
 			}
+		},
+
+		async startExam(keyId, discordId) {
+			const res = await doFetch(`${baseUrl}/exam/bot/start`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ keyId, discordId }),
+			})
+			if (res.ok) {
+				const { data } = (await res.json().catch(() => ({}))) as {
+					data?: Record<string, unknown>
+				}
+				if (
+					data?.status === "eligible" &&
+					typeof data.examUrl === "string" &&
+					typeof data.expiresAt === "number"
+				) {
+					return { status: "eligible", examUrl: data.examUrl, expiresAt: data.expiresAt }
+				}
+				if (data?.status === "already_attempted") {
+					const attempt = (data.attempt ?? {}) as Record<string, unknown>
+					if (isExamState(attempt.state)) {
+						return {
+							status: "already_attempted",
+							attempt: {
+								state: attempt.state,
+								score: typeof attempt.score === "number" ? attempt.score : null,
+								submittedAt: typeof attempt.submittedAt === "number" ? attempt.submittedAt : null,
+							},
+						}
+					}
+				}
+				return { status: "error", code: res.status }
+			}
+			if ((await errorCode(res)) === "NOT_FOUND") {
+				return { status: "not_found" }
+			}
+			return { status: "error", code: res.status }
+		},
+
+		async getExamApplicants(includeBelowCutoff) {
+			const query = includeBelowCutoff ? "?includeBelowCutoff=true" : ""
+			const res = await doFetch(`${baseUrl}/exam/bot/applicants${query}`, { headers: authHeaders })
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as {
+				data?: { applicants?: unknown }
+			} | null
+			const list = json?.data?.applicants
+			if (!Array.isArray(list)) {
+				return { status: "error", code: res.status }
+			}
+			const applicants: ExamApplicant[] = []
+			for (const row of list) {
+				const parsed = parseExamApplicant(row)
+				if (parsed) applicants.push(parsed)
+			}
+			return { status: "ok", applicants }
+		},
+
+		async decideExamApplicant(applicantId, decision, deciderDiscordId) {
+			const res = await doFetch(
+				`${baseUrl}/exam/bot/applicants/${encodeURIComponent(applicantId)}/decision`,
+				{
+					method: "POST",
+					headers: { ...authHeaders, "Content-Type": "application/json" },
+					body: JSON.stringify({ decision, deciderDiscordId }),
+				}
+			)
+			if (res.ok) {
+				return { status: "recorded" }
+			}
+			const code = await errorCode(res)
+			if (code === "EXAM_SESSION_NOT_FOUND" || code === "NOT_FOUND") {
+				return { status: "not_found" }
+			}
+			return { status: "error", code: res.status }
 		},
 	}
 }

@@ -114,7 +114,14 @@ export async function setGuildEnabled(
 	await pool.query("UPDATE guild_config SET enabled = $2 WHERE guild_id = $1", [guildId, enabled])
 }
 
-export type GuildTextField = "connect" | "report" | "announce" | "mod" | "council" | "review"
+export type GuildTextField =
+	| "connect"
+	| "report"
+	| "announce"
+	| "mod"
+	| "council"
+	| "review"
+	| "examMinRole"
 
 const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 	connect:
@@ -128,6 +135,8 @@ const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 		"INSERT INTO guild_config (guild_id, council_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET council_role_id = EXCLUDED.council_role_id",
 	review:
 		"INSERT INTO guild_config (guild_id, review_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET review_channel_id = EXCLUDED.review_channel_id",
+	examMinRole:
+		"INSERT INTO guild_config (guild_id, exam_min_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET exam_min_role_id = EXCLUDED.exam_min_role_id",
 }
 
 export async function setGuildField(
@@ -137,6 +146,14 @@ export async function setGuildField(
 	value: string | null
 ): Promise<void> {
 	await pool.query(TEXT_FIELD_UPSERT[field], [guildId, value])
+}
+
+export async function getExamMinRoleId(pool: Pool, guildId: string): Promise<string | null> {
+	const result = await pool.query<{ exam_min_role_id: string | null }>(
+		"SELECT exam_min_role_id FROM guild_config WHERE guild_id = $1",
+		[guildId]
+	)
+	return result.rows[0]?.exam_min_role_id ?? null
 }
 
 export async function getReviewLastPostedAt(pool: Pool, guildId: string): Promise<number | null> {

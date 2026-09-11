@@ -49,6 +49,12 @@ It ships **dormant**. Run `/setup` (admin only) to record the channels and the f
 
 Tiers, highest to lowest: #1 Legendary Lyricist, #2 Grandmaster Lyricist, #3 Master Lyricist, top 5% Elite Lyricist, top 20% Lyricist.
 
+## Council entry exam
+
+The Council role goes through an exam, not a hand-out. A member runs `/council-apply`; butler checks they are account-linked and hold at least the minimum role (`/config exam-min-role`, which defaults to the Lyricist role and counts anyone ranked above it), and turns away anyone already on the Council. Eligible members get a one-time link to the exam, which Unison serves on the web, with the lyric guide to read first. Admins skip those checks so they can walk the flow themselves, and the tricky question content, answer keys, and grading all live on the Unison side.
+
+Whoever passes surfaces two ways: butler posts them to the council channel on its own (on the hourly pass), and admins can pull the list any time with `/council-applicants`. Each applicant card has approve and reject, both behind a confirm step since neither can be undone from Discord. Approving grants the role, registers them in Unison, and DMs them a welcome. `/council-welcome-preview` sends that welcome to you so you can check it first.
+
 ## Deploy
 
 Railway, as a worker. No public port, since butler only makes outbound calls. Set the three required vars (plus `DEV_GUILD_ID` while testing). If `BUTLER_BOT_SECRET` does not match Unison, the bot reads and the request POST will 401. There is no OAuth to configure here; that is Unison's side.
