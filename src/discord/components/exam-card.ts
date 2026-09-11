@@ -20,7 +20,6 @@ import {
 	examIntroExam,
 	examIntroExpiry,
 	examIntroHeading,
-	examIntroResponsibility,
 	examIntroWhat,
 	examRejectButtonLabel,
 	examRejectConfirm,
@@ -63,7 +62,6 @@ export function buildExamIntroCard(opts: {
 		.addTextDisplayComponents(
 			text(examIntroWhat),
 			text(examIntroCatch),
-			text(examIntroResponsibility),
 			text(examIntroExam),
 			text(examIntroExpiry(opts.expiresAt))
 		)

@@ -1,9 +1,37 @@
+import { examIntroCatch, examIntroExam } from "@/copy/strings"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
-import { buildCouncilWelcomeCard } from "./exam-card"
+import { buildCouncilWelcomeCard, buildExamIntroCard } from "./exam-card"
 
 const GETTING_STARTED = "https://discord.com/channels/1/2/3"
 const GIF = "https://cdn.betterlyrics.org/bb-hell-yeah.gif"
+const EXAM_URL = "https://unison.betterlyrics.org/exam/abc"
+const GUIDE_URL = "https://betterlyrics.org/lyric-guide"
+
+describe("buildExamIntroCard", () => {
+	function card() {
+		return buildExamIntroCard({
+			examUrl: EXAM_URL,
+			guideUrl: GUIDE_URL,
+			expiresAt: 1_789_000_000,
+		})
+	}
+
+	it("is a Components V2 card that suppresses mentions", () => {
+		const c = card()
+		expect(c.flags).toBe(MessageFlags.IsComponentsV2)
+		expect(c.allowedMentions).toEqual({ parse: [] })
+	})
+
+	it("renders the three intro beats and both link buttons", () => {
+		const json = JSON.stringify(card())
+		expect(json).toContain("The Council is an elite team that seals rare, exceptional lyrics.")
+		expect(json).toContain(examIntroCatch)
+		expect(json).toContain(examIntroExam)
+		expect(json).toContain(EXAM_URL)
+		expect(json).toContain(GUIDE_URL)
+	})
+})
 
 describe("buildCouncilWelcomeCard", () => {
 	it("is a Components V2 card", () => {

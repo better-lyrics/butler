@@ -7,7 +7,7 @@ import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js"
 export const COUNCIL_APPLY_GUILD_ONLY = "This command can only be used in a server."
 
 export const COUNCIL_APPLY_INELIGIBLE =
-	"Council applications open at Lyricist and above. Keep climbing and come back."
+	"Council applications open once you've climbed high enough. Keep climbing and come back."
 
 export const COUNCIL_APPLY_ALREADY_COUNCIL = "You are already on the Better Lyrics Council."
 

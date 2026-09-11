@@ -370,6 +370,9 @@ export const helpReportLine =
 
 export const helpMigrateLine = "`/migrate` moves your history from an old key onto a new one."
 
+export const helpApplyLine =
+	"`/council-apply` starts your Council entry exam when you are eligible."
+
 export const helpCouncilLabel = "**For the council**"
 
 export const helpSealLine =
@@ -386,7 +389,13 @@ export const helpCouncilLine =
 	"`/council add` and `/council remove` manage council members, and `/council list` shows them."
 
 export const helpConfigLine =
-	"`/config` changes one setting at a time (a channel, a tier role, the council role, or the council channel), `/config clear` unsets the mod channel, council role, or council channel, and `/config view` shows the current setup."
+	"`/config` changes one setting at a time (a channel, a tier role, the council role, the council channel, or the exam min role), `/config clear` unsets the mod channel, council role, council channel, or exam min role, and `/config view` shows the current setup."
+
+export const helpApplicantsLine =
+	"`/council-applicants` shows who passed the exam so you can approve or reject them."
+
+export const helpWelcomePreviewLine =
+	"`/council-welcome-preview` DMs you the welcome message new members receive."
 
 export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
 
@@ -590,16 +599,13 @@ export const digestDisabled = "butler is off here. Run `/activate` first."
 export const examIntroHeading = "**Apply to the Better Lyrics Council**"
 
 export const examIntroWhat =
-	"The Council sets the bar for great lyrics. Members seal the rare ones that clear it, both the visual and the timing standards."
+	'The Council is an elite team that seals rare, exceptional lyrics. If you spot "Better Lyrics Council Approved" unison lyrics in the wild, you have them to thank!'
 
 export const examIntroCatch =
-	"The catch: while you hold the role, none of your own lyrics can be sealed."
-
-export const examIntroResponsibility =
-	"You get 4 seals a month. Read every song end to end, keep seals rare, and never let anyone talk you into one. When in doubt, do not seal."
+	"They play a vital role in our ecosystem, but this duty comes with a sacrifice. Council members voluntarily forfeit the right to have their own lyrics sealed. Since you ran this command, you're probably looking to join the team!"
 
 export const examIntroExam =
-	"This exam checks whether you can tell good lyrics from great. One attempt, it is timed, and the link is single-use, so start only when you are ready."
+	"Well, this exam is your chance to prove you have what it takes. You only get one attempt, so make it count! We highly recommend reviewing the lyrics guide before you start. Once you're ready and confident, hit Begin exam below."
 
 export function examIntroExpiry(expiresAt: number): string {
 	return `The link expires ${time(expiresAt, TimestampStyles.RelativeTime)}.`
@@ -668,7 +674,7 @@ export function examApprovedLine(params: { discordId: string; adminId: string })
 }
 
 export function examRejectedLine(params: { discordId: string; adminId: string }): string {
-	return `<@${params.discordId}> not selected. Marked by <@${params.adminId}>.`
+	return `<@${params.discordId}> not selected. Decided by <@${params.adminId}>.`
 }
 
 export function councilWelcomeMessage(gettingStartedUrl: string): string {
@@ -690,4 +696,4 @@ export const examApprovedRoleFailed =
 	"Could not assign the Council role. Check that my role sits above it and that I can manage roles."
 
 export const examApprovedNoRole =
-	"No Council role is set, so set one with /config council-role to have it assigned automatically."
+	"No Council role is set. Add one with /config council-role and I'll assign it automatically."

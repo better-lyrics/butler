@@ -1,6 +1,8 @@
 import { PALETTE } from "@/config"
 import {
 	helpAdminLabel,
+	helpApplicantsLine,
+	helpApplyLine,
 	helpConfigLine,
 	helpCouncilLabel,
 	helpCouncilLine,
@@ -15,6 +17,7 @@ import {
 	helpSealLine,
 	helpSetupLine,
 	helpSyncLine,
+	helpWelcomePreviewLine,
 } from "@/copy/strings"
 import { ContainerBuilder, MessageFlags, SeparatorBuilder, TextDisplayBuilder } from "discord.js"
 import type { CardPayload } from "./connect-card"
@@ -28,7 +31,12 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(text(helpHeading))
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
-		.addTextDisplayComponents(text(helpEveryoneLabel), text(helpReportLine), text(helpMigrateLine))
+		.addTextDisplayComponents(
+			text(helpEveryoneLabel),
+			text(helpReportLine),
+			text(helpMigrateLine),
+			text(helpApplyLine)
+		)
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(helpCouncilLabel), text(helpSealLine), text(helpQueueLine))
 
@@ -40,6 +48,8 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 				text(helpSetupLine),
 				text(helpConfigLine),
 				text(helpCouncilLine),
+				text(helpApplicantsLine),
+				text(helpWelcomePreviewLine),
 				text(helpSyncLine),
 				text(helpDigestLine),
 				text(helpPowerLine),

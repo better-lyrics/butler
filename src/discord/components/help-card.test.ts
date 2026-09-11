@@ -1,5 +1,7 @@
 import {
 	helpAdminLabel,
+	helpApplicantsLine,
+	helpApplyLine,
 	helpConfigLine,
 	helpCouncilLabel,
 	helpDigestLine,
@@ -8,6 +10,7 @@ import {
 	helpQueueLine,
 	helpSealLine,
 	helpSetupLine,
+	helpWelcomePreviewLine,
 } from "@/copy/strings"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
@@ -42,6 +45,7 @@ describe("buildHelpCard", () => {
 			const blob = textBlob(buildHelpCard({ isAdmin: false }))
 			expect(blob).toContain(helpEveryoneLabel)
 			expect(blob).toContain(helpMigrateLine)
+			expect(blob).toContain(helpApplyLine)
 			expect(blob).toContain(helpCouncilLabel)
 			expect(blob).toContain(helpSealLine)
 			expect(blob).toContain(helpQueueLine)
@@ -52,6 +56,8 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpAdminLabel)
 			expect(blob).toContain(helpSetupLine)
 			expect(blob).toContain(helpConfigLine)
+			expect(blob).toContain(helpApplicantsLine)
+			expect(blob).toContain(helpWelcomePreviewLine)
 			expect(blob).toContain(helpDigestLine)
 		})
 	})
@@ -61,6 +67,8 @@ describe("buildHelpCard", () => {
 			const blob = textBlob(buildHelpCard({ isAdmin: false }))
 			expect(blob).not.toContain(helpAdminLabel)
 			expect(blob).not.toContain(helpSetupLine)
+			expect(blob).not.toContain(helpApplicantsLine)
+			expect(blob).not.toContain(helpWelcomePreviewLine)
 		})
 
 		it("is a components v2 payload", () => {
