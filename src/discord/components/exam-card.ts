@@ -1,10 +1,12 @@
 import { PALETTE } from "@/config"
 import {
 	councilWelcomeMessage,
-	examApplicantBreakdown,
+	examApplicantFullMarks,
 	examApplicantGone,
 	examApplicantHeading,
+	examApplicantMisses,
 	examApplicantScore,
+	examApplicantVerdict,
 	examApproveButtonLabel,
 	examApproveConfirm,
 	examApprovedLine,
@@ -96,10 +98,25 @@ export function buildApplicantCard(applicant: ExamApplicant): CardPayload {
 				})
 			)
 		)
+		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+		.addTextDisplayComponents(
+			text(
+				examApplicantVerdict({
+					score: applicant.score,
+					maxScore: applicant.maxScore,
+					cutoff: applicant.cutoff,
+					breakdown: applicant.breakdown,
+				})
+			)
+		)
 
-	const breakdown = examApplicantBreakdown(applicant.breakdown)
-	if (breakdown) {
-		container.addTextDisplayComponents(text(breakdown))
+	const misses = examApplicantMisses(applicant.breakdown)
+	if (misses) {
+		container.addTextDisplayComponents(text(misses))
+	}
+	const fullMarks = examApplicantFullMarks(applicant.breakdown)
+	if (fullMarks) {
+		container.addTextDisplayComponents(text(fullMarks))
 	}
 
 	container.addActionRowComponents(

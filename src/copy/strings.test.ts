@@ -3,6 +3,11 @@ import {
 	announceSummaryBadgeLine,
 	announceSummaryPromotionLine,
 	badgeAwardTitle,
+	examApplicantFullMarks,
+	examApplicantGrade,
+	examApplicantMisses,
+	examApplicantScore,
+	examApplicantVerdict,
 	migrateExpiresLine,
 	migratePreviewBody,
 	migratePreviewCollisions,
@@ -268,5 +273,141 @@ describe("sealVariantDescription", () => {
 			})
 			expect(line).toBe("Deftones · lrc · score 0")
 		})
+	})
+})
+
+const fullBreakdown = [
+	{ section: "a-vs-b", score: 6, max: 10 },
+	{ section: "capstone", score: 60, max: 60 },
+	{ section: "is-exceptional", score: 24, max: 24 },
+	{ section: "scenario", score: 9, max: 9 },
+	{ section: "seal-discipline", score: 6, max: 6 },
+	{ section: "seal-or-not", score: 20, max: 20 },
+	{ section: "trap-exception", score: 6, max: 6 },
+	{ section: "what-holds-back", score: 10, max: 10 },
+]
+
+describe("examApplicantScore", () => {
+	it("reads passed above the cutoff", () => {
+		expect(
+			examApplicantScore({ score: 141, maxScore: 145, cutoff: 123.25, belowCutoff: false })
+		).toBe("Score: 141 / 145 (cutoff 123.25), passed")
+	})
+
+	it("reads below cutoff for a near miss", () => {
+		expect(
+			examApplicantScore({ score: 120, maxScore: 145, cutoff: 123.25, belowCutoff: true })
+		).toBe("Score: 120 / 145 (cutoff 123.25), below cutoff")
+	})
+})
+
+describe("examApplicantGrade", () => {
+	describe("happy paths", () => {
+		it("grades 141/145 as A+", () => {
+			expect(examApplicantGrade(141, 145)).toBe("A+")
+		})
+
+		it("walks the ladder down through the bands", () => {
+			expect(examApplicantGrade(93, 100)).toBe("A")
+			expect(examApplicantGrade(90, 100)).toBe("A-")
+			expect(examApplicantGrade(87, 100)).toBe("B+")
+			expect(examApplicantGrade(83, 100)).toBe("B")
+			expect(examApplicantGrade(80, 100)).toBe("B-")
+			expect(examApplicantGrade(70, 100)).toBe("C")
+			expect(examApplicantGrade(60, 100)).toBe("D")
+			expect(examApplicantGrade(59, 100)).toBe("F")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("does not divide by zero on an empty exam", () => {
+			expect(examApplicantGrade(0, 0)).toBe("F")
+		})
+
+		it("gives a perfect score the top grade", () => {
+			expect(examApplicantGrade(145, 145)).toBe("A+")
+		})
+	})
+})
+
+describe("examApplicantVerdict", () => {
+	describe("happy paths", () => {
+		it("names the dropped section and its point loss for a strong pass", () => {
+			const line = examApplicantVerdict({
+				score: 141,
+				maxScore: 145,
+				cutoff: 123.25,
+				breakdown: fullBreakdown,
+			})
+			expect(line).toContain("**Butler verdict: A+**")
+			expect(line).toContain("Lost 4 points on A vs b (6/10)")
+			expect(line).toContain("Ready for the Council")
+		})
+
+		it("calls out full marks when nothing was missed", () => {
+			const perfect = fullBreakdown.map((r) => ({ ...r, score: r.max }))
+			const line = examApplicantVerdict({
+				score: 145,
+				maxScore: 145,
+				cutoff: 123.25,
+				breakdown: perfect,
+			})
+			expect(line).toContain("Full marks across every section")
+			expect(line).toContain("Ready for the Council")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("says not there yet and names the weakest sections below the cutoff", () => {
+			const weak = [
+				{ section: "a-vs-b", score: 2, max: 10 },
+				{ section: "capstone", score: 30, max: 60 },
+				{ section: "seal-or-not", score: 20, max: 20 },
+			]
+			const line = examApplicantVerdict({ score: 52, maxScore: 90, cutoff: 76, breakdown: weak })
+			expect(line).toContain("Came up short of the 76 bar")
+			expect(line).toContain("Not there yet")
+			expect(line).toContain("Capstone (30/60)")
+		})
+
+		it("uses singular point when only one was lost", () => {
+			const oneOff = [{ section: "scenario", score: 8, max: 9 }]
+			const line = examApplicantVerdict({ score: 8, maxScore: 9, cutoff: 6, breakdown: oneOff })
+			expect(line).toContain("Lost 1 point on Scenario (8/9)")
+		})
+	})
+})
+
+describe("examApplicantMisses and examApplicantFullMarks", () => {
+	it("lists only the dropped sections under a needs-a-look header, with a blurb", () => {
+		const misses = examApplicantMisses(fullBreakdown)
+		expect(misses).toContain("**Needs a look**")
+		expect(misses).toContain(
+			"**A vs b** (6/10): picking which of two syncs tracks the vocal better"
+		)
+		expect(misses).not.toContain("Capstone")
+	})
+
+	it("renders an unknown section without a trailing blurb", () => {
+		const misses = examApplicantMisses([{ section: "mystery-box", score: 1, max: 2 }])
+		expect(misses).toContain("**Mystery box** (1/2)")
+		expect(misses).not.toContain("**Mystery box** (1/2):")
+	})
+
+	it("returns null when every section is perfect", () => {
+		const perfect = fullBreakdown.map((r) => ({ ...r, score: r.max }))
+		expect(examApplicantMisses(perfect)).toBeNull()
+	})
+
+	it("rolls perfect sections into one comma list", () => {
+		const full = examApplicantFullMarks(fullBreakdown)
+		expect(full).toContain("**Full marks**")
+		expect(full).toContain("Capstone, Is exceptional")
+		expect(full).not.toContain("A vs b")
+	})
+
+	it("returns null when nothing was full marks", () => {
+		const allMissed = fullBreakdown.map((r) => ({ ...r, score: 0 }))
+		expect(examApplicantFullMarks(allMissed)).toBeNull()
 	})
 })

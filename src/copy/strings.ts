@@ -627,21 +627,97 @@ export function examApplicantHeading(displayName: string): string {
 	return `**${displayName}**`
 }
 
+type BreakdownRow = { section: string; score: number; max: number }
+
+const sectionList = new Intl.ListFormat("en", { style: "long", type: "conjunction" })
+
+function prettySection(section: string): string {
+	const spaced = section.replace(/-/g, " ")
+	return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+// Section names come from the exam API as bare slugs with no description, so butler owns
+// the display blurb. Unknown slugs fall through and simply render without one.
+const sectionBlurb: Record<string, string> = {
+	"seal-or-not": "picking which of two syncs is seal-worthy, and what's wrong with the other",
+	"a-vs-b": "picking which of two syncs tracks the vocal better, and the timing flaw in the other",
+	"what-holds-back": "spotting the cleaner sync and naming what holds the other back",
+	"is-exceptional": "calibration, is a clip genuinely seal-worthy or just correctly synced",
+	"trap-exception": "applying a guide rule while catching its exception",
+	"seal-discipline": "holding the bar against popularity, upvotes alone do not earn a seal",
+	scenario: "a roleplay, declining a seal-on-request from a newcomer",
+	capstone: "the full test under public pressure, hold the line instead of caving",
+}
+
+function sortedMisses(rows: BreakdownRow[]): BreakdownRow[] {
+	return rows.filter((r) => r.score < r.max).sort((a, b) => b.max - b.score - (a.max - a.score))
+}
+
 export function examApplicantScore(params: {
 	score: number
 	maxScore: number
 	cutoff: number
 	belowCutoff: boolean
 }): string {
-	const tag = params.belowCutoff ? "  ·  below cutoff" : ""
-	return `Score ${params.score}/${params.maxScore} (cutoff ${params.cutoff})${tag}`
+	const tag = params.belowCutoff ? "below cutoff" : "passed"
+	return `Score: ${params.score} / ${params.maxScore} (cutoff ${params.cutoff}), ${tag}`
 }
 
-export function examApplicantBreakdown(
-	rows: Array<{ section: string; score: number; max: number }>
-): string | null {
-	if (rows.length === 0) return null
-	return rows.map((r) => `${r.section} ${r.score}/${r.max}`).join("  ·  ")
+export function examApplicantGrade(score: number, maxScore: number): string {
+	const pct = maxScore <= 0 ? 0 : (score / maxScore) * 100
+	if (pct >= 97) return "A+"
+	if (pct >= 93) return "A"
+	if (pct >= 90) return "A-"
+	if (pct >= 87) return "B+"
+	if (pct >= 83) return "B"
+	if (pct >= 80) return "B-"
+	if (pct >= 75) return "C+"
+	if (pct >= 70) return "C"
+	if (pct >= 60) return "D"
+	return "F"
+}
+
+export function examApplicantVerdict(params: {
+	score: number
+	maxScore: number
+	cutoff: number
+	breakdown: BreakdownRow[]
+}): string {
+	const grade = examApplicantGrade(params.score, params.maxScore)
+	const misses = sortedMisses(params.breakdown)
+	const named = misses.map((r) => `${prettySection(r.section)} (${r.score}/${r.max})`)
+	const head = `**Butler verdict: ${grade}**`
+
+	if (params.score < params.cutoff) {
+		const where = named.length ? ` Weakest on ${sectionList.format(named.slice(0, 2))}.` : ""
+		return `${head}\nCame up short of the ${params.cutoff} bar.${where} Not there yet.`
+	}
+	if (misses.length === 0) {
+		return `${head}\nFull marks across every section. As clean as it gets. Ready for the Council.`
+	}
+	const lost = misses.reduce((n, r) => n + (r.max - r.score), 0)
+	const lead = grade.startsWith("A") ? "Nearly flawless." : "Solid overall."
+	const close = grade.startsWith("C")
+		? "Passed, but those areas want a second look. Your call."
+		: "Nothing that should hold them back. Ready for the Council."
+	return `${head}\n${lead} Lost ${lost} point${lost === 1 ? "" : "s"} on ${sectionList.format(named)}; everything else was full marks. ${close}`
+}
+
+export function examApplicantMisses(rows: BreakdownRow[]): string | null {
+	const misses = sortedMisses(rows)
+	if (misses.length === 0) return null
+	const lines = misses.map((r) => {
+		const blurb = sectionBlurb[r.section]
+		const tail = blurb ? `: ${blurb}` : ""
+		return `**${prettySection(r.section)}** (${r.score}/${r.max})${tail}`
+	})
+	return `**Needs a look**\n${lines.join("\n")}`
+}
+
+export function examApplicantFullMarks(rows: BreakdownRow[]): string | null {
+	const perfect = rows.filter((r) => r.score >= r.max).map((r) => prettySection(r.section))
+	if (perfect.length === 0) return null
+	return `**Full marks**\n${perfect.join(", ")}`
 }
 
 export const examApproveButtonLabel = "Approve"
