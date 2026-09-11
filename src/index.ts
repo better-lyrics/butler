@@ -1,5 +1,7 @@
 import {
 	ALBUM_ART_SIZE,
+	COUNCIL_GETTING_STARTED_URL,
+	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
@@ -9,8 +11,10 @@ import {
 } from "@/config"
 import { queueEmpty } from "@/copy/strings"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
+import { getPostedApplicantIds, planApplicantPosts, recordApplicantPost } from "@/db/exam-board"
 import {
 	type GuildConfig,
+	getExamMinRoleId,
 	getGuildConfig,
 	getReviewLastPostedAt,
 	listGuildConfigs,
@@ -25,6 +29,20 @@ import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board
 import { createDiscordClient } from "@/discord/client"
 import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
+import {
+	councilApplicantsCommand,
+	handleCouncilApplicantApprove,
+	handleCouncilApplicantApprovePrompt,
+	handleCouncilApplicantCancel,
+	handleCouncilApplicantReject,
+	handleCouncilApplicantRejectPrompt,
+	handleCouncilApplicants,
+} from "@/discord/commands/council-applicants"
+import { councilApplyCommand, handleCouncilApply } from "@/discord/commands/council-apply"
+import {
+	councilWelcomePreviewCommand,
+	handleCouncilWelcomePreview,
+} from "@/discord/commands/council-welcome-preview"
 import { type DigestResult, digestCommand, handleDigest } from "@/discord/commands/digest"
 import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
@@ -53,12 +71,14 @@ import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sy
 import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
+import { buildApplicantCard, buildCouncilWelcomeCard } from "@/discord/components/exam-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import {
 	buildBoardCard,
 	type buildQueueCard,
 	buildQueueSealedCard,
 } from "@/discord/components/queue-card"
+import { meetsMinRole } from "@/discord/eligibility"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { routeInteraction } from "@/discord/interactions/router"
 import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
@@ -108,6 +128,51 @@ async function setCouncilRole(discordId: string, on: boolean): Promise<CouncilRo
 		console.error("council role change failed", err)
 		return "failed"
 	}
+}
+
+// Best-effort welcome DM on approval; a closed DM just logs and never fails the approval. Returns
+// whether the DM landed, which the /council-welcome-preview command surfaces to the admin.
+async function sendCouncilWelcome(discordId: string): Promise<boolean> {
+	try {
+		const user = await discord.users.fetch(discordId)
+		await user.send(
+			buildCouncilWelcomeCard({
+				gettingStartedUrl: COUNCIL_GETTING_STARTED_URL,
+				gifUrl: COUNCIL_WELCOME_GIF_URL,
+			})
+		)
+		return true
+	} catch (err) {
+		console.error("council welcome dm failed", err)
+		return false
+	}
+}
+
+// Position-based exam gate. The anchor is /config exam-min-role if set, else the Lyricist tier
+// role, so "Lyricist and above" holds by default while an admin can point it anywhere.
+async function isExamEligible(discordId: string): Promise<boolean> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	const anchorId = (await getExamMinRoleId(pool, config.guildId)) ?? gc?.roleIds.lyricist ?? null
+	if (!anchorId) return false
+	const guild = await discord.guilds.fetch(config.guildId)
+	const anchor =
+		guild.roles.cache.get(anchorId) ?? (await guild.roles.fetch(anchorId).catch(() => null))
+	if (!anchor) return false
+	const member = await guild.members.fetch(discordId).catch(() => null)
+	if (!member) return false
+	return meetsMinRole(
+		member.roles.cache.map((role) => role.position),
+		anchor.position
+	)
+}
+
+async function isCouncilMember(discordId: string): Promise<boolean> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.councilRoleId) return false
+	const guild = await discord.guilds.fetch(config.guildId)
+	const member = await guild.members.fetch(discordId).catch(() => null)
+	if (!member) return false
+	return member.roles.cache.has(gc.councilRoleId)
 }
 
 async function postConnectCard(channelId: string): Promise<boolean> {
@@ -229,6 +294,51 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				markPending: markBoardPending,
 				linkPageUrl: config.linkPageUrl,
 			})
+			return
+		case "exam.approve":
+			await handleCouncilApplicantApprovePrompt(interaction, {
+				applicantId: route.args[0] ?? "",
+				discordId: route.args[1] ?? "",
+			})
+			return
+		case "exam.reject":
+			await handleCouncilApplicantRejectPrompt(interaction, {
+				applicantId: route.args[0] ?? "",
+				discordId: route.args[1] ?? "",
+			})
+			return
+		case "exam.approve.go":
+			await handleCouncilApplicantApprove(
+				interaction,
+				{ applicantId: route.args[0] ?? "", discordId: route.args[1] ?? "" },
+				{
+					resolveKeyId,
+					addCouncilMember: (keyId) => unison.addCouncilMember(keyId),
+					grantCouncilRole: (id) => setCouncilRole(id, true),
+					decideExamApplicant: (applicantId, decision, decider) =>
+						unison.decideExamApplicant(applicantId, decision, decider),
+					welcomeMember: async (id) => {
+						await sendCouncilWelcome(id)
+					},
+				}
+			)
+			return
+		case "exam.reject.go":
+			await handleCouncilApplicantReject(
+				interaction,
+				{ applicantId: route.args[0] ?? "", discordId: route.args[1] ?? "" },
+				{
+					decideExamApplicant: (applicantId, decision, decider) =>
+						unison.decideExamApplicant(applicantId, decision, decider),
+				}
+			)
+			return
+		case "exam.cancel":
+			await handleCouncilApplicantCancel(
+				interaction,
+				{ applicantId: route.args[0] ?? "" },
+				{ getExamApplicants: (include) => unison.getExamApplicants(include) }
+			)
 			return
 	}
 }
@@ -415,6 +525,35 @@ async function runAll(): Promise<void> {
 		if (!gc.enabled) continue
 		await runSyncForGuild(gc)
 	}
+	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
+}
+
+// Post newly-passed exam applicants to the council channel for admins to decide. Butler has no
+// inbound HTTP, so this pulls from Unison on the same cadence as the role sync; already-posted
+// applicants are skipped so a re-run never duplicates a card.
+async function syncApplicantBoard(): Promise<void> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId || !gc.enabled) return
+	const result = await unison.getExamApplicants(false)
+	if (result.status !== "ok") return
+	const posted = await getPostedApplicantIds(pool, config.guildId)
+	const toPost = planApplicantPosts(result.applicants, posted)
+	if (toPost.length === 0) return
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return
+	for (const applicant of toPost) {
+		const message = await channel.send(buildApplicantCard(applicant)).catch((err) => {
+			console.error("applicant board post failed", err)
+			return null
+		})
+		if (!message) continue
+		await recordApplicantPost(pool, config.guildId, {
+			applicantId: applicant.applicantId,
+			messageId: message.id,
+			channelId: channel.id,
+			postedAt: Date.now(),
+		})
+	}
 }
 
 async function deleteBoardMessages(
@@ -564,6 +703,9 @@ discord.once(Events.ClientReady, async (client) => {
 			migrateCommand.toJSON(),
 			sealCommand.toJSON(),
 			councilCommand.toJSON(),
+			councilApplyCommand.toJSON(),
+			councilApplicantsCommand.toJSON(),
+			councilWelcomePreviewCommand.toJSON(),
 			configCommand.toJSON(),
 			queueCommand.toJSON(),
 			digestCommand.toJSON(),
@@ -683,6 +825,29 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 			grantCouncilRole: (id) => setCouncilRole(id, true),
 			revokeCouncilRole: (id) => setCouncilRole(id, false),
 		}).catch((err) => console.error("council handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "council-apply") {
+		handleCouncilApply(interaction, {
+			isEligible: (id) => isExamEligible(id),
+			isCouncilMember: (id) => isCouncilMember(id),
+			resolveKeyId,
+			startExam: (keyId, discordId) => unison.startExam(keyId, discordId),
+			linkPageUrl: config.linkPageUrl,
+			guideUrl: `${config.composerBaseUrl}/guides/lyric-best-practices`,
+		}).catch((err) => console.error("council-apply handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "council-applicants") {
+		handleCouncilApplicants(interaction, {
+			getExamApplicants: (include) => unison.getExamApplicants(include),
+		}).catch((err) => console.error("council-applicants handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "council-welcome-preview") {
+		handleCouncilWelcomePreview(interaction, {
+			welcomeMember: (id) => sendCouncilWelcome(id),
+		}).catch((err) => console.error("council welcome preview handler failed", err))
 		return
 	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "queue") {

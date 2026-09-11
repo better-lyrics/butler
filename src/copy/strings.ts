@@ -386,7 +386,7 @@ export const helpCouncilLine =
 	"`/council add` and `/council remove` manage council members, and `/council list` shows them."
 
 export const helpConfigLine =
-	"`/config` changes one setting at a time (a channel, a tier role, the council role, or the review channel), `/config clear` unsets the mod channel, council role, or review channel, and `/config view` shows the current setup."
+	"`/config` changes one setting at a time (a channel, a tier role, the council role, or the council channel), `/config clear` unsets the mod channel, council role, or council channel, and `/config view` shows the current setup."
 
 export const helpSyncLine = "`/sync` runs the role sync now instead of waiting for the hourly pass."
 
@@ -417,10 +417,10 @@ export const configModChannelSet = "Mod channel set."
 export const configModChannelCleared = "Mod channel cleared. I will not post moderator logs."
 
 export const configReviewChannelSet =
-	"Review channel set. I will post sealing candidates there for the council each week."
+	"Council channel set. I will post the weekly review board there for the council."
 
 export const configReviewChannelCleared =
-	"Review channel cleared. I will not post the weekly review digest."
+	"Council channel cleared. I will not post the review board there."
 
 export const configCouncilRoleCleared =
 	"Council role cleared. I will not assign a role when adding members."
@@ -428,6 +428,13 @@ export const configCouncilRoleCleared =
 export function configCouncilRoleSet(mention: string): string {
 	return `Council role set to ${mention}. I will assign it when you add a member.`
 }
+
+export function configExamMinRoleSet(mention: string): string {
+	return `Exam applications now open to ${mention} and anyone with a role above it.`
+}
+
+export const configExamMinRoleCleared =
+	"Exam minimum role cleared. It falls back to the Lyricist role."
 
 export function configTierRoleSet(tier: string, mention: string): string {
 	return `${TIER_LABELS[tier] ?? tier} role set to ${mention}.`
@@ -458,7 +465,7 @@ export function configView(
 		`Report channel: ${channel(config.reportChannelId)}`,
 		`Announce channel: ${channel(config.announceChannelId)}`,
 		`Mod channel: ${channel(config.modChannelId)}`,
-		`Review channel: ${channel(config.reviewChannelId)}`,
+		`Council channel: ${channel(config.reviewChannelId)}`,
 		`Council role: ${role(config.councilRoleId)}`,
 		`Tier roles: ${tierRoles}`,
 	].join("\n")
@@ -572,10 +579,115 @@ export const queueResendFailed =
 export const digestNoPermission = "You need the Manage Server permission to run this."
 
 export const digestNoChannel =
-	"No review channel is set. Point one with `/config review-channel` first."
+	"No council channel is set. Point one with `/config council-channel` first."
 
-export const digestPosted = "Posted a fresh review board to the review channel."
+export const digestPosted = "Posted a fresh review board to the council channel."
 
 export const digestEmpty = "The review queue is clear. Nothing to post right now."
 
 export const digestDisabled = "butler is off here. Run `/activate` first."
+
+export const examIntroHeading = "**Apply to the Better Lyrics Council**"
+
+export const examIntroWhat =
+	"The Council sets the bar for great lyrics. Members seal the rare ones that clear it, both the visual and the timing standards."
+
+export const examIntroCatch =
+	"The catch: while you hold the role, none of your own lyrics can be sealed."
+
+export const examIntroResponsibility =
+	"You get 4 seals a month. Read every song end to end, keep seals rare, and never let anyone talk you into one. When in doubt, do not seal."
+
+export const examIntroExam =
+	"This exam checks whether you can tell good lyrics from great. One attempt, it is timed, and the link is single-use, so start only when you are ready."
+
+export function examIntroExpiry(expiresAt: number): string {
+	return `The link expires ${time(expiresAt, TimestampStyles.RelativeTime)}.`
+}
+
+export const examBeginButtonLabel = "Begin exam"
+
+export const examGuideButtonLabel = "Read the lyric guide"
+
+export const examApplicantsHeading = "**Council applicants**"
+
+export function examApplicantsSubheading(count: number): string {
+	return `${count} waiting for review.`
+}
+
+export const examApplicantsEmpty = "No one is waiting for Council review right now."
+
+export function examApplicantHeading(displayName: string): string {
+	return `**${displayName}**`
+}
+
+export function examApplicantScore(params: {
+	score: number
+	maxScore: number
+	cutoff: number
+	belowCutoff: boolean
+}): string {
+	const tag = params.belowCutoff ? "  ·  below cutoff" : ""
+	return `Score ${params.score}/${params.maxScore} (cutoff ${params.cutoff})${tag}`
+}
+
+export function examApplicantBreakdown(
+	rows: Array<{ section: string; score: number; max: number }>
+): string | null {
+	if (rows.length === 0) return null
+	return rows.map((r) => `${r.section} ${r.score}/${r.max}`).join("  ·  ")
+}
+
+export const examApproveButtonLabel = "Approve"
+
+export const examRejectButtonLabel = "Reject"
+
+export function examApproveConfirm(discordId: string): string {
+	return `Approve <@${discordId}> to the Council? This grants the role and registers them, and it cannot be undone here.`
+}
+
+export function examRejectConfirm(discordId: string): string {
+	return `Reject <@${discordId}>? This uses up their one attempt at the exam.`
+}
+
+export const examConfirmApproveButtonLabel = "Confirm approve"
+
+export const examConfirmRejectButtonLabel = "Confirm reject"
+
+export const examCancelButtonLabel = "Cancel"
+
+export const examApplicantGone =
+	"This applicant is no longer pending. Run /council-applicants to see the current list."
+
+export function examApplicantsMore(n: number): string {
+	return `${n} more applicant${n === 1 ? "" : "s"} not shown. Decide these first, then run the command again.`
+}
+
+export function examApprovedLine(params: { discordId: string; adminId: string }): string {
+	return `<@${params.discordId}> approved by <@${params.adminId}>.`
+}
+
+export function examRejectedLine(params: { discordId: string; adminId: string }): string {
+	return `<@${params.discordId}> not selected. Marked by <@${params.adminId}>.`
+}
+
+export function councilWelcomeMessage(gettingStartedUrl: string): string {
+	return [
+		"Welcome to the Better Lyrics Council <:peepolove:1269246856710324275>",
+		"",
+		"The Council has reviewed your application and deemed you worthy, and we can't wait to have you on the team!",
+		"",
+		`First order of business: ${gettingStartedUrl}`,
+		"Second order of business: have fun <:okayman:1444330560632783060>",
+		"",
+		"Alright, I've got other bot stuff to take care of. Congrats again, and I hope you use your newfound powers responsibly!",
+	].join("\n")
+}
+
+export const examApprovedRoleGranted = "Gave them the Council role."
+
+export const examApprovedRoleFailed =
+	"Could not assign the Council role. Check that my role sits above it and that I can manage roles."
+
+export const examApprovedNoRole =
+	"No Council role is set, so set one with /config council-role to have it assigned automatically."
