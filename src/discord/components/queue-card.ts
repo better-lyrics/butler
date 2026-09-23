@@ -19,6 +19,7 @@ import {
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
 import type { QueueEntry } from "@/unison/client"
+import { ytmWatchUrl } from "@/ytm/watch-url"
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
@@ -38,10 +39,6 @@ function text(content: string): TextDisplayBuilder {
 	return new TextDisplayBuilder().setContent(content)
 }
 
-function ytmUrl(videoId: string): string {
-	return `https://music.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-}
-
 export function buildQueueCard(entry: QueueEntry): CardPayload {
 	const id = String(entry.id)
 	const container = new ContainerBuilder()
@@ -58,7 +55,7 @@ export function buildQueueCard(entry: QueueEntry): CardPayload {
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Link)
-				.setURL(ytmUrl(entry.videoId))
+				.setURL(ytmWatchUrl(entry.videoId))
 				.setLabel(queueVerifyButtonLabel),
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Success)
@@ -102,7 +99,7 @@ function decidedCard(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Link)
-				.setURL(ytmUrl(input.entry.videoId))
+				.setURL(ytmWatchUrl(input.entry.videoId))
 				.setLabel(queueVerifyButtonLabel),
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Secondary)
