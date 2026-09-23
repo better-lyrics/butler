@@ -142,23 +142,37 @@ export function buildBoardCard(card: {
 	return buildQueueCard(card.entry)
 }
 
-export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {
+export function buildConfirmCard(opts: {
+	body: string
+	confirmLabel: string
+	confirmId: string
+	cancelId: string
+}): CardPayload {
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
-		.addTextDisplayComponents(text(queueConfirmSealBody))
+		.addTextDisplayComponents(text(opts.body))
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
 					.setStyle(ButtonStyle.Success)
-					.setCustomId(encodeCustomId("queue.seal.confirm", [lyricsId]))
-					.setLabel(queueConfirmSealButtonLabel),
+					.setCustomId(opts.confirmId)
+					.setLabel(opts.confirmLabel),
 				new ButtonBuilder()
 					.setStyle(ButtonStyle.Secondary)
-					.setCustomId(encodeCustomId("queue.seal.cancel", []))
+					.setCustomId(opts.cancelId)
 					.setLabel(queueCancelButtonLabel)
 			)
 		)
 	return { components: [container], flags: FLAGS }
+}
+
+export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {
+	return buildConfirmCard({
+		body: queueConfirmSealBody,
+		confirmLabel: queueConfirmSealButtonLabel,
+		confirmId: encodeCustomId("queue.seal.confirm", [lyricsId]),
+		cancelId: encodeCustomId("queue.seal.cancel", []),
+	})
 }
 
 export function buildQueueResultCard(line: string): CardPayload {
