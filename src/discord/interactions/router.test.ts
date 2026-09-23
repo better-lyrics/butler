@@ -4,6 +4,43 @@ import { routeInteraction } from "./router"
 
 describe("routeInteraction", () => {
 	describe("known actions", () => {
+		it('routes a "revision.approve" button id carrying the lyrics and revision ids', () => {
+			expect(routeInteraction(encodeCustomId("revision.approve", ["4210", "918"]))).toEqual({
+				handler: "revision.approve",
+				args: ["4210", "918"],
+			})
+		})
+
+		it('routes a "revision.approve.confirm" button id carrying the lyrics and revision ids', () => {
+			expect(routeInteraction(encodeCustomId("revision.approve.confirm", ["4210", "918"]))).toEqual(
+				{
+					handler: "revision.approve.confirm",
+					args: ["4210", "918"],
+				}
+			)
+		})
+
+		it('routes a "revision.approve.cancel" button id with no args', () => {
+			expect(routeInteraction(encodeCustomId("revision.approve.cancel", []))).toEqual({
+				handler: "revision.approve.cancel",
+				args: [],
+			})
+		})
+
+		it('routes a "revision.reject" button id carrying the lyrics and revision ids', () => {
+			expect(routeInteraction(encodeCustomId("revision.reject", ["4210", "918"]))).toEqual({
+				handler: "revision.reject",
+				args: ["4210", "918"],
+			})
+		})
+
+		it('routes a "revision.reject.submit" modal id carrying the lyrics and revision ids', () => {
+			expect(routeInteraction(encodeCustomId("revision.reject.submit", ["4210", "918"]))).toEqual({
+				handler: "revision.reject.submit",
+				args: ["4210", "918"],
+			})
+		})
+
 		it('routes a "report.add" id to the report.add handler carrying the videoId', () => {
 			const id = encodeCustomId("report.add", ["dQw4w9WgXcQ"])
 			expect(routeInteraction(id)).toEqual({
@@ -91,6 +128,26 @@ describe("routeInteraction", () => {
 	})
 
 	describe("invariants", () => {
+		it("round-trips the largest revision ids through encode then route", () => {
+			const max = String(Number.MAX_SAFE_INTEGER)
+			const actions = [
+				"revision.approve",
+				"revision.approve.confirm",
+				"revision.reject",
+				"revision.reject.submit",
+			]
+			for (const action of actions) {
+				const id = encodeCustomId(action, [max, max])
+				expect(id.length).toBeLessThanOrEqual(100)
+				expect(routeInteraction(id)).toEqual({ handler: action, args: [max, max] })
+			}
+		})
+
+		it("does not route a revision action by prefix alone", () => {
+			expect(routeInteraction("revision:4210:918")).toBeNull()
+			expect(routeInteraction("revision.approve.extra:4210:918")).toBeNull()
+		})
+
 		it("preserves args through an encode then route round-trip", () => {
 			const args = ["dQw4w9WgXcQ"]
 			const route = routeInteraction(encodeCustomId("report.add", args))
