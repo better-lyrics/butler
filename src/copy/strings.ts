@@ -1,4 +1,5 @@
 import { TIER_ORDER } from "@/config"
+import type { PendingReason } from "@/unison/client"
 import { TimestampStyles, time } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -584,6 +585,88 @@ export const queueResendEmpty =
 
 export const queueResendFailed =
 	"Could not repost the review board. The current one is still in place, so try again in a moment."
+
+export const revisionKicker = "-# Lyric edit waiting for council review"
+
+export const revisionApproveButtonLabel = "Approve"
+
+export const revisionConfirmApproveButtonLabel = "Confirm approve"
+
+export const revisionConfirmApproveBody =
+	"Approve this revision? It goes live right away, and the council cannot undo it from Discord."
+
+export const revisionApproveCancelled = "Cancelled. Nothing was approved."
+
+export const revisionRejectModalTitle = "Reject revision"
+
+export const revisionPreviewEmpty = "No line changes to preview."
+
+export const revisionPreviewTrimmed = "Preview trimmed. The full diff is attached."
+
+export const revisionResolved =
+	"No longer pending. It was withdrawn, replaced by a newer edit, or decided outside this card."
+
+export const revisionAlreadyDecided = "Someone on the council already decided this revision."
+
+export const revisionStale =
+	"A newer edit replaced this revision. The board picks it up on the next hourly pass."
+
+export const revisionNotFound = "That revision no longer exists."
+
+export const revisionError = "Something went wrong recording that decision. Try again in a moment."
+
+export function revisionApprovedBy(userId: string): string {
+	return `Approved by <@${userId}>. This revision is now live.`
+}
+
+export function revisionRejectedBy(userId: string): string {
+	return `Rejected by <@${userId}>. The live lyric stays as it was.`
+}
+
+export function revisionPercent(ratio: number): string {
+	const clamped = Number.isFinite(ratio) ? Math.min(Math.max(ratio, 0), 1) : 0
+	return `${Math.round(clamped * 100)}%`
+}
+
+const REVISION_REASON_LABELS: Record<Exclude<PendingReason, "flagged">, string> = {
+	sealed: "Sealed lyric",
+	large_text_drift: "Large text change",
+	large_timing_drift: "Large timing change",
+}
+
+export function revisionReasonLabel(
+	reason: PendingReason | null,
+	jevProbability: number | null
+): string {
+	if (reason === null) return "Needs review"
+	if (reason === "flagged") {
+		return jevProbability === null
+			? "Flagged by Jev"
+			: `Flagged by Jev ${revisionPercent(jevProbability)}`
+	}
+	return REVISION_REASON_LABELS[reason]
+}
+
+export function revisionReasonLine(card: {
+	pendingReason: PendingReason | null
+	jevProbability: number | null
+	textDrift: number
+	timingDrift: number
+}): string {
+	const label = revisionReasonLabel(card.pendingReason, card.jevProbability)
+	return `**${label}** · text change ${revisionPercent(card.textDrift)} · timing change ${revisionPercent(card.timingDrift)}`
+}
+
+export function revisionDetails(card: {
+	artist: string
+	revNo: number
+	liveRevNo: number
+	author: { displayName: string } | null
+}): string {
+	const parts = [card.artist, `Rev ${card.revNo} would replace live Rev ${card.liveRevNo}`]
+	if (card.author) parts.push(`by ${card.author.displayName}`)
+	return parts.join(" · ")
+}
 
 export const digestNoPermission = "You need the Manage Server permission to run this."
 
