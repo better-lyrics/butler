@@ -1,5 +1,6 @@
 import type { BotRequestBody } from "@/requests/payload"
 import { beforeEach, describe, expect, it } from "vitest"
+import { pendingRevision } from "./__fixtures__/pending-revision"
 import { createUnisonClient } from "./client"
 
 interface RecordedRequest {
@@ -1383,6 +1384,102 @@ describe("createUnisonClient decideExamApplicant", () => {
 		expect(await client.decideExamApplicant("sess-1", "approve", "admin-1")).toEqual({
 			status: "error",
 			code: 500,
+		})
+	})
+})
+
+describe("createUnisonClient getPendingRevisions", () => {
+	it("issues an authed GET to the pending route and returns the cards in server order", async () => {
+		const rows = [
+			pendingRevision(),
+			pendingRevision({ lyricsId: 5001, revisionId: 919, pendingReason: "sealed" }),
+		]
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: rows }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getPendingRevisions()
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/revisions/pending/bot")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({ status: "ok", cards: rows })
+	})
+
+	describe("edge cases", () => {
+		it("returns an empty list without error", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [] })
+		})
+
+		it("keeps a null author and a flagged row's jev probability", async () => {
+			const row = pendingRevision({ author: null, pendingReason: "flagged", jevProbability: 0.82 })
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [row] })
+		})
+
+		it("maps an unknown pending reason to null instead of dropping the row", async () => {
+			const row = { ...pendingRevision(), pendingReason: "moderator_hold" }
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toMatchObject({
+				status: "ok",
+				cards: [{ revisionId: 918, pendingReason: null }],
+			})
+		})
+
+		it("defaults missing diff strings to empty and missing drift to zero", async () => {
+			const row = {
+				...pendingRevision(),
+				diffPreview: undefined,
+				diffFull: undefined,
+				textDrift: undefined,
+				timingDrift: "high",
+			}
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toMatchObject({
+				status: "ok",
+				cards: [{ diffPreview: "", diffFull: "", textDrift: 0, timingDrift: 0 }],
+			})
+		})
+	})
+
+	describe("error paths", () => {
+		it("maps 401 AUTH_REQUIRED to an error result", async () => {
+			const { fn } = makeFetch(errorResponse(401, "AUTH_REQUIRED"))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 401 })
+		})
+
+		it("maps a 404 (route not deployed yet) to an error result", async () => {
+			const { fn } = makeFetch(new Response("not found", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 404 })
+		})
+
+		it("maps a malformed body (data not an array) to an error result", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: {} }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 200 })
+		})
+
+		it("skips a row whose ids are not integers and keeps the rest", async () => {
+			const bad = { ...pendingRevision(), revisionId: "918" }
+			const good = pendingRevision({ revisionId: 919 })
+			const { fn } = makeFetch(Response.json({ success: true, data: [bad, good] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [good] })
+		})
+	})
+
+	describe("invariants", () => {
+		it("sends no body on the list call", async () => {
+			const { fn, calls } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.getPendingRevisions()
+			expect(calls[0]?.body).toBeNull()
 		})
 	})
 })
