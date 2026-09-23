@@ -55,6 +55,10 @@ The Council role goes through an exam, not a hand-out. A member runs `/council-a
 
 Whoever passes surfaces two ways: butler posts them to the council channel on its own (on the hourly pass), and admins can pull the list any time with `/council-applicants`. Each applicant card has approve and reject, both behind a confirm step since neither can be undone from Discord. Approving grants the role, registers them in Unison, and DMs them a welcome. `/council-welcome-preview` sends that welcome to you so you can check it first.
 
+## Lyric revisions
+
+When a lyric owner saves an edit that needs council review (a sealed lyric, or a text or timing change over the limit), butler posts it to the council channel on the hourly pass. Each card shows the reason, how much changed, who made the edit, a short diff preview, and the full diff as an attached file. Any council member can approve it, which makes the edit live, or reject it with an optional reason. The card updates in place. Cards for revisions that were withdrawn, replaced by a newer edit, or decided somewhere else close on the next pass.
+
 ## Deploy
 
 Railway, as a worker. No public port, since butler only makes outbound calls. Set the three required vars (plus `DEV_GUILD_ID` while testing). If `BUTLER_BOT_SECRET` does not match Unison, the bot reads and the request POST will 401. There is no OAuth to configure here; that is Unison's side.
