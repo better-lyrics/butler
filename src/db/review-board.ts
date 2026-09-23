@@ -1,3 +1,4 @@
+import { parseJsonb } from "@/db/jsonb"
 import type { QueueEntry } from "@/unison/client"
 import type { Pool } from "pg"
 
@@ -25,12 +26,6 @@ interface BoardCardRow {
 	entry: unknown
 }
 
-// JSONB comes back parsed from real pg, but pg-mem hands the column back as a
-// raw string, so normalize both shapes.
-function parseEntry(value: unknown): QueueEntry {
-	return (typeof value === "string" ? JSON.parse(value) : value) as QueueEntry
-}
-
 function mapRow(row: BoardCardRow): BoardCard {
 	return {
 		lyricId: row.lyric_id,
@@ -40,7 +35,7 @@ function mapRow(row: BoardCardRow): BoardCard {
 		state: row.state as BoardCardState,
 		actorId: row.actor_id,
 		note: row.note,
-		entry: parseEntry(row.entry),
+		entry: parseJsonb<QueueEntry>(row.entry),
 	}
 }
 
