@@ -299,6 +299,14 @@ export type PendingRevisionsResult =
 	| { status: "ok"; cards: PendingRevisionCard[] }
 	| { status: "error"; code: number }
 
+export type RevisionDecisionResult =
+	| { status: "decided" }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "already_decided" }
+	| { status: "stale" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -337,6 +345,17 @@ export interface UnisonClient {
 		deciderDiscordId: string
 	): Promise<ExamDecisionResult>
 	getPendingRevisions(): Promise<PendingRevisionsResult>
+	approveRevision(
+		lyricsId: string,
+		revisionId: string,
+		keyId: string
+	): Promise<RevisionDecisionResult>
+	rejectRevision(
+		lyricsId: string,
+		revisionId: string,
+		keyId: string,
+		note?: string
+	): Promise<RevisionDecisionResult>
 }
 
 interface LeaderboardResponse {
@@ -523,6 +542,37 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 	const baseUrl = options.baseUrl.replace(/\/+$/, "")
 	const doFetch = options.fetch ?? fetch
 	const authHeaders = { Authorization: `Bearer ${options.botSecret}` }
+
+	async function decideRevision(
+		lyricsId: string,
+		revisionId: string,
+		action: "approve" | "reject",
+		body: { keyId: string; note?: string }
+	): Promise<RevisionDecisionResult> {
+		const res = await doFetch(
+			`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/revisions/${encodeURIComponent(revisionId)}/${action}/bot`,
+			{
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			}
+		)
+		if (res.ok) {
+			return { status: "decided" }
+		}
+		switch (await errorCode(res)) {
+			case "NOT_COMMITTEE":
+				return { status: "not_council" }
+			case "NOT_FOUND":
+				return { status: "not_found" }
+			case "ALREADY_DECIDED":
+				return { status: "already_decided" }
+			case "STALE":
+				return { status: "stale" }
+			default:
+				return { status: "error", code: res.status }
+		}
+	}
 
 	return {
 		async getLeaderboard() {
@@ -891,6 +941,14 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				.map(parsePendingRevision)
 				.filter((card): card is PendingRevisionCard => card !== null)
 			return { status: "ok", cards }
+		},
+
+		async approveRevision(lyricsId, revisionId, keyId) {
+			return decideRevision(lyricsId, revisionId, "approve", { keyId })
+		},
+
+		async rejectRevision(lyricsId, revisionId, keyId, note) {
+			return decideRevision(lyricsId, revisionId, "reject", note ? { keyId, note } : { keyId })
 		},
 
 		async startExam(keyId, discordId) {

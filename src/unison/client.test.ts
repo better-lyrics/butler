@@ -1483,3 +1483,109 @@ describe("createUnisonClient getPendingRevisions", () => {
 		})
 	})
 })
+
+describe("createUnisonClient approveRevision and rejectRevision", () => {
+	const KEY_ID = "c".repeat(64)
+	const decided = () =>
+		Response.json(
+			{ success: true, data: { revision: { id: 918, revNo: 3, status: "live" } } },
+			{ status: 200 }
+		)
+
+	describe("happy paths", () => {
+		it("approve posts the keyId to the approve route with bearer auth", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.approveRevision("4210", "918", KEY_ID)
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/4210/revisions/918/approve/bot")
+			expect(calls[0]?.method).toBe("POST")
+			expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+			expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+			expect(result).toEqual({ status: "decided" })
+		})
+
+		it("reject posts the keyId and note to the reject route", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.rejectRevision(
+				"4210",
+				"918",
+				KEY_ID,
+				"timing is off in the bridge"
+			)
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/4210/revisions/918/reject/bot")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+				keyId: KEY_ID,
+				note: "timing is off in the bridge",
+			})
+			expect(result).toEqual({ status: "decided" })
+		})
+	})
+
+	describe("edge cases", () => {
+		it("reject omits the note when none is given", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.rejectRevision("4210", "918", KEY_ID)
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+		})
+
+		it("encodes both ids in the path", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.approveRevision("a/b", "9 9", KEY_ID)
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/a%2Fb/revisions/9%209/approve/bot")
+		})
+	})
+
+	describe("error paths", () => {
+		const cases: Array<[Response, unknown]> = [
+			[errorResponse(403, "NOT_COMMITTEE"), { status: "not_council" }],
+			[errorResponse(404, "NOT_FOUND"), { status: "not_found" }],
+			[errorResponse(409, "ALREADY_DECIDED"), { status: "already_decided" }],
+			[errorResponse(409, "STALE"), { status: "stale" }],
+			[errorResponse(401, "AUTH_REQUIRED"), { status: "error", code: 401 }],
+			[new Response("boom", { status: 500 }), { status: "error", code: 500 }],
+		]
+
+		for (const [response, expected] of cases) {
+			it(`approve maps ${response.status} ${JSON.stringify(expected)}`, async () => {
+				const { fn } = makeFetch(response.clone())
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.approveRevision("1", "2", KEY_ID)).toEqual(expected)
+			})
+
+			it(`reject maps ${response.status} ${JSON.stringify(expected)}`, async () => {
+				const { fn } = makeFetch(response.clone())
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.rejectRevision("1", "2", KEY_ID, "note")).toEqual(expected)
+			})
+		}
+	})
+
+	describe("regressions", () => {
+		it("regression: tells the two 409s apart by code, not status", async () => {
+			const already = makeFetch(errorResponse(409, "ALREADY_DECIDED"))
+			const stale = makeFetch(errorResponse(409, "STALE"))
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: already.fn }).approveRevision(
+					"1",
+					"2",
+					KEY_ID
+				)
+			).toEqual({ status: "already_decided" })
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: stale.fn }).approveRevision(
+					"1",
+					"2",
+					KEY_ID
+				)
+			).toEqual({ status: "stale" })
+		})
+	})
+})
