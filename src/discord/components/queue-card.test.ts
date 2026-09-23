@@ -1,5 +1,6 @@
 import {
 	queueCancelButtonLabel,
+	queueConfirmSealBody,
 	queueConfirmSealButtonLabel,
 	queueEntryHeading,
 	queueRejectButtonLabel,
@@ -19,6 +20,7 @@ import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
 import {
 	buildBoardCard,
+	buildConfirmCard,
 	buildQueueCard,
 	buildQueueRejectedCard,
 	buildQueueResultCard,
@@ -231,5 +233,41 @@ describe("buildQueueResultCard", () => {
 		const card = buildQueueResultCard("Cancelled.")
 		expect(textBlob(card)).toContain("Cancelled.")
 		expect(buttons(card)).toHaveLength(0)
+	})
+})
+
+describe("buildConfirmCard", () => {
+	const opts = {
+		body: "Approve this?",
+		confirmLabel: "Confirm approve",
+		confirmId: "revision.approve.confirm:4210:918",
+		cancelId: "revision.approve.cancel",
+	}
+
+	describe("happy paths", () => {
+		it("shows the body with a confirm button and the shared cancel button", () => {
+			const card = buildConfirmCard(opts)
+			expect(textBlob(card)).toBe("Approve this?")
+			const btns = buttons(card)
+			expect(btns.map((b) => [b.label, b.custom_id])).toEqual([
+				["Confirm approve", "revision.approve.confirm:4210:918"],
+				[queueCancelButtonLabel, "revision.approve.cancel"],
+			])
+		})
+
+		it("is a components v2 payload", () => {
+			expect(buildConfirmCard(opts).flags).toBe(MessageFlags.IsComponentsV2)
+		})
+	})
+
+	describe("invariants", () => {
+		it("regression: the seal confirm card is unchanged by the extraction", () => {
+			const card = buildQueueSealConfirmCard("4210")
+			expect(textBlob(card)).toBe(queueConfirmSealBody)
+			expect(buttons(card).map((b) => [b.label, b.custom_id])).toEqual([
+				[queueConfirmSealButtonLabel, "queue.seal.confirm:4210"],
+				[queueCancelButtonLabel, "queue.seal.cancel"],
+			])
+		})
 	})
 })

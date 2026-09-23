@@ -19,6 +19,7 @@ import {
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
 import type { QueueEntry } from "@/unison/client"
+import { ytmWatchUrl } from "@/ytm/watch-url"
 import {
 	ActionRowBuilder,
 	ButtonBuilder,
@@ -38,10 +39,6 @@ function text(content: string): TextDisplayBuilder {
 	return new TextDisplayBuilder().setContent(content)
 }
 
-function ytmUrl(videoId: string): string {
-	return `https://music.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-}
-
 export function buildQueueCard(entry: QueueEntry): CardPayload {
 	const id = String(entry.id)
 	const container = new ContainerBuilder()
@@ -58,7 +55,7 @@ export function buildQueueCard(entry: QueueEntry): CardPayload {
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Link)
-				.setURL(ytmUrl(entry.videoId))
+				.setURL(ytmWatchUrl(entry.videoId))
 				.setLabel(queueVerifyButtonLabel),
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Success)
@@ -102,7 +99,7 @@ function decidedCard(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Link)
-				.setURL(ytmUrl(input.entry.videoId))
+				.setURL(ytmWatchUrl(input.entry.videoId))
 				.setLabel(queueVerifyButtonLabel),
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Secondary)
@@ -145,23 +142,37 @@ export function buildBoardCard(card: {
 	return buildQueueCard(card.entry)
 }
 
-export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {
+export function buildConfirmCard(opts: {
+	body: string
+	confirmLabel: string
+	confirmId: string
+	cancelId: string
+}): CardPayload {
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
-		.addTextDisplayComponents(text(queueConfirmSealBody))
+		.addTextDisplayComponents(text(opts.body))
 		.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
 					.setStyle(ButtonStyle.Success)
-					.setCustomId(encodeCustomId("queue.seal.confirm", [lyricsId]))
-					.setLabel(queueConfirmSealButtonLabel),
+					.setCustomId(opts.confirmId)
+					.setLabel(opts.confirmLabel),
 				new ButtonBuilder()
 					.setStyle(ButtonStyle.Secondary)
-					.setCustomId(encodeCustomId("queue.seal.cancel", []))
+					.setCustomId(opts.cancelId)
 					.setLabel(queueCancelButtonLabel)
 			)
 		)
 	return { components: [container], flags: FLAGS }
+}
+
+export function buildQueueSealConfirmCard(lyricsId: string): CardPayload {
+	return buildConfirmCard({
+		body: queueConfirmSealBody,
+		confirmLabel: queueConfirmSealButtonLabel,
+		confirmId: encodeCustomId("queue.seal.confirm", [lyricsId]),
+		cancelId: encodeCustomId("queue.seal.cancel", []),
+	})
 }
 
 export function buildQueueResultCard(line: string): CardPayload {

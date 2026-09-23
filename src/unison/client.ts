@@ -274,6 +274,39 @@ export type ExamDecisionResult =
 	| { status: "not_found" }
 	| { status: "error"; code: number }
 
+export type PendingReason = "sealed" | "flagged" | "large_text_drift" | "large_timing_drift"
+
+export interface PendingRevisionCard {
+	lyricsId: number
+	revisionId: number
+	revNo: number
+	liveRevNo: number
+	videoId: string
+	song: string
+	artist: string
+	format: string
+	pendingReason: PendingReason | null
+	jevProbability: number | null
+	textDrift: number
+	timingDrift: number
+	author: { displayName: string } | null
+	createdAt: number
+	diffPreview: string
+	diffFull: string
+}
+
+export type PendingRevisionsResult =
+	| { status: "ok"; cards: PendingRevisionCard[] }
+	| { status: "error"; code: number }
+
+export type RevisionDecisionResult =
+	| { status: "decided" }
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "already_decided" }
+	| { status: "stale" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -311,6 +344,18 @@ export interface UnisonClient {
 		decision: ExamDecision,
 		deciderDiscordId: string
 	): Promise<ExamDecisionResult>
+	getPendingRevisions(): Promise<PendingRevisionsResult>
+	approveRevision(
+		lyricsId: string,
+		revisionId: string,
+		keyId: string
+	): Promise<RevisionDecisionResult>
+	rejectRevision(
+		lyricsId: string,
+		revisionId: string,
+		keyId: string,
+		note?: string
+	): Promise<RevisionDecisionResult>
 }
 
 interface LeaderboardResponse {
@@ -452,10 +497,82 @@ function parseExamApplicant(value: unknown): ExamApplicant | null {
 	}
 }
 
+const PENDING_REASONS: PendingReason[] = [
+	"sealed",
+	"flagged",
+	"large_text_drift",
+	"large_timing_drift",
+]
+
+function isPendingReason(value: unknown): value is PendingReason {
+	return typeof value === "string" && (PENDING_REASONS as string[]).includes(value)
+}
+
+function finiteOrNull(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function parsePendingRevision(value: unknown): PendingRevisionCard | null {
+	if (!value || typeof value !== "object") return null
+	const row = value as Record<string, unknown>
+	if (!Number.isInteger(row.lyricsId) || !Number.isInteger(row.revisionId)) return null
+	const author = row.author as { displayName?: unknown } | null | undefined
+	return {
+		lyricsId: row.lyricsId as number,
+		revisionId: row.revisionId as number,
+		revNo: finiteOrNull(row.revNo) ?? 0,
+		liveRevNo: finiteOrNull(row.liveRevNo) ?? 0,
+		videoId: String(row.videoId ?? ""),
+		song: String(row.song ?? ""),
+		artist: String(row.artist ?? ""),
+		format: String(row.format ?? ""),
+		pendingReason: isPendingReason(row.pendingReason) ? row.pendingReason : null,
+		jevProbability: finiteOrNull(row.jevProbability),
+		textDrift: finiteOrNull(row.textDrift) ?? 0,
+		timingDrift: finiteOrNull(row.timingDrift) ?? 0,
+		author:
+			author && typeof author.displayName === "string" ? { displayName: author.displayName } : null,
+		createdAt: finiteOrNull(row.createdAt) ?? 0,
+		diffPreview: typeof row.diffPreview === "string" ? row.diffPreview : "",
+		diffFull: typeof row.diffFull === "string" ? row.diffFull : "",
+	}
+}
+
 export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 	const baseUrl = options.baseUrl.replace(/\/+$/, "")
 	const doFetch = options.fetch ?? fetch
 	const authHeaders = { Authorization: `Bearer ${options.botSecret}` }
+
+	async function decideRevision(
+		lyricsId: string,
+		revisionId: string,
+		action: "approve" | "reject",
+		body: { keyId: string; note?: string }
+	): Promise<RevisionDecisionResult> {
+		const res = await doFetch(
+			`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/revisions/${encodeURIComponent(revisionId)}/${action}/bot`,
+			{
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify(body),
+			}
+		)
+		if (res.ok) {
+			return { status: "decided" }
+		}
+		switch (await errorCode(res)) {
+			case "NOT_COMMITTEE":
+				return { status: "not_council" }
+			case "NOT_FOUND":
+				return { status: "not_found" }
+			case "ALREADY_DECIDED":
+				return { status: "already_decided" }
+			case "STALE":
+				return { status: "stale" }
+			default:
+				return { status: "error", code: res.status }
+		}
+	}
 
 	return {
 		async getLeaderboard() {
@@ -809,6 +926,29 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				default:
 					return { status: "error", code: res.status }
 			}
+		},
+
+		async getPendingRevisions() {
+			const res = await doFetch(`${baseUrl}/lyrics/revisions/pending/bot`, { headers: authHeaders })
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: unknown } | null
+			if (!json || !Array.isArray(json.data)) {
+				return { status: "error", code: res.status }
+			}
+			const cards = json.data
+				.map(parsePendingRevision)
+				.filter((card): card is PendingRevisionCard => card !== null)
+			return { status: "ok", cards }
+		},
+
+		async approveRevision(lyricsId, revisionId, keyId) {
+			return decideRevision(lyricsId, revisionId, "approve", { keyId })
+		},
+
+		async rejectRevision(lyricsId, revisionId, keyId, note) {
+			return decideRevision(lyricsId, revisionId, "reject", note ? { keyId, note } : { keyId })
 		},
 
 		async startExam(keyId, discordId) {

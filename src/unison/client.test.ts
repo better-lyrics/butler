@@ -1,5 +1,6 @@
 import type { BotRequestBody } from "@/requests/payload"
 import { beforeEach, describe, expect, it } from "vitest"
+import { pendingRevision } from "./__fixtures__/pending-revision"
 import { createUnisonClient } from "./client"
 
 interface RecordedRequest {
@@ -1383,6 +1384,208 @@ describe("createUnisonClient decideExamApplicant", () => {
 		expect(await client.decideExamApplicant("sess-1", "approve", "admin-1")).toEqual({
 			status: "error",
 			code: 500,
+		})
+	})
+})
+
+describe("createUnisonClient getPendingRevisions", () => {
+	it("issues an authed GET to the pending route and returns the cards in server order", async () => {
+		const rows = [
+			pendingRevision(),
+			pendingRevision({ lyricsId: 5001, revisionId: 919, pendingReason: "sealed" }),
+		]
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: rows }, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getPendingRevisions()
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/revisions/pending/bot")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({ status: "ok", cards: rows })
+	})
+
+	describe("edge cases", () => {
+		it("returns an empty list without error", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [] })
+		})
+
+		it("keeps a null author and a flagged row's jev probability", async () => {
+			const row = pendingRevision({ author: null, pendingReason: "flagged", jevProbability: 0.82 })
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [row] })
+		})
+
+		it("maps an unknown pending reason to null instead of dropping the row", async () => {
+			const row = { ...pendingRevision(), pendingReason: "moderator_hold" }
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toMatchObject({
+				status: "ok",
+				cards: [{ revisionId: 918, pendingReason: null }],
+			})
+		})
+
+		it("defaults missing diff strings to empty and missing drift to zero", async () => {
+			const row = {
+				...pendingRevision(),
+				diffPreview: undefined,
+				diffFull: undefined,
+				textDrift: undefined,
+				timingDrift: "high",
+			}
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toMatchObject({
+				status: "ok",
+				cards: [{ diffPreview: "", diffFull: "", textDrift: 0, timingDrift: 0 }],
+			})
+		})
+	})
+
+	describe("error paths", () => {
+		it("maps 401 AUTH_REQUIRED to an error result", async () => {
+			const { fn } = makeFetch(errorResponse(401, "AUTH_REQUIRED"))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 401 })
+		})
+
+		it("maps a 404 (route not deployed yet) to an error result", async () => {
+			const { fn } = makeFetch(new Response("not found", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 404 })
+		})
+
+		it("maps a malformed body (data not an array) to an error result", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: {} }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "error", code: 200 })
+		})
+
+		it("skips a row whose ids are not integers and keeps the rest", async () => {
+			const bad = { ...pendingRevision(), revisionId: "918" }
+			const good = pendingRevision({ revisionId: 919 })
+			const { fn } = makeFetch(Response.json({ success: true, data: [bad, good] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getPendingRevisions()).toEqual({ status: "ok", cards: [good] })
+		})
+	})
+
+	describe("invariants", () => {
+		it("sends no body on the list call", async () => {
+			const { fn, calls } = makeFetch(Response.json({ success: true, data: [] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.getPendingRevisions()
+			expect(calls[0]?.body).toBeNull()
+		})
+	})
+})
+
+describe("createUnisonClient approveRevision and rejectRevision", () => {
+	const KEY_ID = "c".repeat(64)
+	const decided = () =>
+		Response.json(
+			{ success: true, data: { revision: { id: 918, revNo: 3, status: "live" } } },
+			{ status: 200 }
+		)
+
+	describe("happy paths", () => {
+		it("approve posts the keyId to the approve route with bearer auth", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.approveRevision("4210", "918", KEY_ID)
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/4210/revisions/918/approve/bot")
+			expect(calls[0]?.method).toBe("POST")
+			expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+			expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+			expect(result).toEqual({ status: "decided" })
+		})
+
+		it("reject posts the keyId and note to the reject route", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.rejectRevision(
+				"4210",
+				"918",
+				KEY_ID,
+				"timing is off in the bridge"
+			)
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/4210/revisions/918/reject/bot")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+				keyId: KEY_ID,
+				note: "timing is off in the bridge",
+			})
+			expect(result).toEqual({ status: "decided" })
+		})
+	})
+
+	describe("edge cases", () => {
+		it("reject omits the note when none is given", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.rejectRevision("4210", "918", KEY_ID)
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+		})
+
+		it("encodes both ids in the path", async () => {
+			const { fn, calls } = makeFetch(decided())
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.approveRevision("a/b", "9 9", KEY_ID)
+			expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/a%2Fb/revisions/9%209/approve/bot")
+		})
+	})
+
+	describe("error paths", () => {
+		const cases: Array<[Response, unknown]> = [
+			[errorResponse(403, "NOT_COMMITTEE"), { status: "not_council" }],
+			[errorResponse(404, "NOT_FOUND"), { status: "not_found" }],
+			[errorResponse(409, "ALREADY_DECIDED"), { status: "already_decided" }],
+			[errorResponse(409, "STALE"), { status: "stale" }],
+			[errorResponse(401, "AUTH_REQUIRED"), { status: "error", code: 401 }],
+			[new Response("boom", { status: 500 }), { status: "error", code: 500 }],
+		]
+
+		for (const [response, expected] of cases) {
+			it(`approve maps ${response.status} ${JSON.stringify(expected)}`, async () => {
+				const { fn } = makeFetch(response.clone())
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.approveRevision("1", "2", KEY_ID)).toEqual(expected)
+			})
+
+			it(`reject maps ${response.status} ${JSON.stringify(expected)}`, async () => {
+				const { fn } = makeFetch(response.clone())
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.rejectRevision("1", "2", KEY_ID, "note")).toEqual(expected)
+			})
+		}
+	})
+
+	describe("regressions", () => {
+		it("regression: tells the two 409s apart by code, not status", async () => {
+			const already = makeFetch(errorResponse(409, "ALREADY_DECIDED"))
+			const stale = makeFetch(errorResponse(409, "STALE"))
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: already.fn }).approveRevision(
+					"1",
+					"2",
+					KEY_ID
+				)
+			).toEqual({ status: "already_decided" })
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: stale.fn }).approveRevision(
+					"1",
+					"2",
+					KEY_ID
+				)
+			).toEqual({ status: "stale" })
 		})
 	})
 })

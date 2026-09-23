@@ -15,6 +15,10 @@ import {
 	promotionSubtitle,
 	promotionTitle,
 	reportHelp,
+	revisionDetails,
+	revisionPercent,
+	revisionReasonLabel,
+	revisionReasonLine,
 	sealQuotaSummary,
 	sealResetsLine,
 	sealVariantDescription,
@@ -409,5 +413,89 @@ describe("examApplicantMisses and examApplicantFullMarks", () => {
 	it("returns null when nothing was full marks", () => {
 		const allMissed = fullBreakdown.map((r) => ({ ...r, score: 0 }))
 		expect(examApplicantFullMarks(allMissed)).toBeNull()
+	})
+})
+
+describe("revisionPercent", () => {
+	describe("happy paths", () => {
+		it("renders a ratio as a whole percent", () => {
+			expect(revisionPercent(0.23)).toBe("23%")
+			expect(revisionPercent(0.15)).toBe("15%")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("renders the bounds", () => {
+			expect(revisionPercent(0)).toBe("0%")
+			expect(revisionPercent(1)).toBe("100%")
+		})
+
+		it("clamps out-of-range and non-finite input", () => {
+			expect(revisionPercent(-0.4)).toBe("0%")
+			expect(revisionPercent(1.7)).toBe("100%")
+			expect(revisionPercent(Number.NaN)).toBe("0%")
+			expect(revisionPercent(Number.POSITIVE_INFINITY)).toBe("0%")
+		})
+	})
+})
+
+describe("revisionReasonLabel", () => {
+	describe("happy paths", () => {
+		it("labels every pending reason", () => {
+			expect(revisionReasonLabel("sealed", null)).toBe("Sealed lyric")
+			expect(revisionReasonLabel("large_text_drift", null)).toBe("Large text change")
+			expect(revisionReasonLabel("large_timing_drift", null)).toBe("Large timing change")
+			expect(revisionReasonLabel("flagged", 0.82)).toBe("Flagged by Jev 82%")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("drops the percentage when a flagged row has no probability", () => {
+			expect(revisionReasonLabel("flagged", null)).toBe("Flagged by Jev")
+		})
+
+		it("falls back for an unrecognized reason", () => {
+			expect(revisionReasonLabel(null, null)).toBe("Needs review")
+		})
+
+		it("ignores a probability on a non-flagged reason", () => {
+			expect(revisionReasonLabel("sealed", 0.9)).toBe("Sealed lyric")
+		})
+	})
+})
+
+describe("revisionReasonLine", () => {
+	it("bolds the reason and shows both drift values", () => {
+		expect(
+			revisionReasonLine({
+				pendingReason: "large_text_drift",
+				jevProbability: null,
+				textDrift: 0.23,
+				timingDrift: 0.04,
+			})
+		).toBe("**Large text change** · text change 23% · timing change 4%")
+	})
+})
+
+describe("revisionDetails", () => {
+	describe("happy paths", () => {
+		it("names the artist, the revision pair, and the author", () => {
+			expect(
+				revisionDetails({
+					artist: "Rick Astley",
+					revNo: 3,
+					liveRevNo: 2,
+					author: { displayName: "mukeenanyafiq" },
+				})
+			).toBe("Rick Astley · Rev 3 would replace live Rev 2 · by mukeenanyafiq")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("drops the author clause for a null author", () => {
+			expect(revisionDetails({ artist: "Rick Astley", revNo: 3, liveRevNo: 2, author: null })).toBe(
+				"Rick Astley · Rev 3 would replace live Rev 2"
+			)
+		})
 	})
 })

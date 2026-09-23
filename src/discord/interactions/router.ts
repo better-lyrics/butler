@@ -16,6 +16,11 @@ export type HandlerName =
 	| "queue.reject"
 	| "queue.reject.submit"
 	| "queue.reject.undo"
+	| "revision.approve"
+	| "revision.approve.confirm"
+	| "revision.approve.cancel"
+	| "revision.reject"
+	| "revision.reject.submit"
 	| "exam.approve"
 	| "exam.reject"
 	| "exam.approve.go"
@@ -37,6 +42,11 @@ const HANDLERS: readonly HandlerName[] = [
 	"queue.reject",
 	"queue.reject.submit",
 	"queue.reject.undo",
+	"revision.approve",
+	"revision.approve.confirm",
+	"revision.approve.cancel",
+	"revision.reject",
+	"revision.reject.submit",
 	"exam.approve",
 	"exam.reject",
 	"exam.approve.go",

@@ -25,6 +25,7 @@ import {
 	TextDisplayBuilder,
 } from "discord.js"
 import type { CardPayload } from "./connect-card"
+import { truncate } from "./truncate"
 
 const FLAGS = MessageFlags.IsComponentsV2
 
@@ -36,10 +37,6 @@ const MAX_FIELD = 100
 
 function text(content: string): TextDisplayBuilder {
 	return new TextDisplayBuilder().setContent(content)
-}
-
-function truncate(value: string, max = MAX_FIELD): string {
-	return value.length > max ? `${value.slice(0, max - 1)}…` : value
 }
 
 const COPY: Record<
@@ -78,7 +75,7 @@ export function buildSealPickerCard(opts: {
 	const copy = COPY[opts.mode]
 	const options = opts.variants.slice(0, MAX_OPTIONS).map((v) =>
 		new StringSelectMenuOptionBuilder()
-			.setLabel(truncate(sealVariantLabel(v.song)))
+			.setLabel(truncate(sealVariantLabel(v.song), MAX_FIELD))
 			.setDescription(
 				truncate(
 					sealVariantDescription({
@@ -86,7 +83,8 @@ export function buildSealPickerCard(opts: {
 						format: v.format,
 						score: v.score,
 						submitterName: v.submitterName,
-					})
+					}),
+					MAX_FIELD
 				)
 			)
 			.setValue(String(v.id))

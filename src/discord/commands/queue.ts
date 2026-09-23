@@ -3,7 +3,6 @@ import {
 	queueError,
 	queueNotCouncil,
 	queueRejectModalTitle,
-	queueRejectNoteLabel,
 	queueRejectUndone,
 	queueRejectedBy,
 	queueResendEmpty,
@@ -29,6 +28,7 @@ import {
 	buildQueueResultCard,
 	buildQueueSealConfirmCard,
 } from "@/discord/components/queue-card"
+import { buildRejectNoteModal, readRejectNote } from "@/discord/components/reject-note-modal"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import { encodeCustomId } from "@/interactions/custom-id"
 import type {
@@ -39,20 +39,11 @@ import type {
 	UnrejectResult,
 	UnsealResult,
 } from "@/unison/client"
-import {
-	ActionRowBuilder,
-	MessageFlags,
-	ModalBuilder,
-	SlashCommandBuilder,
-	TextInputBuilder,
-	TextInputStyle,
-} from "discord.js"
+import { MessageFlags, type ModalBuilder, SlashCommandBuilder } from "discord.js"
 
 export const queueCommand = new SlashCommandBuilder()
 	.setName("queue")
 	.setDescription("Repost the current review board so the council can pick it back up")
-
-const NOTE_INPUT = "note"
 
 export const QUEUE_LIMIT = 10
 
@@ -273,20 +264,9 @@ export async function handleQueueReject(
 	interaction: QueueModalOpenInteraction,
 	lyricsId: string
 ): Promise<void> {
-	const modal = new ModalBuilder()
-		.setCustomId(encodeCustomId("queue.reject.submit", [lyricsId]))
-		.setTitle(queueRejectModalTitle)
-		.addComponents(
-			new ActionRowBuilder<TextInputBuilder>().addComponents(
-				new TextInputBuilder()
-					.setCustomId(NOTE_INPUT)
-					.setLabel(queueRejectNoteLabel)
-					.setStyle(TextInputStyle.Paragraph)
-					.setRequired(false)
-					.setMaxLength(300)
-			)
-		)
-	await interaction.showModal(modal)
+	await interaction.showModal(
+		buildRejectNoteModal(encodeCustomId("queue.reject.submit", [lyricsId]), queueRejectModalTitle)
+	)
 }
 
 export async function handleQueueRejectSubmit(
@@ -298,20 +278,20 @@ export async function handleQueueRejectSubmit(
 		await interaction.reply(ephemeralText(queueError))
 		return
 	}
-	const note = interaction.fields.getTextInputValue(NOTE_INPUT).trim()
+	const note = readRejectNote(interaction.fields)
 	const keyId = await deps.resolveKeyId(interaction.user.id)
 	if (!keyId) {
 		await interaction.reply(ephemeralCard(buildConnectCard({ linkPageUrl: deps.linkPageUrl })))
 		return
 	}
-	const result = await deps.rejectLyric(lyricsId, keyId, note || undefined)
+	const result = await deps.rejectLyric(lyricsId, keyId, note ?? undefined)
 	switch (result.status) {
 		case "rejected": {
 			const entry = await deps.getEntry(lyricsId)
-			await deps.markRejected(lyricsId, interaction.user.id, note || null)
+			await deps.markRejected(lyricsId, interaction.user.id, note)
 			await interaction.update(
 				entry
-					? buildQueueRejectedCard(entry, interaction.user.id, note || null)
+					? buildQueueRejectedCard(entry, interaction.user.id, note)
 					: buildQueueResultCard(queueRejectedBy(interaction.user.id))
 			)
 			return
