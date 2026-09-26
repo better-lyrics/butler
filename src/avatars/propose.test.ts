@@ -52,7 +52,9 @@ describe("buildProposal", () => {
 
 		it("rejects an unsupported type", () => {
 			expect(
-				buildProposal(base({ attachment: { name: "a.svg", contentType: "image/svg+xml", size: 10 } }))
+				buildProposal(
+					base({ attachment: { name: "a.svg", contentType: "image/svg+xml", size: 10 } })
+				)
 			).toEqual({ ok: false, reason: "bad_type" })
 		})
 
@@ -66,7 +68,11 @@ describe("buildProposal", () => {
 			expect(
 				buildProposal(
 					base({
-						attachment: { name: "big.png", contentType: "image/png", size: MAX_ATTACHMENT_BYTES + 1 },
+						attachment: {
+							name: "big.png",
+							contentType: "image/png",
+							size: MAX_ATTACHMENT_BYTES + 1,
+						},
 					})
 				)
 			).toEqual({ ok: false, reason: "too_big" })
@@ -74,7 +80,9 @@ describe("buildProposal", () => {
 
 		it("rejects a name that slugs to empty", () => {
 			expect(
-				buildProposal(base({ name: "!!!", attachment: { name: "!!!.png", contentType: "image/png", size: 10 } }))
+				buildProposal(
+					base({ name: "!!!", attachment: { name: "!!!.png", contentType: "image/png", size: 10 } })
+				)
 			).toEqual({ ok: false, reason: "bad_name" })
 		})
 	})

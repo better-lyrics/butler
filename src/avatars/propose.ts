@@ -3,7 +3,13 @@ import { labelFrom, slugifyAvatarId } from "@/avatars/slug"
 export const ACCEPTED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
 export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
-export type ProposalReason = "wrong_channel" | "not_eligible" | "no_image" | "bad_type" | "too_big" | "bad_name"
+export type ProposalReason =
+	| "wrong_channel"
+	| "not_eligible"
+	| "no_image"
+	| "bad_type"
+	| "too_big"
+	| "bad_name"
 
 export type ProposalResult =
 	| { ok: true; id: string; label: string }

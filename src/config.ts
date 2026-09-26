@@ -6,8 +6,11 @@ export interface Config {
 	composerBaseUrl: string
 	ytmCookie: string | null
 	guildId: string
+	pfpSuggestChannelId: string
 	announce: { batchThreshold: number }
 }
+
+const DEFAULT_PFP_SUGGEST_CHANNEL_ID = "1553126857690456144"
 
 const DEFAULT_UNISON_API_BASE_URL = "https://unison.boidu.dev"
 const DEFAULT_LINK_PAGE_URL = "https://unison.boidu.dev/link"
@@ -55,6 +58,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
 		composerBaseUrl: withDefault(env, "COMPOSER_BASE_URL", DEFAULT_COMPOSER_BASE_URL),
 		ytmCookie: ytmCookie === undefined || ytmCookie === "" ? null : ytmCookie,
 		guildId: required(env, "GUILD_ID"),
+		pfpSuggestChannelId: withDefault(env, "PFP_SUGGEST_CHANNEL_ID", DEFAULT_PFP_SUGGEST_CHANNEL_ID),
 		announce: { batchThreshold: withDefaultNumber(env, "ANNOUNCE_BATCH_THRESHOLD", 5) },
 	}
 }

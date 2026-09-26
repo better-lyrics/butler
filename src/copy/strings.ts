@@ -930,3 +930,7 @@ export function avatarRejectNoteLine(note: string): string {
 export function avatarNameTaken(proposedId: string): string {
 	return `The name \`${proposedId}\` is already taken. Suggest it again with a different name.`
 }
+
+export function avatarPublished(label: string): string {
+	return `your avatar **${label}** was approved and added to the catalogue.`
+}
