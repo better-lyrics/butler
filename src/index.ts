@@ -87,7 +87,8 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
-import { type QueueEntry, createUnisonClient } from "@/unison/client"
+import { type DiscordProfile, type QueueEntry, createUnisonClient } from "@/unison/client"
+import { pushDiscordProfiles, toDiscordProfile } from "@/unison/discord-profiles"
 import { createYoutubeiSource, fetchTrackMeta } from "@/ytm/metadata"
 import {
 	type ButtonInteraction,
@@ -397,14 +398,17 @@ async function runSyncForGuild(
 
 		const links = await unison.getBotLinks()
 		const keyToDiscord = new Map(links.map((l) => [l.keyId, l.discordId]))
+		const profiles: DiscordProfile[] = []
 
 		const result = await runSync({
 			getLeaderboard: () => unison.getLeaderboard(),
 			resolveMember: async (keyId) => {
 				const discordId = keyToDiscord.get(keyId)
 				if (!discordId) return null
-				const member = await guild.members.fetch(discordId).catch(() => null)
-				return member ? { discordId } : null
+				const member = await guild.members.fetch({ user: discordId, force: true }).catch(() => null)
+				if (!member) return null
+				profiles.push(toDiscordProfile(member.user))
+				return { discordId }
 			},
 			getHoldings: () => getAllHoldings(pool, gc.guildId),
 			applyMemberRoles: (id, tier) => applier.applyMemberRoles(id, tier),
@@ -473,6 +477,7 @@ async function runSyncForGuild(
 			tierOrder: TIER_ORDER,
 			batchThreshold: config.announce.batchThreshold,
 		})
+		void syncDiscordProfiles(gc.guildId, profiles)
 
 		if (result.skipped) {
 			console.warn(`sync skipped for guild ${gc.guildId}: empty desired set`)
@@ -513,6 +518,18 @@ async function runSyncForGuild(
 		console.error(`sync failed for guild ${gc.guildId}`, err)
 		modLog(gc.modChannelId, { kind: "sync_failed", reason: String(err) })
 		return null
+	}
+}
+
+async function syncDiscordProfiles(guildId: string, profiles: DiscordProfile[]): Promise<void> {
+	const outcome = await pushDiscordProfiles(unison, profiles)
+	if (outcome.notDeployed) {
+		console.warn(`discord profile sync skipped for guild ${guildId}: Unison route not deployed`)
+	}
+	if (outcome.failures.length > 0) {
+		console.error(
+			`discord profile sync failed for guild ${guildId}: ${outcome.failures.join("; ")}`
+		)
 	}
 }
 

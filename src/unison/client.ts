@@ -274,6 +274,17 @@ export type ExamDecisionResult =
 	| { status: "not_found" }
 	| { status: "error"; code: number }
 
+export interface DiscordProfile {
+	discordId: string
+	avatar: string | null
+	username: string
+}
+
+export type DiscordProfilesSyncResult =
+	| { status: "ok"; updated: number }
+	| { status: "not_deployed" }
+	| { status: "error"; code: number }
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -311,6 +322,7 @@ export interface UnisonClient {
 		decision: ExamDecision,
 		deciderDiscordId: string
 	): Promise<ExamDecisionResult>
+	syncDiscordProfiles(profiles: DiscordProfile[]): Promise<DiscordProfilesSyncResult>
 }
 
 interface LeaderboardResponse {
@@ -887,6 +899,26 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "not_found" }
 			}
 			return { status: "error", code: res.status }
+		},
+
+		async syncDiscordProfiles(profiles) {
+			const res = await doFetch(`${baseUrl}/links/bot/discord-profiles`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ profiles }),
+			})
+			if (res.status === 404) {
+				return { status: "not_deployed" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { updated?: unknown } } | null
+			const updated = json?.data?.updated
+			if (typeof updated !== "number") {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", updated }
 		},
 	}
 }
