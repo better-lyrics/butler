@@ -74,3 +74,19 @@ CREATE TABLE IF NOT EXISTS revision_board_card (
   card        JSONB NOT NULL,
   PRIMARY KEY (guild_id, revision_id)
 );
+CREATE TABLE IF NOT EXISTS avatar_suggestion (
+  id                  TEXT PRIMARY KEY,
+  guild_id            TEXT NOT NULL,
+  proposed_id         TEXT NOT NULL,
+  label               TEXT NOT NULL,
+  image_base64        TEXT NOT NULL,
+  mime                TEXT NOT NULL,
+  proposer_discord_id TEXT NOT NULL,
+  proposer_key_id     TEXT,
+  card_channel_id     TEXT,
+  card_message_id     TEXT,
+  state               TEXT NOT NULL DEFAULT 'pending',
+  created_at          BIGINT NOT NULL,
+  decided_by          TEXT,
+  decided_at          BIGINT
+);
