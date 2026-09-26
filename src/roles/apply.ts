@@ -1,3 +1,4 @@
+import { unlessGoneFromGuild } from "@/discord/gone-from-guild"
 import type { Guild } from "discord.js"
 
 export function assertRoleHierarchy(
@@ -19,17 +20,21 @@ export function createRoleApplier(guild: Guild, roleIds: Record<string, string>)
 
 	return {
 		async applyMemberRoles(discordId, tier) {
-			const member = await guild.members.fetch(discordId)
-			const next = member.roles.cache
-				.filter((role) => !managedRoleIds.has(role.id))
-				.map((role) => role.id)
+			const apply = async () => {
+				const member = await guild.members.fetch(discordId)
+				const next = member.roles.cache
+					.filter((role) => !managedRoleIds.has(role.id))
+					.map((role) => role.id)
 
-			if (tier !== null) {
-				const tierRoleId = roleIds[tier]
-				if (tierRoleId !== undefined) next.push(tierRoleId)
+				if (tier !== null) {
+					const tierRoleId = roleIds[tier]
+					if (tierRoleId !== undefined) next.push(tierRoleId)
+				}
+
+				await guild.members.edit(discordId, { roles: next })
 			}
-
-			await guild.members.edit(discordId, { roles: next })
+			if (tier === null) await unlessGoneFromGuild(apply())
+			else await apply()
 		},
 	}
 }

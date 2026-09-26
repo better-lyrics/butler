@@ -1589,3 +1589,66 @@ describe("createUnisonClient approveRevision and rejectRevision", () => {
 		})
 	})
 })
+
+describe("createUnisonClient syncDiscordProfiles", () => {
+	const profiles = [
+		{
+			discordId: "123456789012345678",
+			avatar: "8342729096ea3675442027381ff50dfe",
+			username: "Alice",
+		},
+		{ discordId: "876543210987654321", avatar: null, username: "Bob" },
+	]
+
+	it("POSTs the profiles with bot auth and returns the updated count", async () => {
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { updated: 1 } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.syncDiscordProfiles(profiles)
+
+		expect(result).toEqual({ status: "ok", updated: 1 })
+		expect(calls).toHaveLength(1)
+		expect(calls[0]?.url).toBe("https://unison.test/api/links/bot/discord-profiles")
+		expect(calls[0]?.method).toBe("POST")
+		expect(calls[0]?.headers.get("Authorization")).toBe(`Bearer ${botSecret}`)
+		expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+		expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ profiles })
+	})
+
+	describe("edge cases", () => {
+		it("sends an empty batch verbatim", async () => {
+			const { fn, calls } = makeFetch(
+				Response.json({ success: true, data: { updated: 0 } }, { status: 200 })
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.syncDiscordProfiles([])).toEqual({ status: "ok", updated: 0 })
+			expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ profiles: [] })
+		})
+	})
+
+	describe("error paths", () => {
+		it("reports not_deployed on a 404 so callers can tolerate an older Unison", async () => {
+			const { fn } = makeFetch(new Response("Not Found", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.syncDiscordProfiles(profiles)).toEqual({ status: "not_deployed" })
+		})
+
+		it("maps any other non-2xx to an error carrying the status", async () => {
+			const { fn } = makeFetch(Response.json({ code: "AUTH_REQUIRED" }, { status: 401 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.syncDiscordProfiles(profiles)).toEqual({ status: "error", code: 401 })
+		})
+
+		it("maps a 2xx with a malformed body to an error", async () => {
+			const { fn } = makeFetch(new Response("<html>", { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.syncDiscordProfiles(profiles)).toEqual({ status: "error", code: 200 })
+		})
+	})
+})
