@@ -169,20 +169,38 @@ describe("handleCouncilApplicants board", () => {
 	})
 })
 
-function decisionInteraction(opts: { manage?: boolean; userId?: string } = {}) {
+// Mirrors Discord's ack rules: update/reply only before a defer, editReply/followUp only after.
+function decisionInteraction(opts: { manage?: boolean; userId?: string; log?: string[] } = {}) {
 	const updates: Array<{ components?: unknown[] }> = []
 	const replies: Array<{ content?: string }> = []
+	let deferred = false
+	const acked = () => deferred || updates.length > 0 || replies.length > 0
 	const int = {
 		user: { id: opts.userId ?? ADMIN },
 		memberPermissions: { has: () => opts.manage ?? true },
 		update: async (p: { components?: unknown[] }) => {
+			if (acked()) throw new Error("InteractionAlreadyReplied")
 			updates.push(p)
 		},
 		reply: async (p: { content?: string }) => {
+			if (acked()) throw new Error("InteractionAlreadyReplied")
+			replies.push(p)
+		},
+		deferUpdate: async () => {
+			if (acked()) throw new Error("InteractionAlreadyReplied")
+			deferred = true
+			opts.log?.push("defer")
+		},
+		editReply: async (p: { components?: unknown[] }) => {
+			if (!deferred) throw new Error("InteractionNotReplied")
+			updates.push(p)
+		},
+		followUp: async (p: { content?: string }) => {
+			if (!deferred) throw new Error("InteractionNotReplied")
 			replies.push(p)
 		},
 	}
-	return { interaction: int, updates, replies }
+	return { interaction: int, updates, replies, isDeferred: () => deferred }
 }
 
 function approveDeps(
@@ -230,6 +248,21 @@ describe("handleCouncilApplicantApprove", () => {
 		expect(replies[0]?.content).toBe(COUNCIL_APPLICANTS_NO_PERMISSION)
 		expect(order).toEqual([])
 		expect(updates).toHaveLength(0)
+	})
+
+	it("regression: acknowledges the click before any slow call so Discord never times out", async () => {
+		const { deps, order } = approveDeps()
+		const { interaction: int, updates } = decisionInteraction({ log: order })
+		await handleCouncilApplicantApprove(int, args, deps)
+		expect(order).toEqual(["defer", "resolve", "decide", "add", "grant", "welcome"])
+		expect(JSON.stringify(updates)).toContain("approved by")
+	})
+
+	it("answers a non-admin clicker directly without deferring", async () => {
+		const { interaction: int, replies, isDeferred } = decisionInteraction({ manage: false })
+		await handleCouncilApplicantApprove(int, args, approveDeps().deps)
+		expect(replies[0]?.content).toBe(COUNCIL_APPLICANTS_NO_PERMISSION)
+		expect(isDeferred()).toBe(false)
 	})
 
 	it("records the decision, adds to the council, grants the role, welcomes them, then flips the card", async () => {
@@ -360,6 +393,20 @@ describe("handleCouncilApplicantReject", () => {
 		expect(updates).toHaveLength(0)
 	})
 
+	it("regression: acknowledges the click before recording the decision", async () => {
+		const order: string[] = []
+		const { interaction: int, updates } = decisionInteraction({ log: order })
+		await handleCouncilApplicantReject(int, args, {
+			decideExamApplicant: async () => {
+				order.push("decide")
+				return { status: "recorded" }
+			},
+			getExamReports: noReports,
+		})
+		expect(order).toEqual(["defer", "decide"])
+		expect(JSON.stringify(updates)).toContain("not selected")
+	})
+
 	it("records the reject and flips the card", async () => {
 		const { interaction: int, updates } = decisionInteraction()
 		const calls: Array<{ applicantId: string; decision: string; decider: string }> = []
@@ -454,6 +501,22 @@ describe("handleCouncilApplicantCancel", () => {
 		)
 		expect(replies[0]?.content).toBe(COUNCIL_APPLICANTS_NO_PERMISSION)
 		expect(updates).toHaveLength(0)
+	})
+
+	it("regression: acknowledges the click before fetching the applicant list", async () => {
+		const order: string[] = []
+		const { interaction: int } = decisionInteraction({ log: order })
+		await handleCouncilApplicantCancel(
+			int,
+			{ applicantId: "sess-1" },
+			{
+				getExamApplicants: async () => {
+					order.push("fetch")
+					return { status: "ok", applicants: [] }
+				},
+			}
+		)
+		expect(order).toEqual(["defer", "fetch"])
 	})
 
 	it("restores the applicant card when the applicant is still pending", async () => {
