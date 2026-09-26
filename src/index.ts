@@ -71,6 +71,7 @@ import {
 	handleCouncilApplicants,
 } from "@/discord/commands/council-applicants"
 import { councilApplyCommand, handleCouncilApply } from "@/discord/commands/council-apply"
+import { councilReportCommand, handleCouncilReport } from "@/discord/commands/council-report"
 import {
 	councilWelcomePreviewCommand,
 	handleCouncilWelcomePreview,
@@ -414,6 +415,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 					welcomeMember: async (id) => {
 						await sendCouncilWelcome(id)
 					},
+					getExamReports: (id) => unison.getExamReports(id),
 				}
 			)
 			return
@@ -424,6 +426,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				{
 					decideExamApplicant: (applicantId, decision, decider) =>
 						unison.decideExamApplicant(applicantId, decision, decider),
+					getExamReports: (id) => unison.getExamReports(id),
 				}
 			)
 			return
@@ -955,6 +958,7 @@ discord.once(Events.ClientReady, async (client) => {
 			councilCommand.toJSON(),
 			councilApplyCommand.toJSON(),
 			councilApplicantsCommand.toJSON(),
+			councilReportCommand.toJSON(),
 			councilWelcomePreviewCommand.toJSON(),
 			configCommand.toJSON(),
 			queueCommand.toJSON(),
@@ -1098,6 +1102,12 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		handleCouncilApplicants(interaction, {
 			getExamApplicants: (include) => unison.getExamApplicants(include),
 		}).catch((err) => console.error("council-applicants handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "council-report") {
+		handleCouncilReport(interaction, {
+			getExamReports: (id) => unison.getExamReports(id),
+		}).catch((err) => console.error("council-report handler failed", err))
 		return
 	}
 	if (interaction.isChatInputCommand() && interaction.commandName === "council-welcome-preview") {

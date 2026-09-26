@@ -1259,6 +1259,89 @@ describe("createUnisonClient startExam", () => {
 	})
 })
 
+describe("createUnisonClient getExamReports", () => {
+	const approved = {
+		applicantId: "sess-1",
+		discordId: "123456789012345678",
+		keyId,
+		displayName: "quiet-fern",
+		score: 88,
+		maxScore: 100,
+		cutoff: 85,
+		breakdown: [{ section: "timing", score: 4, max: 5 }],
+		submittedAt: 1_789_000_000,
+		state: "approved",
+		decidedAt: 1_789_000_500,
+		decidedByDiscordId: "999999999999999999",
+	}
+
+	it("gets the reports for a discord user with bearer auth", async () => {
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { reports: [approved] } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getExamReports("123456789012345678")
+
+		expect(calls[0]?.url).toBe(
+			"https://unison.test/api/exam/bot/reports?discordId=123456789012345678"
+		)
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({ status: "ok", reports: [approved] })
+	})
+
+	it("returns an empty list for a user with no exam", async () => {
+		const { fn } = makeFetch(
+			Response.json({ success: true, data: { reports: [] } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getExamReports("1")).toEqual({ status: "ok", reports: [] })
+	})
+
+	describe("edge cases", () => {
+		it("parses a missing decision as null", async () => {
+			const { decidedAt: _a, decidedByDiscordId: _b, ...pending } = approved
+			const { fn } = makeFetch(
+				Response.json(
+					{ success: true, data: { reports: [{ ...pending, state: "pending_review" }] } },
+					{ status: 200 }
+				)
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getExamReports("1")).toMatchObject({
+				status: "ok",
+				reports: [{ state: "pending_review", decidedAt: null, decidedByDiscordId: null }],
+			})
+		})
+
+		it("encodes the discord id in the query", async () => {
+			const { fn, calls } = makeFetch(
+				Response.json({ success: true, data: { reports: [] } }, { status: 200 })
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.getExamReports("a&b")
+			expect(calls[0]?.url).toBe("https://unison.test/api/exam/bot/reports?discordId=a%26b")
+		})
+	})
+
+	describe("error paths", () => {
+		it("maps a malformed body to an error", async () => {
+			const { fn } = makeFetch(
+				Response.json({ success: true, data: { reports: {} } }, { status: 200 })
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getExamReports("1")).toEqual({ status: "error", code: 200 })
+		})
+
+		it("maps a non-ok response to an error", async () => {
+			const { fn } = makeFetch(new Response("missing", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getExamReports("1")).toEqual({ status: "error", code: 404 })
+		})
+	})
+})
+
 describe("createUnisonClient getExamApplicants", () => {
 	function applicantRow(overrides: Record<string, unknown> = {}) {
 		return {
@@ -1275,6 +1358,8 @@ describe("createUnisonClient getExamApplicants", () => {
 			],
 			submittedAt: 1_789_000_000,
 			state: "pending_review",
+			decidedAt: null,
+			decidedByDiscordId: null,
 			...overrides,
 		}
 	}

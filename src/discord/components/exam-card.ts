@@ -27,6 +27,10 @@ import {
 	examRejectButtonLabel,
 	examRejectConfirm,
 	examRejectedLine,
+	examReportApproved,
+	examReportBelowCutoff,
+	examReportPending,
+	examReportRejected,
 } from "@/copy/strings"
 import type { CouncilRoleOutcome } from "@/discord/commands/council"
 import { encodeCustomId } from "@/interactions/custom-id"
@@ -85,10 +89,9 @@ export function buildExamIntroCard(opts: {
 	return { components: [container], flags: FLAGS, allowedMentions: NO_MENTIONS }
 }
 
-export function buildApplicantCard(applicant: ExamApplicant): CardPayload {
+function addApplicantReport(container: ContainerBuilder, applicant: ExamApplicant): void {
 	const belowCutoff = applicant.score < applicant.cutoff
-	const container = new ContainerBuilder()
-		.setAccentColor(PALETTE.betterLyricsRed)
+	container
 		.addTextDisplayComponents(text(examApplicantHeading(applicant.displayName)))
 		.addTextDisplayComponents(
 			text(
@@ -120,7 +123,20 @@ export function buildApplicantCard(applicant: ExamApplicant): CardPayload {
 	if (fullMarks) {
 		container.addTextDisplayComponents(text(fullMarks))
 	}
+}
 
+function reportContainer(report: ExamApplicant | null): ContainerBuilder {
+	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
+	if (report) {
+		addApplicantReport(container, report)
+		container.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
+	}
+	return container
+}
+
+export function buildApplicantCard(applicant: ExamApplicant): CardPayload {
+	const container = new ContainerBuilder().setAccentColor(PALETTE.betterLyricsRed)
+	addApplicantReport(container, applicant)
 	container.addActionRowComponents(
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
@@ -147,9 +163,9 @@ export function buildApplicantApprovedCard(opts: {
 	discordId: string
 	adminId: string
 	role: CouncilRoleOutcome
+	report: ExamApplicant | null
 }): CardPayload {
-	const container = new ContainerBuilder()
-		.setAccentColor(PALETTE.betterLyricsRed)
+	const container = reportContainer(opts.report)
 		.addTextDisplayComponents(
 			text(examApprovedLine({ discordId: opts.discordId, adminId: opts.adminId }))
 		)
@@ -160,12 +176,34 @@ export function buildApplicantApprovedCard(opts: {
 export function buildApplicantRejectedCard(opts: {
 	discordId: string
 	adminId: string
+	report: ExamApplicant | null
 }): CardPayload {
-	const container = new ContainerBuilder()
-		.setAccentColor(PALETTE.betterLyricsRed)
-		.addTextDisplayComponents(
-			text(examRejectedLine({ discordId: opts.discordId, adminId: opts.adminId }))
-		)
+	const container = reportContainer(opts.report).addTextDisplayComponents(
+		text(examRejectedLine({ discordId: opts.discordId, adminId: opts.adminId }))
+	)
+	return { components: [container], flags: FLAGS, allowedMentions: NO_MENTIONS }
+}
+
+function reportStatusLine(report: ExamApplicant): string {
+	const decider = report.decidedByDiscordId
+	switch (report.state) {
+		case "approved":
+			return decider
+				? examApprovedLine({ discordId: report.discordId, adminId: decider })
+				: examReportApproved
+		case "rejected":
+			return decider
+				? examRejectedLine({ discordId: report.discordId, adminId: decider })
+				: examReportRejected
+		case "failed":
+			return examReportBelowCutoff
+		default:
+			return examReportPending
+	}
+}
+
+export function buildApplicantReportCard(report: ExamApplicant): CardPayload {
+	const container = reportContainer(report).addTextDisplayComponents(text(reportStatusLine(report)))
 	return { components: [container], flags: FLAGS, allowedMentions: NO_MENTIONS }
 }
 

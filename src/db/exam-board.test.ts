@@ -25,6 +25,8 @@ function applicant(id: string): ExamApplicant {
 		breakdown: [{ section: "timing", score: 4, max: 5 }],
 		submittedAt: 1_789_000_000,
 		state: "pending_review",
+		decidedAt: null,
+		decidedByDiscordId: null,
 	}
 }
 

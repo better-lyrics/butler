@@ -395,6 +395,9 @@ export const helpConfigLine =
 export const helpApplicantsLine =
 	"`/council-applicants` shows who passed the exam so you can approve or reject them."
 
+export const helpCouncilReportLine =
+	"`/council-report` shows someone's exam report, even after they were approved or rejected."
+
 export const helpWelcomePreviewLine =
 	"`/council-welcome-preview` DMs you the welcome message new members receive."
 
@@ -837,6 +840,18 @@ export function examApprovedLine(params: { discordId: string; adminId: string })
 
 export function examRejectedLine(params: { discordId: string; adminId: string }): string {
 	return `<@${params.discordId}> not selected. Decided by <@${params.adminId}>.`
+}
+
+export const examReportPending = "Waiting for review in /council-applicants."
+
+export const examReportBelowCutoff = "Scored below the cutoff. Not reviewed."
+
+export const examReportApproved = "Approved to the Council."
+
+export const examReportRejected = "Not selected."
+
+export function examReportNone(discordId: string): string {
+	return `<@${discordId}> has no exam on record.`
 }
 
 export function councilWelcomeMessage(gettingStartedUrl: string): string {

@@ -1,6 +1,11 @@
 import { examApplicantsEmpty, examApplicantsHeading } from "@/copy/strings"
 import type { CouncilRoleOutcome } from "@/discord/commands/council"
-import type { CouncilAddResult, ExamApplicant, ExamDecisionResult } from "@/unison/client"
+import type {
+	CouncilAddResult,
+	ExamApplicant,
+	ExamDecisionResult,
+	ExamReportsResult,
+} from "@/unison/client"
 import { PermissionFlagsBits } from "discord.js"
 import { describe, expect, it } from "vitest"
 import {
@@ -36,9 +41,15 @@ function applicant(overrides: Partial<ExamApplicant> = {}): ExamApplicant {
 		breakdown: [{ section: "timing", score: 4, max: 5 }],
 		submittedAt: 1_789_000_000,
 		state: "pending_review",
+		decidedAt: null,
+		decidedByDiscordId: null,
 		...overrides,
 	}
 }
+
+const noReports = async (): Promise<ExamReportsResult> => ({ status: "ok", reports: [] })
+
+const SCORE_LINE = "Score: 90 / 100"
 
 function listInteraction(
 	opts: { guildId?: string | null; manage?: boolean; nearMisses?: boolean } = {}
@@ -180,6 +191,7 @@ function approveDeps(
 		add?: CouncilAddResult
 		role?: CouncilRoleOutcome
 		decide?: ExamDecisionResult
+		reports?: () => Promise<ExamReportsResult>
 	} = {}
 ): { deps: ApplicantApproveDeps; order: string[] } {
 	const order: string[] = []
@@ -203,6 +215,7 @@ function approveDeps(
 		welcomeMember: async () => {
 			order.push("welcome")
 		},
+		getExamReports: opts.reports ?? noReports,
 	}
 	return { deps, order }
 }
@@ -275,6 +288,58 @@ describe("handleCouncilApplicantApprove", () => {
 		expect(order).toEqual(["resolve", "decide"])
 		expect(JSON.stringify(updates)).toContain("no longer pending")
 	})
+
+	describe("report", () => {
+		it("regression: keeps the applicant's report on the card after approval", async () => {
+			const { interaction: int, updates } = decisionInteraction()
+			const requested: string[] = []
+			const { deps } = approveDeps()
+			deps.getExamReports = async (discordId) => {
+				requested.push(discordId)
+				return { status: "ok", reports: [applicant({ state: "approved" })] }
+			}
+			await handleCouncilApplicantApprove(int, args, deps)
+			expect(requested).toEqual([APPLICANT_DISC])
+			const json = JSON.stringify(updates)
+			expect(json).toContain(SCORE_LINE)
+			expect(json).toContain("approved by")
+		})
+
+		it("uses only the report for this attempt", async () => {
+			const { interaction: int, updates } = decisionInteraction()
+			const { deps } = approveDeps({
+				reports: async () => ({
+					status: "ok",
+					reports: [applicant({ applicantId: "other-attempt" })],
+				}),
+			})
+			await handleCouncilApplicantApprove(int, args, deps)
+			expect(JSON.stringify(updates)).not.toContain(SCORE_LINE)
+			expect(JSON.stringify(updates)).toContain("approved by")
+		})
+
+		describe("error paths", () => {
+			it("still flips the card when the report lookup fails", async () => {
+				const { interaction: int, updates } = decisionInteraction()
+				const { deps } = approveDeps({
+					reports: async () => ({ status: "error", code: 500 }),
+				})
+				await handleCouncilApplicantApprove(int, args, deps)
+				expect(JSON.stringify(updates)).toContain("approved by")
+			})
+
+			it("still flips the card when the report lookup throws", async () => {
+				const { interaction: int, updates } = decisionInteraction()
+				const { deps } = approveDeps({
+					reports: async () => {
+						throw new Error("network down")
+					},
+				})
+				await handleCouncilApplicantApprove(int, args, deps)
+				expect(JSON.stringify(updates)).toContain("approved by")
+			})
+		})
+	})
 })
 
 describe("handleCouncilApplicantReject", () => {
@@ -288,6 +353,7 @@ describe("handleCouncilApplicantReject", () => {
 				decided = true
 				return { status: "recorded" }
 			},
+			getExamReports: noReports,
 		})
 		expect(replies[0]?.content).toBe(COUNCIL_APPLICANTS_NO_PERMISSION)
 		expect(decided).toBe(false)
@@ -302,6 +368,7 @@ describe("handleCouncilApplicantReject", () => {
 				calls.push({ applicantId, decision, decider })
 				return { status: "recorded" }
 			},
+			getExamReports: noReports,
 		}
 		await handleCouncilApplicantReject(int, args, deps)
 		expect(calls).toEqual([{ applicantId: "sess-1", decision: "reject", decider: ADMIN }])
@@ -312,6 +379,7 @@ describe("handleCouncilApplicantReject", () => {
 		const { interaction: int, replies, updates } = decisionInteraction()
 		await handleCouncilApplicantReject(int, args, {
 			decideExamApplicant: async () => ({ status: "error", code: 500 }),
+			getExamReports: noReports,
 		})
 		expect(replies[0]?.content).toBe(COUNCIL_APPLICANT_DECISION_ERROR)
 		expect(updates).toHaveLength(0)
@@ -321,8 +389,20 @@ describe("handleCouncilApplicantReject", () => {
 		const { interaction: int, updates } = decisionInteraction()
 		await handleCouncilApplicantReject(int, args, {
 			decideExamApplicant: async () => ({ status: "not_found" }),
+			getExamReports: noReports,
 		})
 		expect(JSON.stringify(updates)).toContain("not selected")
+	})
+
+	it("regression: keeps the applicant's report on the card after rejection", async () => {
+		const { interaction: int, updates } = decisionInteraction()
+		await handleCouncilApplicantReject(int, args, {
+			decideExamApplicant: async () => ({ status: "recorded" }),
+			getExamReports: async () => ({ status: "ok", reports: [applicant({ state: "rejected" })] }),
+		})
+		const json = JSON.stringify(updates)
+		expect(json).toContain(SCORE_LINE)
+		expect(json).toContain("not selected")
 	})
 })
 

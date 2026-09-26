@@ -261,10 +261,16 @@ export interface ExamApplicant {
 	breakdown: ExamBreakdownRow[]
 	submittedAt: number
 	state: ExamAttemptState
+	decidedAt: number | null
+	decidedByDiscordId: string | null
 }
 
 export type ExamApplicantsResult =
 	| { status: "ok"; applicants: ExamApplicant[] }
+	| { status: "error"; code: number }
+
+export type ExamReportsResult =
+	| { status: "ok"; reports: ExamApplicant[] }
 	| { status: "error"; code: number }
 
 export type ExamDecision = "approve" | "reject"
@@ -365,6 +371,7 @@ export interface UnisonClient {
 	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
 	startExam(keyId: string, discordId: string): Promise<ExamStartResult>
 	getExamApplicants(includeBelowCutoff?: boolean): Promise<ExamApplicantsResult>
+	getExamReports(discordId: string): Promise<ExamReportsResult>
 	decideExamApplicant(
 		applicantId: string,
 		decision: ExamDecision,
@@ -522,7 +529,25 @@ function parseExamApplicant(value: unknown): ExamApplicant | null {
 		breakdown,
 		submittedAt: Number(row.submittedAt) || 0,
 		state: isExamState(row.state) ? row.state : "pending_review",
+		decidedAt: finiteOrNull(row.decidedAt),
+		decidedByDiscordId: typeof row.decidedByDiscordId === "string" ? row.decidedByDiscordId : null,
 	}
+}
+
+async function readExamApplicants(
+	res: Response,
+	field: "applicants" | "reports"
+): Promise<ExamApplicant[] | null> {
+	if (!res.ok) return null
+	const json = (await res.json().catch(() => null)) as { data?: Record<string, unknown> } | null
+	const list = json?.data?.[field]
+	if (!Array.isArray(list)) return null
+	const applicants: ExamApplicant[] = []
+	for (const row of list) {
+		const parsed = parseExamApplicant(row)
+		if (parsed) applicants.push(parsed)
+	}
+	return applicants
 }
 
 const PENDING_REASONS: PendingReason[] = [
@@ -1020,22 +1045,15 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 		async getExamApplicants(includeBelowCutoff) {
 			const query = includeBelowCutoff ? "?includeBelowCutoff=true" : ""
 			const res = await doFetch(`${baseUrl}/exam/bot/applicants${query}`, { headers: authHeaders })
-			if (!res.ok) {
-				return { status: "error", code: res.status }
-			}
-			const json = (await res.json().catch(() => null)) as {
-				data?: { applicants?: unknown }
-			} | null
-			const list = json?.data?.applicants
-			if (!Array.isArray(list)) {
-				return { status: "error", code: res.status }
-			}
-			const applicants: ExamApplicant[] = []
-			for (const row of list) {
-				const parsed = parseExamApplicant(row)
-				if (parsed) applicants.push(parsed)
-			}
-			return { status: "ok", applicants }
+			const applicants = await readExamApplicants(res, "applicants")
+			return applicants ? { status: "ok", applicants } : { status: "error", code: res.status }
+		},
+
+		async getExamReports(discordId) {
+			const query = new URLSearchParams({ discordId })
+			const res = await doFetch(`${baseUrl}/exam/bot/reports?${query}`, { headers: authHeaders })
+			const reports = await readExamApplicants(res, "reports")
+			return reports ? { status: "ok", reports } : { status: "error", code: res.status }
 		},
 
 		async decideExamApplicant(applicantId, decision, deciderDiscordId) {
