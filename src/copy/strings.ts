@@ -859,3 +859,74 @@ export const examApprovedRoleFailed =
 
 export const examApprovedNoRole =
 	"No Council role is set. Add one with /config council-role and I'll assign it automatically."
+
+// ---- avatar suggestions ----
+
+export const avatarKicker = "-# Avatar suggestion waiting for admin review"
+
+export const avatarApproveButtonLabel = "Approve"
+
+export const avatarRejectButtonLabel = "Reject"
+
+export const avatarConfirmApproveButtonLabel = "Confirm approve"
+
+export const avatarConfirmApproveBody =
+	"Approve this avatar? It is published to the catalogue right away and becomes pickable by everyone."
+
+export const avatarApproveCancelled = "Cancelled. Nothing was published."
+
+export const avatarRejectModalTitle = "Reject avatar"
+
+export const avatarNotAdmin = "Only server admins can decide avatar suggestions."
+
+export const avatarNotFound = "That avatar suggestion no longer exists."
+
+export const avatarAlreadyDecided = "This suggestion was already decided."
+
+export const avatarError = "Something went wrong publishing that avatar. Try again in a moment."
+
+export const avatarProposeNoImage = "Attach an image to suggest."
+
+export const avatarProposeNotEligible = "You need the Lyricist role or higher to suggest an avatar."
+
+export const avatarProposeBadType = "That image type is not supported. Use JPEG, PNG, GIF, or WebP."
+
+export const avatarProposeTooBig = "That image is too large. Keep it under 8 MB."
+
+export const avatarProposeBadName = "Could not make a name from that. Add a name and try again."
+
+export const avatarProposeDownloadFailed = "Could not read that image. Try again in a moment."
+
+export const avatarProposeNotConfigured = "Avatar suggestions are not set up on this server yet."
+
+export function avatarProposeWrongChannel(channelId: string): string {
+	return `Use this command in <#${channelId}>.`
+}
+
+export function avatarProposeAck(label: string): string {
+	return `Thanks! Your suggestion **${label}** is now waiting for admin review.`
+}
+
+export function avatarDetails(input: {
+	label: string
+	proposedId: string
+	proposerId: string
+}): string {
+	return `**${input.label}**  \`${input.proposedId}\`\nSuggested by <@${input.proposerId}>`
+}
+
+export function avatarApprovedBy(userId: string): string {
+	return `Approved by <@${userId}>. This avatar is now in the catalogue.`
+}
+
+export function avatarRejectedBy(userId: string): string {
+	return `Rejected by <@${userId}>. Nothing was published.`
+}
+
+export function avatarRejectNoteLine(note: string): string {
+	return `Reason: ${note}`
+}
+
+export function avatarNameTaken(proposedId: string): string {
+	return `The name \`${proposedId}\` is already taken. Suggest it again with a different name.`
+}
