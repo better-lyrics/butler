@@ -1,10 +1,10 @@
 import { normalizeMime } from "@/avatars/download"
-import { labelFrom, slugifyAvatarId } from "@/avatars/slug"
 
 export const ACCEPTED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
 export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 // keep in sync with the id/label maxLength on unison POST /avatars/presets
 export const MAX_NAME_LENGTH = 64
+const AVATAR_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
 export type ProposalReason =
 	| "wrong_channel"
@@ -13,6 +13,7 @@ export type ProposalReason =
 	| "bad_type"
 	| "too_big"
 	| "bad_name"
+	| "bad_id"
 
 export type ProposalResult =
 	| { ok: true; id: string; label: string }
@@ -29,15 +30,14 @@ export interface ProposalInput {
 	suggestChannelId: string
 	memberEligible: boolean
 	attachment: ProposalAttachment | null
-	name?: string | null
+	name: string | null
+	id: string | null
 }
 
-function stripExtension(filename: string): string {
-	return filename.replace(/\.[^.]+$/, "")
-}
-
-function clipLabel(label: string): string {
-	return label
+function toLabel(name: string): string {
+	return name
+		.trim()
+		.replace(/\s+/g, " ")
 		.slice(0, MAX_NAME_LENGTH)
 		.replace(/[\uD800-\uDBFF]$/, "")
 		.trimEnd()
@@ -52,9 +52,9 @@ export function buildProposal(input: ProposalInput): ProposalResult {
 	}
 	if (input.attachment.size > MAX_ATTACHMENT_BYTES) return { ok: false, reason: "too_big" }
 
-	const source =
-		input.name && input.name.trim() !== "" ? input.name : stripExtension(input.attachment.name)
-	const id = slugifyAvatarId(source).slice(0, MAX_NAME_LENGTH).replace(/-+$/, "")
-	if (id === "") return { ok: false, reason: "bad_name" }
-	return { ok: true, id, label: clipLabel(labelFrom(source)) }
+	const label = toLabel(input.name ?? "")
+	if (label === "") return { ok: false, reason: "bad_name" }
+	const id = (input.id ?? "").trim()
+	if (id.length > MAX_NAME_LENGTH || !AVATAR_ID.test(id)) return { ok: false, reason: "bad_id" }
+	return { ok: true, id, label }
 }

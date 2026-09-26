@@ -6,21 +6,23 @@ function base(overrides: Record<string, unknown> = {}) {
 		channelId: "pfp",
 		suggestChannelId: "pfp",
 		memberEligible: true,
-		attachment: { name: "El Gato.png", contentType: "image/png", size: 1000 },
+		attachment: { name: "IMG_1234.png", contentType: "image/png", size: 1000 },
+		name: "El Gato",
+		id: "el-gato",
 		...overrides,
 	}
 }
 
 describe("buildProposal", () => {
-	it("derives id and label from the attachment name", () => {
+	it("uses the given id and name, never the file name", () => {
 		expect(buildProposal(base())).toEqual({ ok: true, id: "el-gato", label: "El Gato" })
 	})
 
-	it("prefers an explicit name over the filename", () => {
-		expect(buildProposal(base({ name: "Sky Cat" }))).toEqual({
+	it("keeps the name as typed", () => {
+		expect(buildProposal(base({ name: "DJ cat_2", id: "dj-cat-2" }))).toEqual({
 			ok: true,
-			id: "sky-cat",
-			label: "Sky Cat",
+			id: "dj-cat-2",
+			label: "DJ cat_2",
 		})
 	})
 
@@ -28,7 +30,7 @@ describe("buildProposal", () => {
 		const result = buildProposal(
 			base({ attachment: { name: "dance.gif", contentType: "image/gif", size: 2000 } })
 		)
-		expect(result).toEqual({ ok: true, id: "dance", label: "Dance" })
+		expect(result).toEqual({ ok: true, id: "el-gato", label: "El Gato" })
 	})
 
 	describe("rejections", () => {
@@ -78,12 +80,26 @@ describe("buildProposal", () => {
 			).toEqual({ ok: false, reason: "too_big" })
 		})
 
-		it("rejects a name that slugs to empty", () => {
-			expect(
-				buildProposal(
-					base({ name: "!!!", attachment: { name: "!!!.png", contentType: "image/png", size: 10 } })
-				)
-			).toEqual({ ok: false, reason: "bad_name" })
+		it("rejects a missing or blank name", () => {
+			for (const name of [null, "", "   "]) {
+				expect(buildProposal(base({ name }))).toEqual({ ok: false, reason: "bad_name" })
+			}
+		})
+
+		it("rejects a missing or blank id", () => {
+			for (const id of [null, "", "   "]) {
+				expect(buildProposal(base({ id }))).toEqual({ ok: false, reason: "bad_id" })
+			}
+		})
+
+		it("rejects an id with uppercase letters", () => {
+			expect(buildProposal(base({ id: "El-Gato" }))).toEqual({ ok: false, reason: "bad_id" })
+		})
+
+		it("rejects an id with symbols other than a hyphen", () => {
+			for (const id of ["el_gato", "el gato", "el.gato", "el/gato", "gato!", "café"]) {
+				expect(buildProposal(base({ id }))).toEqual({ ok: false, reason: "bad_id" })
+			}
 		})
 	})
 
@@ -92,50 +108,69 @@ describe("buildProposal", () => {
 			const result = buildProposal(
 				base({ attachment: { name: "x.png", contentType: "image/png; charset=binary", size: 10 } })
 			)
-			expect(result).toEqual({ ok: true, id: "x", label: "X" })
+			expect(result).toMatchObject({ ok: true })
+		})
+
+		it("accepts digits and single hyphens in an id", () => {
+			expect(buildProposal(base({ id: "bow-kitten-5" }))).toMatchObject({
+				ok: true,
+				id: "bow-kitten-5",
+			})
+			expect(buildProposal(base({ id: "42" }))).toMatchObject({ ok: true, id: "42" })
+		})
+
+		it("rejects leading, trailing, or doubled hyphens", () => {
+			for (const id of ["-cat", "cat-", "el--gato", "-"]) {
+				expect(buildProposal(base({ id }))).toEqual({ ok: false, reason: "bad_id" })
+			}
+		})
+
+		it("trims the id and collapses whitespace in the name", () => {
+			expect(buildProposal(base({ id: " el-gato ", name: "  El   Gato " }))).toEqual({
+				ok: true,
+				id: "el-gato",
+				label: "El Gato",
+			})
+		})
+
+		it("rejects an id over the length limit instead of clipping it", () => {
+			expect(buildProposal(base({ id: "a".repeat(MAX_NAME_LENGTH + 1) }))).toEqual({
+				ok: false,
+				reason: "bad_id",
+			})
 		})
 	})
 
 	describe("regressions", () => {
-		function proposeFile(name: string) {
-			const result = buildProposal(
-				base({ attachment: { name, contentType: "image/png", size: 1000 } })
-			)
-			if (!result.ok) throw new Error(`expected ok, got ${result.reason}`)
-			return result
-		}
-
-		it("regression: clips a long camera file name to what unison accepts", () => {
-			const { id, label } = proposeFile(
-				"IMG_20260926_123456789_portrait_mode_edited_final_version_2_really_final.png"
-			)
-			expect(id.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
-			expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
-			expect(label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
-			expect(label).toBe(label.trim())
-		})
-
-		it("regression: clips a long explicit name", () => {
+		it("regression: clips a long name to what unison accepts", () => {
 			const result = buildProposal(base({ name: "a ".repeat(100) }))
 			if (!result.ok) throw new Error(result.reason)
-			expect(result.id.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
 			expect(result.label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(result.label).toBe(result.label.trim())
 		})
 
-		it("regression: never splits an emoji when clipping the label", () => {
-			const { label } = proposeFile(`${"x".repeat(MAX_NAME_LENGTH - 1)}😺.png`)
-			expect(label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
-			expect(label).not.toMatch(/[\uD800-\uDBFF]$/)
+		it("regression: never splits an emoji when clipping the name", () => {
+			const result = buildProposal(base({ name: `${"x".repeat(MAX_NAME_LENGTH - 1)}😺` }))
+			if (!result.ok) throw new Error(result.reason)
+			expect(result.label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(result.label).not.toMatch(/[\uD800-\uDBFF]$/)
 		})
 	})
 
 	describe("invariants", () => {
-		it("keeps a name at exactly the limit unchanged", () => {
-			const name = "a".repeat(MAX_NAME_LENGTH)
-			expect(buildProposal(base({ name }))).toEqual({
+		it("keeps an id and name at exactly the limit unchanged", () => {
+			const value = "a".repeat(MAX_NAME_LENGTH)
+			expect(buildProposal(base({ id: value, name: value }))).toEqual({
 				ok: true,
-				id: name,
-				label: `A${name.slice(1)}`,
+				id: value,
+				label: value,
+			})
+		})
+
+		it("reports a bad name before a bad id", () => {
+			expect(buildProposal(base({ name: "", id: "BAD" }))).toEqual({
+				ok: false,
+				reason: "bad_name",
 			})
 		})
 	})
