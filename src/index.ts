@@ -80,6 +80,7 @@ import {
 } from "@/discord/components/queue-card"
 import { meetsMinRole } from "@/discord/eligibility"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
+import { unlessGoneFromGuild } from "@/discord/gone-from-guild"
 import { routeInteraction } from "@/discord/interactions/router"
 import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
 import { handleMigrateContinue } from "@/discord/migrate/continue"
@@ -405,7 +406,9 @@ async function runSyncForGuild(
 			resolveMember: async (keyId) => {
 				const discordId = keyToDiscord.get(keyId)
 				if (!discordId) return null
-				const member = await guild.members.fetch({ user: discordId, force: true }).catch(() => null)
+				const member = await unlessGoneFromGuild(
+					guild.members.fetch({ user: discordId, force: true })
+				)
 				if (!member) return null
 				profiles.push(toDiscordProfile(member.user))
 				return { discordId }
