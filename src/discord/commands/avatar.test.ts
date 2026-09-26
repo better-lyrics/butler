@@ -1,6 +1,17 @@
-import type { AvatarSuggestion } from "@/db/avatar-suggestions"
-import type { Cooldown } from "@/discord/migrate/cooldown"
+import { avatarAlreadyDecided, avatarImageInvalid, avatarInProgress } from "@/copy/strings"
+import {
+	type AvatarSuggestion,
+	claimSuggestion,
+	createSuggestion,
+	getSuggestion,
+	markSuggestionDecided,
+	releaseSuggestion,
+} from "@/db/avatar-suggestions"
+import { applySchema } from "@/db/pool"
+import { type Cooldown, createCooldown } from "@/discord/migrate/cooldown"
 import type { CreateAvatarPresetResult } from "@/unison/client"
+import type { Pool } from "pg"
+import { newDb } from "pg-mem"
 import { describe, expect, it, vi } from "vitest"
 import {
 	type AvatarApproveDeps,
@@ -149,6 +160,64 @@ describe("handleAvatarPropose", () => {
 		expect(setCard).not.toHaveBeenCalled()
 		expect(edits).toHaveLength(1)
 	})
+
+	describe("regressions", () => {
+		it("regression: a rejected attempt does not start the cooldown", async () => {
+			const cooldown = createCooldown({ windowMs: 60_000, now: () => 1000 })
+			const createSuggestion = vi.fn(async (input) => ({ id: input.id }))
+			const deps = proposeDeps({ cooldown, createSuggestion })
+
+			await handleAvatarPropose(proposeInteraction({ channelId: "wrong" }).interaction, deps)
+			await handleAvatarPropose(proposeInteraction({ attachment: null }).interaction, deps)
+			await handleAvatarPropose(proposeInteraction({}).interaction, deps)
+
+			expect(createSuggestion).toHaveBeenCalledOnce()
+		})
+
+		it("regression: still enforces the cooldown between two valid suggestions", async () => {
+			const cooldown = createCooldown({ windowMs: 60_000, now: () => 1000 })
+			const createSuggestion = vi.fn(async (input) => ({ id: input.id }))
+			const deps = proposeDeps({ cooldown, createSuggestion })
+
+			await handleAvatarPropose(proposeInteraction({}).interaction, deps)
+			await handleAvatarPropose(proposeInteraction({}).interaction, deps)
+
+			expect(createSuggestion).toHaveBeenCalledOnce()
+		})
+
+		it("regression: a failed store edits the deferred reply instead of leaving it thinking", async () => {
+			const { interaction, edits } = proposeInteraction({})
+			const postCard = vi.fn(async () => ({ channelId: "council", messageId: "msg-1" }))
+			await expect(
+				handleAvatarPropose(
+					interaction,
+					proposeDeps({
+						createSuggestion: async () => {
+							throw new Error("db down")
+						},
+						postCard,
+					})
+				)
+			).rejects.toThrow("db down")
+			expect(postCard).not.toHaveBeenCalled()
+			expect(edits).toHaveLength(1)
+		})
+
+		it("regression: a failed key lookup edits the deferred reply", async () => {
+			const { interaction, edits } = proposeInteraction({})
+			await expect(
+				handleAvatarPropose(
+					interaction,
+					proposeDeps({
+						resolveKeyId: async () => {
+							throw new Error("unison down")
+						},
+					})
+				)
+			).rejects.toThrow("unison down")
+			expect(edits).toHaveLength(1)
+		})
+	})
 })
 
 function approveDeps(
@@ -157,12 +226,37 @@ function approveDeps(
 	spies: Partial<AvatarApproveDeps> = {}
 ): AvatarApproveDeps {
 	return {
+		claim: async () => (row?.state === "pending" ? { ...row, state: "publishing" } : null),
+		release: async () => {},
 		getSuggestion: async () => row,
 		createAvatarPreset: async () => result,
-		markDecided: async () => {},
+		markDecided: async () => true,
 		editCard: async () => {},
 		notifyProposer: async () => {},
 		...spies,
+	}
+}
+
+async function freshPool(): Promise<Pool> {
+	const db = newDb({ noAstCoverageCheck: true })
+	const { Pool } = db.adapters.createPg()
+	const pool = new Pool() as unknown as Pool
+	await applySchema(pool)
+	return pool
+}
+
+function storeDeps(
+	pool: Pool,
+	createAvatarPreset: AvatarApproveDeps["createAvatarPreset"]
+): AvatarApproveDeps {
+	return {
+		claim: (id, actorId) => claimSuggestion(pool, id, actorId),
+		release: (id) => releaseSuggestion(pool, id),
+		getSuggestion: (id) => getSuggestion(pool, id),
+		createAvatarPreset,
+		markDecided: (input) => markSuggestionDecided(pool, input),
+		editCard: async () => {},
+		notifyProposer: async () => {},
 	}
 }
 
@@ -180,7 +274,7 @@ function approveInteraction() {
 
 describe("handleAvatarApproveConfirm", () => {
 	it("publishes, marks decided, edits the card, and notifies on created", async () => {
-		const markDecided = vi.fn(async () => {})
+		const markDecided = vi.fn(async () => true)
 		const editCard = vi.fn(async () => {})
 		const notifyProposer = vi.fn(async () => {})
 		const { i } = approveInteraction()
@@ -193,13 +287,18 @@ describe("handleAvatarApproveConfirm", () => {
 				notifyProposer,
 			})
 		)
-		expect(markDecided).toHaveBeenCalledWith("sug-1", "approved", "999999999999999999")
+		expect(markDecided).toHaveBeenCalledWith({
+			id: "sug-1",
+			from: "publishing",
+			to: "approved",
+			decidedBy: "999999999999999999",
+		})
 		expect(editCard).toHaveBeenCalledOnce()
 		expect(notifyProposer).toHaveBeenCalledOnce()
 	})
 
 	it("settles the row as rejected when the name is taken", async () => {
-		const markDecided = vi.fn(async () => {})
+		const markDecided = vi.fn(async () => true)
 		const editCard = vi.fn(async () => {})
 		const notifyProposer = vi.fn(async () => {})
 		const { i } = approveInteraction()
@@ -208,7 +307,12 @@ describe("handleAvatarApproveConfirm", () => {
 			"sug-1",
 			approveDeps({ status: "exists" }, suggestion(), { markDecided, editCard, notifyProposer })
 		)
-		expect(markDecided).toHaveBeenCalledWith("sug-1", "rejected", "999999999999999999")
+		expect(markDecided).toHaveBeenCalledWith({
+			id: "sug-1",
+			from: "publishing",
+			to: "rejected",
+			decidedBy: "999999999999999999",
+		})
 		expect(editCard).toHaveBeenCalledOnce()
 		expect(notifyProposer).not.toHaveBeenCalled()
 	})
@@ -253,6 +357,112 @@ describe("handleAvatarApproveConfirm", () => {
 		)
 		expect(createAvatarPreset).not.toHaveBeenCalled()
 	})
+
+	it("settles the row as rejected when unison cannot process the image", async () => {
+		const markDecided = vi.fn(async () => true)
+		const editCard = vi.fn(async () => {})
+		const release = vi.fn(async () => {})
+		const { i, edits } = approveInteraction()
+		await handleAvatarApproveConfirm(
+			i,
+			"sug-1",
+			approveDeps({ status: "invalid" }, suggestion(), { markDecided, editCard, release })
+		)
+		expect(markDecided).toHaveBeenCalledWith(
+			expect.objectContaining({ from: "publishing", to: "rejected" })
+		)
+		expect(editCard).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ kind: "rejected", note: avatarImageInvalid })
+		)
+		expect(release).not.toHaveBeenCalled()
+		expect(JSON.stringify(edits)).toContain(avatarImageInvalid)
+	})
+
+	describe("error paths", () => {
+		for (const result of [
+			{ status: "cdn_unavailable" },
+			{ status: "error", code: 500 },
+		] as CreateAvatarPresetResult[]) {
+			it(`releases the claim for a retry on ${result.status}`, async () => {
+				const markDecided = vi.fn(async () => true)
+				const release = vi.fn(async () => {})
+				const { i } = approveInteraction()
+				await handleAvatarApproveConfirm(
+					i,
+					"sug-1",
+					approveDeps(result, suggestion(), { markDecided, release })
+				)
+				expect(release).toHaveBeenCalledWith("sug-1")
+				expect(markDecided).not.toHaveBeenCalled()
+			})
+		}
+
+		it("releases the claim when the publish call throws", async () => {
+			const release = vi.fn(async () => {})
+			const { i } = approveInteraction()
+			await expect(
+				handleAvatarApproveConfirm(
+					i,
+					"sug-1",
+					approveDeps({ status: "exists" }, suggestion(), {
+						release,
+						createAvatarPreset: async () => {
+							throw new Error("network down")
+						},
+					})
+				)
+			).rejects.toThrow("network down")
+			expect(release).toHaveBeenCalledWith("sug-1")
+		})
+
+		it("tells the admin another decision is in flight without publishing", async () => {
+			const createAvatarPreset = vi.fn(async () => ({ status: "exists" as const }))
+			const { i, edits } = approveInteraction()
+			await handleAvatarApproveConfirm(
+				i,
+				"sug-1",
+				approveDeps({ status: "exists" }, suggestion({ state: "publishing" }), {
+					createAvatarPreset,
+				})
+			)
+			expect(createAvatarPreset).not.toHaveBeenCalled()
+			expect(JSON.stringify(edits)).toContain(avatarInProgress)
+		})
+	})
+
+	describe("regressions", () => {
+		it("regression: a double confirm publishes once and leaves the row approved", async () => {
+			const pool = await freshPool()
+			await createSuggestion(pool, {
+				id: "sug-1",
+				guildId: "g1",
+				proposedId: "el-gato",
+				label: "El Gato",
+				imageBase64: Buffer.from("image-bytes").toString("base64"),
+				mime: "image/png",
+				proposerDiscordId: "222222222222222222",
+				proposerKeyId: null,
+			})
+			let published = false
+			const createAvatarPreset = vi.fn(async (): Promise<CreateAvatarPresetResult> => {
+				if (published) return { status: "exists" }
+				published = true
+				return { status: "created", id: "el-gato", label: "El Gato", url: "u" }
+			})
+			const deps = storeDeps(pool, createAvatarPreset)
+			const first = approveInteraction()
+			const second = approveInteraction()
+
+			await Promise.all([
+				handleAvatarApproveConfirm(first.i, "sug-1", deps),
+				handleAvatarApproveConfirm(second.i, "sug-1", deps),
+			])
+
+			expect(createAvatarPreset).toHaveBeenCalledOnce()
+			expect(await getSuggestion(pool, "sug-1")).toMatchObject({ state: "approved" })
+		})
+	})
 })
 
 describe("handleAvatarRejectSubmit", () => {
@@ -273,21 +483,40 @@ describe("handleAvatarRejectSubmit", () => {
 
 	function rejectDeps(
 		row: AvatarSuggestion | null,
-		markDecided = vi.fn(async () => {})
+		markDecided: AvatarRejectDeps["markDecided"] = vi.fn(async () => true)
 	): AvatarRejectDeps {
 		return { getSuggestion: async () => row, markDecided }
 	}
 
 	it("marks rejected and edits the card in place", async () => {
-		const markDecided = vi.fn(async () => {})
+		const markDecided = vi.fn(async () => true)
 		const { i, updates } = rejectInteraction()
 		await handleAvatarRejectSubmit(i, "sug-1", rejectDeps(suggestion(), markDecided))
-		expect(markDecided).toHaveBeenCalledWith("sug-1", "rejected", "999999999999999999")
+		expect(markDecided).toHaveBeenCalledWith({
+			id: "sug-1",
+			from: "pending",
+			to: "rejected",
+			decidedBy: "999999999999999999",
+		})
 		expect(updates).toHaveLength(1)
 	})
 
+	it("regression: does not overwrite a decision that landed first", async () => {
+		const { i, updates, replies } = rejectInteraction()
+		await handleAvatarRejectSubmit(
+			i,
+			"sug-1",
+			rejectDeps(
+				suggestion(),
+				vi.fn(async () => false)
+			)
+		)
+		expect(updates).toHaveLength(0)
+		expect(JSON.stringify(replies)).toContain(avatarAlreadyDecided)
+	})
+
 	it("does not mark decided when the suggestion is missing", async () => {
-		const markDecided = vi.fn(async () => {})
+		const markDecided = vi.fn(async () => true)
 		const { i, replies } = rejectInteraction()
 		await handleAvatarRejectSubmit(i, "sug-1", rejectDeps(null, markDecided))
 		expect(markDecided).not.toHaveBeenCalled()

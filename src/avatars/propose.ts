@@ -3,6 +3,8 @@ import { labelFrom, slugifyAvatarId } from "@/avatars/slug"
 
 export const ACCEPTED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
 export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
+// keep in sync with the id/label maxLength on unison POST /avatars/presets
+export const MAX_NAME_LENGTH = 64
 
 export type ProposalReason =
 	| "wrong_channel"
@@ -34,6 +36,13 @@ function stripExtension(filename: string): string {
 	return filename.replace(/\.[^.]+$/, "")
 }
 
+function clipLabel(label: string): string {
+	return label
+		.slice(0, MAX_NAME_LENGTH)
+		.replace(/[\uD800-\uDBFF]$/, "")
+		.trimEnd()
+}
+
 export function buildProposal(input: ProposalInput): ProposalResult {
 	if (input.channelId !== input.suggestChannelId) return { ok: false, reason: "wrong_channel" }
 	if (!input.memberEligible) return { ok: false, reason: "not_eligible" }
@@ -45,7 +54,7 @@ export function buildProposal(input: ProposalInput): ProposalResult {
 
 	const source =
 		input.name && input.name.trim() !== "" ? input.name : stripExtension(input.attachment.name)
-	const id = slugifyAvatarId(source)
+	const id = slugifyAvatarId(source).slice(0, MAX_NAME_LENGTH).replace(/-+$/, "")
 	if (id === "") return { ok: false, reason: "bad_name" }
-	return { ok: true, id, label: labelFrom(source) }
+	return { ok: true, id, label: clipLabel(labelFrom(source)) }
 }

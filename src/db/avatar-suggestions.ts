@@ -1,6 +1,7 @@
+import { AVATAR_PUBLISH_CLAIM_TTL_MS } from "@/config"
 import type { Pool } from "pg"
 
-export type AvatarSuggestionState = "pending" | "approved" | "rejected"
+export type AvatarSuggestionState = "pending" | "publishing" | "approved" | "rejected"
 
 export interface AvatarSuggestion {
 	id: string
@@ -121,18 +122,47 @@ export async function setSuggestionCard(
 	)
 }
 
-export async function markSuggestionDecided(
+export async function claimSuggestion(
 	pool: Pool,
 	id: string,
-	state: Exclude<AvatarSuggestionState, "pending">,
-	decidedBy: string,
+	actorId: string,
 	now: number = Date.now()
-): Promise<void> {
-	// Drop the stored image once decided: it is only needed to publish on approval.
-	await pool.query(
-		"UPDATE avatar_suggestion SET state = $2, decided_by = $3, decided_at = $4, image_base64 = '' WHERE id = $1",
-		[id, state, decidedBy, now]
+): Promise<AvatarSuggestion | null> {
+	const result = await pool.query<AvatarSuggestionRow>(
+		`UPDATE avatar_suggestion SET state = 'publishing', decided_by = $2, decided_at = $3
+		 WHERE id = $1 AND (state = 'pending' OR (state = 'publishing' AND decided_at < $4))
+		 RETURNING ${SELECT_COLUMNS}`,
+		[id, actorId, now, now - AVATAR_PUBLISH_CLAIM_TTL_MS]
 	)
+	const row = result.rows[0]
+	return row ? mapRow(row) : null
+}
+
+export async function releaseSuggestion(pool: Pool, id: string): Promise<void> {
+	await pool.query(
+		"UPDATE avatar_suggestion SET state = 'pending', decided_by = NULL, decided_at = NULL WHERE id = $1 AND state = 'publishing'",
+		[id]
+	)
+}
+
+export interface SuggestionDecision {
+	id: string
+	from: "pending" | "publishing"
+	to: "approved" | "rejected"
+	decidedBy: string
+}
+
+export async function markSuggestionDecided(
+	pool: Pool,
+	decision: SuggestionDecision,
+	now: number = Date.now()
+): Promise<boolean> {
+	// Drop the stored image once decided: it is only needed to publish on approval.
+	const result = await pool.query(
+		"UPDATE avatar_suggestion SET state = $3, decided_by = $4, decided_at = $5, image_base64 = '' WHERE id = $1 AND state = $2",
+		[decision.id, decision.from, decision.to, decision.decidedBy, now]
+	)
+	return (result.rowCount ?? 0) > 0
 }
 
 export async function deleteSuggestion(pool: Pool, id: string): Promise<void> {
@@ -145,7 +175,7 @@ export async function pruneDecidedSuggestions(
 	now: number = Date.now()
 ): Promise<number> {
 	const result = await pool.query(
-		"DELETE FROM avatar_suggestion WHERE state <> 'pending' AND decided_at IS NOT NULL AND decided_at < $1",
+		"DELETE FROM avatar_suggestion WHERE state IN ('approved', 'rejected') AND decided_at < $1",
 		[now - olderThanMs]
 	)
 	return result.rowCount ?? 0

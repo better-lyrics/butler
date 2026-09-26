@@ -883,6 +883,11 @@ export const avatarNotFound = "That avatar suggestion no longer exists."
 
 export const avatarAlreadyDecided = "This suggestion was already decided."
 
+export const avatarInProgress = "Another admin is deciding this suggestion right now."
+
+export const avatarImageInvalid =
+	"The catalogue could not process this image. Suggest it again as a different file."
+
 export const avatarError = "Something went wrong publishing that avatar. Try again in a moment."
 
 export const avatarProposeNoImage = "Attach an image to suggest."
@@ -896,8 +901,6 @@ export const avatarProposeTooBig = "That image is too large. Keep it under 8 MB.
 export const avatarProposeBadName = "Could not make a name from that. Add a name and try again."
 
 export const avatarProposeDownloadFailed = "Could not read that image. Try again in a moment."
-
-export const avatarProposeNotConfigured = "Avatar suggestions are not set up on this server yet."
 
 export function avatarProposeWrongChannel(channelId: string): string {
 	return `Use this command in <#${channelId}>.`

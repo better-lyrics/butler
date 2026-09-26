@@ -16,11 +16,13 @@ import {
 import { avatarNotAdmin, avatarPublished, queueEmpty } from "@/copy/strings"
 import {
 	type AvatarSuggestion,
+	claimSuggestion,
 	createSuggestion,
 	deleteSuggestion,
 	getSuggestion,
 	markSuggestionDecided,
 	pruneDecidedSuggestions,
+	releaseSuggestion,
 	setSuggestionCard,
 } from "@/db/avatar-suggestions"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
@@ -232,8 +234,7 @@ async function isCouncilMember(discordId: string): Promise<boolean> {
 	return member.roles.cache.has(gc.councilRoleId)
 }
 
-// Avatar suggestions gate on the Lyricist tier role directly, independent of the Council exam
-// anchor, so tuning the exam threshold never moves who can suggest an avatar.
+// Gate on the Lyricist role directly so tuning the Council exam threshold never moves it.
 async function isLyricistOrAbove(discordId: string): Promise<boolean> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	const anchorId = gc?.roleIds.lyricist ?? null
@@ -446,9 +447,11 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				return
 			}
 			await handleAvatarApproveConfirm(interaction, route.args[0] ?? "", {
+				claim: (id, actorId) => claimSuggestion(pool, id, actorId),
+				release: (id) => releaseSuggestion(pool, id),
 				getSuggestion: (id) => getSuggestion(pool, id),
 				createAvatarPreset: (input) => unison.createAvatarPreset(input),
-				markDecided: (id, state, actorId) => markSuggestionDecided(pool, id, state, actorId),
+				markDecided: (decision) => markSuggestionDecided(pool, decision),
 				editCard: (row, outcome) => editAvatarCard(row, outcome),
 				notifyProposer: (row) => notifyAvatarProposer(row),
 			})
@@ -1201,9 +1204,15 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("revision reject submit handler failed", err))
 		} else if (modalRoute?.handler === "avatar.reject.submit" && interaction.isFromMessage()) {
+			if (!isGuildMod(interaction)) {
+				interaction
+					.reply({ content: avatarNotAdmin, flags: MessageFlags.Ephemeral })
+					.catch((err) => console.error("avatar reject submit reply failed", err))
+				return
+			}
 			handleAvatarRejectSubmit(interaction, modalRoute.args[0] ?? "", {
 				getSuggestion: (id) => getSuggestion(pool, id),
-				markDecided: (id, state, actorId) => markSuggestionDecided(pool, id, state, actorId),
+				markDecided: (decision) => markSuggestionDecided(pool, decision),
 			}).catch((err) => console.error("avatar reject submit handler failed", err))
 		}
 	}

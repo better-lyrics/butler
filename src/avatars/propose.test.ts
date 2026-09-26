@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { MAX_ATTACHMENT_BYTES, buildProposal } from "./propose"
+import { MAX_ATTACHMENT_BYTES, MAX_NAME_LENGTH, buildProposal } from "./propose"
 
 function base(overrides: Record<string, unknown> = {}) {
 	return {
@@ -93,6 +93,50 @@ describe("buildProposal", () => {
 				base({ attachment: { name: "x.png", contentType: "image/png; charset=binary", size: 10 } })
 			)
 			expect(result).toEqual({ ok: true, id: "x", label: "X" })
+		})
+	})
+
+	describe("regressions", () => {
+		function proposeFile(name: string) {
+			const result = buildProposal(
+				base({ attachment: { name, contentType: "image/png", size: 1000 } })
+			)
+			if (!result.ok) throw new Error(`expected ok, got ${result.reason}`)
+			return result
+		}
+
+		it("regression: clips a long camera file name to what unison accepts", () => {
+			const { id, label } = proposeFile(
+				"IMG_20260926_123456789_portrait_mode_edited_final_version_2_really_final.png"
+			)
+			expect(id.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+			expect(label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(label).toBe(label.trim())
+		})
+
+		it("regression: clips a long explicit name", () => {
+			const result = buildProposal(base({ name: "a ".repeat(100) }))
+			if (!result.ok) throw new Error(result.reason)
+			expect(result.id.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(result.label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+		})
+
+		it("regression: never splits an emoji when clipping the label", () => {
+			const { label } = proposeFile(`${"x".repeat(MAX_NAME_LENGTH - 1)}😺.png`)
+			expect(label.length).toBeLessThanOrEqual(MAX_NAME_LENGTH)
+			expect(label).not.toMatch(/[\uD800-\uDBFF]$/)
+		})
+	})
+
+	describe("invariants", () => {
+		it("keeps a name at exactly the limit unchanged", () => {
+			const name = "a".repeat(MAX_NAME_LENGTH)
+			expect(buildProposal(base({ name }))).toEqual({
+				ok: true,
+				id: name,
+				label: `A${name.slice(1)}`,
+			})
 		})
 	})
 })
