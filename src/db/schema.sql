@@ -63,3 +63,14 @@ CREATE TABLE IF NOT EXISTS exam_applicant_post (
   posted_at    BIGINT NOT NULL,
   PRIMARY KEY (guild_id, applicant_id)
 );
+CREATE TABLE IF NOT EXISTS revision_board_card (
+  guild_id    TEXT NOT NULL,
+  revision_id TEXT NOT NULL,
+  message_id  TEXT NOT NULL,
+  channel_id  TEXT NOT NULL,
+  state       TEXT NOT NULL DEFAULT 'pending',
+  actor_id    TEXT,
+  note        TEXT,
+  card        JSONB NOT NULL,
+  PRIMARY KEY (guild_id, revision_id)
+);

@@ -25,6 +25,14 @@ import {
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
 import { getBoard, getBoardCard, replaceBoard, updateBoardCard } from "@/db/review-board"
+import {
+	type RevisionDecisionRecord,
+	forgetRevisionRow,
+	getRevisionBoardRow,
+	listRevisionBoard,
+	markRevisionDecided,
+	recordRevisionPost,
+} from "@/db/revision-board"
 import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
 import { createDiscordClient } from "@/discord/client"
 import { configCommand, handleConfig } from "@/discord/commands/config"
@@ -65,6 +73,13 @@ import {
 	handleQueueSealUndo,
 	queueCommand,
 } from "@/discord/commands/queue"
+import {
+	handleRevisionApprove,
+	handleRevisionApproveCancel,
+	handleRevisionApproveConfirm,
+	handleRevisionReject,
+	handleRevisionRejectSubmit,
+} from "@/discord/commands/revision"
 import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/discord/commands/seal"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
@@ -78,6 +93,7 @@ import {
 	type buildQueueCard,
 	buildQueueSealedCard,
 } from "@/discord/components/queue-card"
+import { buildRevisionCard, revisionCardEdit } from "@/discord/components/revision-card"
 import { meetsMinRole } from "@/discord/eligibility"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { unlessGoneFromGuild } from "@/discord/gone-from-guild"
@@ -86,9 +102,15 @@ import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/con
 import { handleMigrateContinue } from "@/discord/migrate/continue"
 import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
+import { planRevisionBoard } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { type SyncResult, runSync } from "@/roles/sync"
-import { type DiscordProfile, type QueueEntry, createUnisonClient } from "@/unison/client"
+import {
+	type DiscordProfile,
+	type PendingRevisionCard,
+	type QueueEntry,
+	createUnisonClient,
+} from "@/unison/client"
 import { pushDiscordProfiles, toDiscordProfile } from "@/unison/discord-profiles"
 import { createYoutubeiSource, fetchTrackMeta } from "@/ytm/metadata"
 import {
@@ -296,6 +318,24 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				markPending: markBoardPending,
 				linkPageUrl: config.linkPageUrl,
 			})
+			return
+		case "revision.approve":
+			await handleRevisionApprove(interaction, route.args[0] ?? "", route.args[1] ?? "")
+			return
+		case "revision.approve.confirm":
+			await handleRevisionApproveConfirm(interaction, route.args[0] ?? "", route.args[1] ?? "", {
+				resolveKeyId,
+				approveRevision: (lyricsId, revisionId, keyId) =>
+					unison.approveRevision(lyricsId, revisionId, keyId),
+				approveBoardCard: approveRevisionBoardCard,
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "revision.approve.cancel":
+			await handleRevisionApproveCancel(interaction)
+			return
+		case "revision.reject":
+			await handleRevisionReject(interaction, route.args[0] ?? "", route.args[1] ?? "")
 			return
 		case "exam.approve":
 			await handleCouncilApplicantApprovePrompt(interaction, {
@@ -546,6 +586,7 @@ async function runAll(): Promise<void> {
 		await runSyncForGuild(gc)
 	}
 	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
+	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
 }
 
 // Post newly-passed exam applicants to the council channel for admins to decide. Butler has no
@@ -572,6 +613,40 @@ async function syncApplicantBoard(): Promise<void> {
 			messageId: message.id,
 			channelId: channel.id,
 			postedAt: Date.now(),
+		})
+	}
+}
+
+async function syncRevisionBoard(): Promise<void> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId || !gc.enabled) return
+	const result = await unison.getPendingRevisions()
+	if (result.status !== "ok") return
+	const plan = planRevisionBoard(await listRevisionBoard(pool, config.guildId), result.cards)
+	for (const row of plan.toResolve) {
+		await editBoardMessage(
+			row.channelId,
+			row.messageId,
+			revisionCardEdit(buildRevisionCard(row.card, { kind: "resolved" }))
+		)
+	}
+	for (const row of plan.toForget) {
+		await forgetRevisionRow(pool, config.guildId, row.revisionId)
+	}
+	if (plan.toPost.length === 0) return
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return
+	for (const card of plan.toPost) {
+		const message = await channel.send(buildRevisionCard(card)).catch((err) => {
+			console.error("revision board post failed", err)
+			return null
+		})
+		if (!message) continue
+		await recordRevisionPost(pool, config.guildId, {
+			revisionId: String(card.revisionId),
+			messageId: message.id,
+			channelId: channel.id,
+			card,
 		})
 	}
 }
@@ -631,6 +706,32 @@ async function markBoardRejected(
 	note: string | null
 ): Promise<void> {
 	await updateBoardCard(pool, config.guildId, lyricsId, { state: "rejected", actorId, note })
+}
+
+async function approveRevisionBoardCard(revisionId: string, actorId: string): Promise<void> {
+	const row = await getRevisionBoardRow(pool, config.guildId, revisionId)
+	if (!row) return
+	await markRevisionDecided(pool, config.guildId, revisionId, {
+		state: "approved",
+		actorId,
+		note: null,
+	})
+	await editBoardMessage(
+		row.channelId,
+		row.messageId,
+		revisionCardEdit(buildRevisionCard(row.card, { kind: "approved", actorId }))
+	)
+}
+
+async function revisionBoardCard(revisionId: string): Promise<PendingRevisionCard | null> {
+	return (await getRevisionBoardRow(pool, config.guildId, revisionId))?.card ?? null
+}
+
+async function markRevisionBoardDecided(
+	revisionId: string,
+	decision: RevisionDecisionRecord
+): Promise<void> {
+	await markRevisionDecided(pool, config.guildId, revisionId, decision)
 }
 
 async function advanceBoard(opts: { force: boolean; now?: number }): Promise<DigestResult> {
@@ -942,6 +1043,15 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				markRejected: markBoardRejected,
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("queue reject submit handler failed", err))
+		} else if (modalRoute?.handler === "revision.reject.submit" && interaction.isFromMessage()) {
+			handleRevisionRejectSubmit(interaction, modalRoute.args[0] ?? "", modalRoute.args[1] ?? "", {
+				resolveKeyId,
+				rejectRevision: (lyricsId, revisionId, keyId, note) =>
+					unison.rejectRevision(lyricsId, revisionId, keyId, note),
+				getCard: revisionBoardCard,
+				markDecided: markRevisionBoardDecided,
+				linkPageUrl: config.linkPageUrl,
+			}).catch((err) => console.error("revision reject submit handler failed", err))
 		}
 	}
 })
