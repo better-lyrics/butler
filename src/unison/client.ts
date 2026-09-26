@@ -318,6 +318,21 @@ export type DiscordProfilesSyncResult =
 	| { status: "not_deployed" }
 	| { status: "error"; code: number }
 
+export type CreateAvatarPresetResult =
+	| { status: "created"; id: string; label: string; url: string }
+	| { status: "exists" }
+	| { status: "invalid" }
+	| { status: "cdn_unavailable" }
+	| { status: "error"; code: number }
+
+export interface CreateAvatarPresetInput {
+	id: string
+	label: string
+	createdBy?: string
+	mime: string
+	bytes: Buffer
+}
+
 export interface UnisonClientOptions {
 	baseUrl: string
 	botSecret: string
@@ -368,6 +383,7 @@ export interface UnisonClient {
 		note?: string
 	): Promise<RevisionDecisionResult>
 	syncDiscordProfiles(profiles: DiscordProfile[]): Promise<DiscordProfilesSyncResult>
+	createAvatarPreset(input: CreateAvatarPresetInput): Promise<CreateAvatarPresetResult>
 }
 
 interface LeaderboardResponse {
@@ -1059,6 +1075,40 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "error", code: res.status }
 			}
 			return { status: "ok", updated }
+		},
+
+		async createAvatarPreset(input) {
+			const res = await doFetch(`${baseUrl}/avatars/presets`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({
+					id: input.id,
+					label: input.label,
+					createdBy: input.createdBy,
+					mime: input.mime,
+					dataBase64: input.bytes.toString("base64"),
+				}),
+			})
+			if (res.ok) {
+				const json = (await res.json().catch(() => null)) as {
+					data?: { id?: string; label?: string; url?: string }
+				} | null
+				const data = json?.data
+				if (!data?.id || !data.label || !data.url) {
+					return { status: "error", code: res.status }
+				}
+				return { status: "created", id: data.id, label: data.label, url: data.url }
+			}
+			switch (await errorCode(res)) {
+				case "AVATAR_PRESET_EXISTS":
+					return { status: "exists" }
+				case "AVATAR_IMAGE_INVALID":
+					return { status: "invalid" }
+				case "CDN_UNAVAILABLE":
+					return { status: "cdn_unavailable" }
+				default:
+					return { status: "error", code: res.status }
+			}
 		},
 	}
 }
