@@ -4,6 +4,7 @@ import {
 	avatarAlreadyDecided,
 	avatarApproveCancelled,
 	avatarApprovedBy,
+	avatarCooldown,
 	avatarError,
 	avatarNameTaken,
 	avatarNotFound,
@@ -14,16 +15,17 @@ import {
 	avatarProposeNoImage,
 	avatarProposeNotConfigured,
 	avatarProposeNotEligible,
+	avatarProposeNotPosted,
 	avatarProposeTooBig,
 	avatarProposeWrongChannel,
 	avatarRejectModalTitle,
 } from "@/copy/strings"
-import type { CreateSuggestionInput } from "@/db/avatar-suggestions"
-import type { AvatarSuggestion } from "@/db/avatar-suggestions"
+import type { AvatarSuggestion, CreateSuggestionInput } from "@/db/avatar-suggestions"
+import type { Cooldown } from "@/discord/migrate/cooldown"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import { encodeCustomId } from "@/interactions/custom-id"
 import type { CreateAvatarPresetInput, CreateAvatarPresetResult } from "@/unison/client"
-import { type ModalBuilder, PermissionFlagsBits, SlashCommandBuilder } from "discord.js"
+import { MessageFlags, type ModalBuilder, SlashCommandBuilder } from "discord.js"
 import {
 	type AvatarCardPayload,
 	type AvatarOutcome,
@@ -65,17 +67,20 @@ export interface AvatarProposeInteraction {
 		getAttachment(name: string): ProposeAttachment | null
 		getString(name: string): string | null
 	}
-	reply(payload: unknown): Promise<unknown>
+	deferReply(options: unknown): Promise<unknown>
+	editReply(payload: unknown): Promise<unknown>
 }
 
 export interface AvatarProposeDeps {
 	guildId: string
 	suggestChannelId: string | null
+	cooldown: Cooldown
 	isEligible: (discordId: string) => Promise<boolean>
 	resolveKeyId: (discordId: string) => Promise<string | null>
 	fetchBytes: (url: string) => Promise<Buffer | null>
 	newId: () => string
 	createSuggestion: (input: CreateSuggestionInput) => Promise<{ id: string }>
+	deleteSuggestion: (id: string) => Promise<void>
 	postCard: (payload: AvatarCardPayload) => Promise<{ channelId: string; messageId: string } | null>
 	setCard: (suggestionId: string, channelId: string, messageId: string) => Promise<void>
 }
@@ -101,8 +106,17 @@ export async function handleAvatarPropose(
 	interaction: AvatarProposeInteraction,
 	deps: AvatarProposeDeps
 ): Promise<void> {
+	// Defer up front: the work below (role fetch, image download, upload) can exceed Discord's 3s
+	// ack window, and a late reply would error while the row and card were already created.
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+	const cd = deps.cooldown.check(interaction.user.id)
+	if (!cd.allowed) {
+		await interaction.editReply({ content: avatarCooldown(cd.retryAfterMs) })
+		return
+	}
 	if (!deps.suggestChannelId) {
-		await interaction.reply(ephemeralText(avatarProposeNotConfigured))
+		await interaction.editReply({ content: avatarProposeNotConfigured })
 		return
 	}
 
@@ -118,15 +132,15 @@ export async function handleAvatarPropose(
 		name: interaction.options.getString("name"),
 	})
 	if (!proposal.ok) {
-		await interaction.reply(
-			ephemeralText(proposeReasonCopy(proposal.reason, deps.suggestChannelId))
-		)
+		await interaction.editReply({
+			content: proposeReasonCopy(proposal.reason, deps.suggestChannelId),
+		})
 		return
 	}
 
 	const bytes = attachment ? await deps.fetchBytes(attachment.url) : null
 	if (!bytes) {
-		await interaction.reply(ephemeralText(avatarProposeDownloadFailed))
+		await interaction.editReply({ content: avatarProposeDownloadFailed })
 		return
 	}
 
@@ -155,9 +169,15 @@ export async function handleAvatarPropose(
 		bytes
 	)
 	const posted = await deps.postCard(card)
-	if (posted) await deps.setCard(suggestionId, posted.channelId, posted.messageId)
+	if (!posted) {
+		// No review card means no admin can act on it: roll back so it does not sit orphaned.
+		await deps.deleteSuggestion(suggestionId)
+		await interaction.editReply({ content: avatarProposeNotPosted })
+		return
+	}
+	await deps.setCard(suggestionId, posted.channelId, posted.messageId)
 
-	await interaction.reply(ephemeralText(avatarProposeAck(proposal.label)))
+	await interaction.editReply({ content: avatarProposeAck(proposal.label) })
 }
 
 export async function handleAvatarApprove(
@@ -186,20 +206,29 @@ export interface AvatarApproveDeps {
 }
 
 export async function handleAvatarApproveConfirm(
-	interaction: { user: { id: string }; update(payload: unknown): Promise<unknown> },
+	interaction: {
+		user: { id: string }
+		deferUpdate(): Promise<unknown>
+		editReply(payload: unknown): Promise<unknown>
+	},
 	suggestionId: string,
 	deps: AvatarApproveDeps
 ): Promise<void> {
+	// Defer before the upload: createAvatarPreset re-encodes and pushes to the CDN, which can
+	// outlast the 3s ack window and otherwise strand the row in pending with live buttons.
+	await interaction.deferUpdate()
+
 	const row = await deps.getSuggestion(suggestionId)
 	if (!row) {
-		await interaction.update(buildQueueResultCard(avatarNotFound))
+		await interaction.editReply(buildQueueResultCard(avatarNotFound))
 		return
 	}
 	if (row.state !== "pending") {
-		await interaction.update(buildQueueResultCard(avatarAlreadyDecided))
+		await interaction.editReply(buildQueueResultCard(avatarAlreadyDecided))
 		return
 	}
 
+	const actorId = interaction.user.id
 	const result = await deps.createAvatarPreset({
 		id: row.proposedId,
 		label: row.label,
@@ -208,18 +237,21 @@ export async function handleAvatarApproveConfirm(
 		bytes: Buffer.from(row.imageBase64, "base64"),
 	})
 	if (result.status === "exists") {
-		await interaction.update(buildQueueResultCard(avatarNameTaken(row.proposedId)))
+		// The name is taken by an already-published preset, so this image cannot go live. Settle the
+		// row as rejected so it does not stay pending and dead-end on every re-approve.
+		await deps.markDecided(suggestionId, "rejected", actorId)
+		await deps.editCard(row, { kind: "rejected", actorId, note: avatarNameTaken(row.proposedId) })
+		await interaction.editReply(buildQueueResultCard(avatarNameTaken(row.proposedId)))
 		return
 	}
 	if (result.status !== "created") {
-		await interaction.update(buildQueueResultCard(avatarError))
+		await interaction.editReply(buildQueueResultCard(avatarError))
 		return
 	}
 
-	const actorId = interaction.user.id
-	await interaction.update(buildQueueResultCard(avatarApprovedBy(actorId)))
 	await deps.markDecided(suggestionId, "approved", actorId)
 	await deps.editCard(row, { kind: "approved", actorId })
+	await interaction.editReply(buildQueueResultCard(avatarApprovedBy(actorId)))
 	await deps.notifyProposer(row)
 }
 

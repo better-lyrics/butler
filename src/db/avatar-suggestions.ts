@@ -128,10 +128,15 @@ export async function markSuggestionDecided(
 	decidedBy: string,
 	now: number = Date.now()
 ): Promise<void> {
+	// Drop the stored image once decided: it is only needed to publish on approval.
 	await pool.query(
-		"UPDATE avatar_suggestion SET state = $2, decided_by = $3, decided_at = $4 WHERE id = $1",
+		"UPDATE avatar_suggestion SET state = $2, decided_by = $3, decided_at = $4, image_base64 = '' WHERE id = $1",
 		[id, state, decidedBy, now]
 	)
+}
+
+export async function deleteSuggestion(pool: Pool, id: string): Promise<void> {
+	await pool.query("DELETE FROM avatar_suggestion WHERE id = $1", [id])
 }
 
 export async function pruneDecidedSuggestions(

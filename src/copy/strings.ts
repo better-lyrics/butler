@@ -934,3 +934,11 @@ export function avatarNameTaken(proposedId: string): string {
 export function avatarPublished(label: string): string {
 	return `your avatar **${label}** was approved and added to the catalogue.`
 }
+
+export const avatarProposeNotPosted =
+	"Couldn't post your suggestion for review. Try again in a moment."
+
+export function avatarCooldown(retryAfterMs: number): string {
+	const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
+	return `You just suggested one. Try again in ${seconds}s.`
+}

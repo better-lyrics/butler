@@ -1,3 +1,4 @@
+import { normalizeMime } from "@/avatars/download"
 import { labelFrom, slugifyAvatarId } from "@/avatars/slug"
 
 export const ACCEPTED_MIME = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"])
@@ -27,10 +28,6 @@ export interface ProposalInput {
 	memberEligible: boolean
 	attachment: ProposalAttachment | null
 	name?: string | null
-}
-
-function normalizeMime(contentType: string | null): string {
-	return (contentType ?? "").split(";")[0]?.trim().toLowerCase() ?? ""
 }
 
 function stripExtension(filename: string): string {

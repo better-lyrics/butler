@@ -3,6 +3,7 @@ import { newDb } from "pg-mem"
 import { beforeEach, describe, expect, it } from "vitest"
 import {
 	createSuggestion,
+	deleteSuggestion,
 	getSuggestion,
 	markSuggestionDecided,
 	pruneDecidedSuggestions,
@@ -62,7 +63,7 @@ describe("avatar suggestions store", () => {
 		expect(row).toMatchObject({ cardChannelId: "chan-1", cardMessageId: "msg-1" })
 	})
 
-	it("marks a suggestion decided", async () => {
+	it("marks a suggestion decided and clears the stored image", async () => {
 		await createSuggestion(pool, input())
 		await markSuggestionDecided(pool, "sug-1", "approved", "999999999999999999", 5000)
 		const row = await getSuggestion(pool, "sug-1")
@@ -70,7 +71,14 @@ describe("avatar suggestions store", () => {
 			state: "approved",
 			decidedBy: "999999999999999999",
 			decidedAt: 5000,
+			imageBase64: "",
 		})
+	})
+
+	it("deletes a suggestion", async () => {
+		await createSuggestion(pool, input())
+		await deleteSuggestion(pool, "sug-1")
+		expect(await getSuggestion(pool, "sug-1")).toBeNull()
 	})
 
 	describe("edge cases", () => {

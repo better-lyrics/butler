@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto"
 import { fetchImageBytes, imageFileName } from "@/avatars/download"
 import {
 	ALBUM_ART_SIZE,
+	AVATAR_SUGGESTION_RETENTION_MS,
+	AVATAR_SUGGEST_COOLDOWN_MS,
 	COUNCIL_GETTING_STARTED_URL,
 	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
@@ -15,8 +17,10 @@ import { avatarNotAdmin, avatarPublished, queueEmpty } from "@/copy/strings"
 import {
 	type AvatarSuggestion,
 	createSuggestion,
+	deleteSuggestion,
 	getSuggestion,
 	markSuggestionDecided,
+	pruneDecidedSuggestions,
 	setSuggestionCard,
 } from "@/db/avatar-suggestions"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
@@ -157,6 +161,11 @@ const unison = createUnisonClient({
 
 const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
 
+const avatarSuggestCooldown = createCooldown({
+	windowMs: AVATAR_SUGGEST_COOLDOWN_MS,
+	now: () => Date.now(),
+})
+
 async function resolveKeyId(discordId: string): Promise<string | null> {
 	const links = await unison.getBotLinks()
 	return links.find((l) => l.discordId === discordId)?.keyId ?? null
@@ -221,6 +230,24 @@ async function isCouncilMember(discordId: string): Promise<boolean> {
 	const member = await guild.members.fetch(discordId).catch(() => null)
 	if (!member) return false
 	return member.roles.cache.has(gc.councilRoleId)
+}
+
+// Avatar suggestions gate on the Lyricist tier role directly, independent of the Council exam
+// anchor, so tuning the exam threshold never moves who can suggest an avatar.
+async function isLyricistOrAbove(discordId: string): Promise<boolean> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	const anchorId = gc?.roleIds.lyricist ?? null
+	if (!anchorId) return false
+	const guild = await discord.guilds.fetch(config.guildId)
+	const anchor =
+		guild.roles.cache.get(anchorId) ?? (await guild.roles.fetch(anchorId).catch(() => null))
+	if (!anchor) return false
+	const member = await guild.members.fetch(discordId).catch(() => null)
+	if (!member) return false
+	return meetsMinRole(
+		member.roles.cache.map((role) => role.position),
+		anchor.position
+	)
 }
 
 async function postConnectCard(channelId: string): Promise<boolean> {
@@ -632,6 +659,7 @@ async function syncDiscordProfiles(guildId: string, profiles: DiscordProfile[]):
 
 let syncHandle: ReturnType<typeof setInterval> | null = null
 let reviewHandle: ReturnType<typeof setInterval> | null = null
+let avatarPruneHandle: ReturnType<typeof setInterval> | null = null
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
@@ -948,6 +976,11 @@ discord.once(Events.ClientReady, async (client) => {
 			console.error("scheduled review board failed", err)
 		)
 	}, SYNC_INTERVAL_MS)
+	avatarPruneHandle = setInterval(() => {
+		pruneDecidedSuggestions(pool, AVATAR_SUGGESTION_RETENTION_MS).catch((err) =>
+			console.error("avatar suggestion prune failed", err)
+		)
+	}, SYNC_INTERVAL_MS)
 })
 
 discord.on(Events.MessageCreate, (message) => {
@@ -1108,11 +1141,13 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		handleAvatarPropose(interaction, {
 			guildId: config.guildId,
 			suggestChannelId: config.pfpSuggestChannelId,
-			isEligible: (id) => isExamEligible(id),
+			cooldown: avatarSuggestCooldown,
+			isEligible: (id) => isLyricistOrAbove(id),
 			resolveKeyId,
 			fetchBytes: (url) => fetchImageBytes(url),
 			newId: () => randomUUID(),
 			createSuggestion: (input) => createSuggestion(pool, input),
+			deleteSuggestion: (id) => deleteSuggestion(pool, id),
 			postCard: (card) => postAvatarCard(card),
 			setCard: (id, channelId, messageId) => setSuggestionCard(pool, id, channelId, messageId),
 		}).catch((err) => console.error("avatar propose handler failed", err))
@@ -1178,6 +1213,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	process.on(sig, async () => {
 		if (syncHandle) clearInterval(syncHandle)
 		if (reviewHandle) clearInterval(reviewHandle)
+		if (avatarPruneHandle) clearInterval(avatarPruneHandle)
 		await discord.destroy()
 		await pool.end()
 		process.exit(0)
