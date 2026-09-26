@@ -913,7 +913,10 @@ export const avatarProposeBadType = "That image type is not supported. Use JPEG,
 
 export const avatarProposeTooBig = "That image is too large. Keep it under 8 MB."
 
-export const avatarProposeBadName = "Could not make a name from that. Add a name and try again."
+export const avatarProposeBadName = "Give the avatar a name."
+
+export const avatarProposeBadId =
+	"IDs use only lowercase letters, numbers, and single hyphens, like `sky-cat`."
 
 export const avatarProposeDownloadFailed = "Could not read that image. Try again in a moment."
 

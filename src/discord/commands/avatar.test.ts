@@ -1,4 +1,10 @@
-import { avatarAlreadyDecided, avatarImageInvalid, avatarInProgress } from "@/copy/strings"
+import { MAX_NAME_LENGTH } from "@/avatars/propose"
+import {
+	avatarAlreadyDecided,
+	avatarImageInvalid,
+	avatarInProgress,
+	avatarProposeBadId,
+} from "@/copy/strings"
 import {
 	type AvatarSuggestion,
 	claimSuggestion,
@@ -17,6 +23,7 @@ import {
 	type AvatarApproveDeps,
 	type AvatarProposeDeps,
 	type AvatarRejectDeps,
+	avatarCommand,
 	handleAvatarApproveConfirm,
 	handleAvatarPropose,
 	handleAvatarRejectSubmit,
@@ -45,6 +52,7 @@ function proposeInteraction(opts: {
 	channelId?: string
 	attachment?: { url: string; name: string; contentType: string | null; size: number } | null
 	name?: string | null
+	id?: string | null
 }) {
 	const edits: unknown[] = []
 	return {
@@ -57,7 +65,14 @@ function proposeInteraction(opts: {
 					opts.attachment === undefined
 						? { url: "https://x/i.png", name: "El Gato.png", contentType: "image/png", size: 1000 }
 						: opts.attachment,
-				getString: () => opts.name ?? null,
+				getString: (option: string) =>
+					option === "id"
+						? opts.id === undefined
+							? "el-gato"
+							: opts.id
+						: opts.name === undefined
+							? "El Gato"
+							: opts.name,
 			},
 			deferReply: async () => {},
 			editReply: async (payload: unknown) => {
@@ -86,6 +101,20 @@ function suggestion(overrides: Partial<AvatarSuggestion> = {}): AvatarSuggestion
 		...overrides,
 	}
 }
+
+describe("avatarCommand", () => {
+	it("requires an image, a name, and an id, each capped at the unison limit", () => {
+		const options = avatarCommand.toJSON().options ?? []
+		expect(options.map((o) => [o.name, o.required])).toEqual([
+			["image", true],
+			["name", true],
+			["id", true],
+		])
+		for (const o of options.filter((o) => o.name !== "image")) {
+			expect(o).toMatchObject({ max_length: MAX_NAME_LENGTH })
+		}
+	})
+})
 
 describe("handleAvatarPropose", () => {
 	it("stores the suggestion, posts the card, and acks", async () => {
@@ -126,6 +155,14 @@ describe("handleAvatarPropose", () => {
 		const createSuggestion = vi.fn(async (input) => ({ id: input.id }))
 		await handleAvatarPropose(interaction, proposeDeps({ createSuggestion }))
 		expect(createSuggestion).not.toHaveBeenCalled()
+	})
+
+	it("rejects an id with uppercase or symbols and explains the format", async () => {
+		const { interaction, edits } = proposeInteraction({ id: "El_Gato!" })
+		const createSuggestion = vi.fn(async (input) => ({ id: input.id }))
+		await handleAvatarPropose(interaction, proposeDeps({ createSuggestion }))
+		expect(createSuggestion).not.toHaveBeenCalled()
+		expect(edits).toEqual([{ content: avatarProposeBadId }])
 	})
 
 	it("rejects an ineligible member", async () => {

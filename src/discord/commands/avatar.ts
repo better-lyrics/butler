@@ -11,6 +11,7 @@ import {
 	avatarNameTaken,
 	avatarNotFound,
 	avatarProposeAck,
+	avatarProposeBadId,
 	avatarProposeBadName,
 	avatarProposeBadType,
 	avatarProposeDownloadFailed,
@@ -54,9 +55,16 @@ export const avatarCommand = new SlashCommandBuilder()
 	.addStringOption((option) =>
 		option
 			.setName("name")
-			.setDescription("A name for the avatar (defaults to the file name)")
+			.setDescription("The display name, like Sky Cat")
 			.setMaxLength(MAX_NAME_LENGTH)
-			.setRequired(false)
+			.setRequired(true)
+	)
+	.addStringOption((option) =>
+		option
+			.setName("id")
+			.setDescription("Permanent ID: lowercase letters, numbers, and hyphens, like sky-cat")
+			.setMaxLength(MAX_NAME_LENGTH)
+			.setRequired(true)
 	)
 
 interface ProposeAttachment {
@@ -105,6 +113,8 @@ function proposeReasonCopy(reason: ProposalReason, suggestChannelId: string): st
 			return avatarProposeTooBig
 		case "bad_name":
 			return avatarProposeBadName
+		case "bad_id":
+			return avatarProposeBadId
 	}
 }
 
@@ -138,6 +148,7 @@ async function submitProposal(
 			? { name: attachment.name, contentType: attachment.contentType, size: attachment.size }
 			: null,
 		name: interaction.options.getString("name"),
+		id: interaction.options.getString("id"),
 	})
 	if (!proposal.ok) {
 		await interaction.editReply({
