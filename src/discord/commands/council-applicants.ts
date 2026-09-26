@@ -16,9 +16,11 @@ import {
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import type {
 	CouncilAddResult,
+	ExamApplicant,
 	ExamApplicantsResult,
 	ExamDecision,
 	ExamDecisionResult,
+	ExamReportsResult,
 } from "@/unison/client"
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js"
 
@@ -115,6 +117,7 @@ export interface ApplicantApproveDeps {
 		deciderDiscordId: string
 	): Promise<ExamDecisionResult>
 	welcomeMember(discordId: string): Promise<void>
+	getExamReports(discordId: string): Promise<ExamReportsResult>
 }
 
 export interface ApplicantRejectDeps {
@@ -123,6 +126,20 @@ export interface ApplicantRejectDeps {
 		decision: ExamDecision,
 		deciderDiscordId: string
 	): Promise<ExamDecisionResult>
+	getExamReports(discordId: string): Promise<ExamReportsResult>
+}
+
+// The confirm prompt already replaced the applicant card, so the report is fetched again.
+async function attemptReport(
+	deps: { getExamReports(discordId: string): Promise<ExamReportsResult> },
+	args: ApplicantDecisionArgs
+): Promise<ExamApplicant | null> {
+	const result = await deps.getExamReports(args.discordId).catch((err) => {
+		console.error("exam report lookup failed", err)
+		return null
+	})
+	if (result?.status !== "ok") return null
+	return result.reports.find((r) => r.applicantId === args.applicantId) ?? null
 }
 
 export async function handleCouncilApplicantApprove(
@@ -161,7 +178,12 @@ export async function handleCouncilApplicantApprove(
 	await deps.welcomeMember(args.discordId)
 
 	await interaction.update(
-		buildApplicantApprovedCard({ discordId: args.discordId, adminId: interaction.user.id, role })
+		buildApplicantApprovedCard({
+			discordId: args.discordId,
+			adminId: interaction.user.id,
+			role,
+			report: await attemptReport(deps, args),
+		})
 	)
 }
 
@@ -182,7 +204,11 @@ export async function handleCouncilApplicantReject(
 	}
 
 	await interaction.update(
-		buildApplicantRejectedCard({ discordId: args.discordId, adminId: interaction.user.id })
+		buildApplicantRejectedCard({
+			discordId: args.discordId,
+			adminId: interaction.user.id,
+			report: await attemptReport(deps, args),
+		})
 	)
 }
 
