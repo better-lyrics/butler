@@ -24,6 +24,15 @@ describe("buildAvatarCard", () => {
 		expect(json).toContain("el-gato")
 	})
 
+	it("renders the image inline as a media gallery, not a downloadable file", () => {
+		const payload = buildAvatarCard(input, Buffer.from("image-bytes"))
+		const container = payload.components[0]?.toJSON() as {
+			components: Array<{ items?: Array<{ media: { url: string } }> }>
+		}
+		const mediaGallery = container.components.find((component) => Array.isArray(component.items))
+		expect(mediaGallery?.items?.[0]?.media.url).toBe("attachment://el-gato.png")
+	})
+
 	it("drops the buttons and image and shows the outcome once approved", () => {
 		const payload = buildAvatarCard(input, null, { kind: "approved", actorId: "42" })
 		expect(payload.files).toHaveLength(0)

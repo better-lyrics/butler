@@ -17,7 +17,8 @@ import {
 	ButtonBuilder,
 	ButtonStyle,
 	ContainerBuilder,
-	FileBuilder,
+	MediaGalleryBuilder,
+	MediaGalleryItemBuilder,
 	MessageFlags,
 	type MessageMentionOptions,
 	TextDisplayBuilder,
@@ -75,7 +76,11 @@ export function buildAvatarCard(
 	const files: AttachmentBuilder[] = []
 	if (image) {
 		files.push(new AttachmentBuilder(image, { name: input.imageName }))
-		container.addFileComponents(new FileBuilder().setURL(`attachment://${input.imageName}`))
+		container.addMediaGalleryComponents(
+			new MediaGalleryBuilder().addItems(
+				new MediaGalleryItemBuilder().setURL(`attachment://${input.imageName}`)
+			)
+		)
 	}
 
 	if (outcome) {
