@@ -1,5 +1,9 @@
+import { randomUUID } from "node:crypto"
+import { fetchImageBytes, imageFileName } from "@/avatars/download"
 import {
 	ALBUM_ART_SIZE,
+	AVATAR_SUGGESTION_RETENTION_MS,
+	AVATAR_SUGGEST_COOLDOWN_MS,
 	COUNCIL_GETTING_STARTED_URL,
 	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
@@ -9,7 +13,18 @@ import {
 	loadConfig,
 	shouldConnectToDiscord,
 } from "@/config"
-import { queueEmpty } from "@/copy/strings"
+import { avatarNotAdmin, avatarPublished, queueEmpty } from "@/copy/strings"
+import {
+	type AvatarSuggestion,
+	claimSuggestion,
+	createSuggestion,
+	deleteSuggestion,
+	getSuggestion,
+	markSuggestionDecided,
+	pruneDecidedSuggestions,
+	releaseSuggestion,
+	setSuggestionCard,
+} from "@/db/avatar-suggestions"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
 import { getPostedApplicantIds, planApplicantPosts, recordApplicantPost } from "@/db/exam-board"
 import {
@@ -35,6 +50,15 @@ import {
 } from "@/db/revision-board"
 import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
 import { createDiscordClient } from "@/discord/client"
+import {
+	avatarCommand,
+	handleAvatarApprove,
+	handleAvatarApproveCancel,
+	handleAvatarApproveConfirm,
+	handleAvatarPropose,
+	handleAvatarReject,
+	handleAvatarRejectSubmit,
+} from "@/discord/commands/avatar"
 import { configCommand, handleConfig } from "@/discord/commands/config"
 import { type CouncilRoleOutcome, councilCommand, handleCouncil } from "@/discord/commands/council"
 import {
@@ -84,6 +108,11 @@ import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/dis
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
 import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
+import {
+	type AvatarOutcome,
+	avatarCardEdit,
+	buildAvatarCard,
+} from "@/discord/components/avatar-card"
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildApplicantCard, buildCouncilWelcomeCard } from "@/discord/components/exam-card"
@@ -118,6 +147,7 @@ import {
 	Events,
 	type Interaction,
 	type Message,
+	MessageFlags,
 	PermissionFlagsBits,
 } from "discord.js"
 
@@ -132,6 +162,11 @@ const unison = createUnisonClient({
 })
 
 const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
+
+const avatarSuggestCooldown = createCooldown({
+	windowMs: AVATAR_SUGGEST_COOLDOWN_MS,
+	now: () => Date.now(),
+})
 
 async function resolveKeyId(discordId: string): Promise<string | null> {
 	const links = await unison.getBotLinks()
@@ -197,6 +232,23 @@ async function isCouncilMember(discordId: string): Promise<boolean> {
 	const member = await guild.members.fetch(discordId).catch(() => null)
 	if (!member) return false
 	return member.roles.cache.has(gc.councilRoleId)
+}
+
+// Gate on the Lyricist role directly so tuning the Council exam threshold never moves it.
+async function isLyricistOrAbove(discordId: string): Promise<boolean> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	const anchorId = gc?.roleIds.lyricist ?? null
+	if (!anchorId) return false
+	const guild = await discord.guilds.fetch(config.guildId)
+	const anchor =
+		guild.roles.cache.get(anchorId) ?? (await guild.roles.fetch(anchorId).catch(() => null))
+	if (!anchor) return false
+	const member = await guild.members.fetch(discordId).catch(() => null)
+	if (!member) return false
+	return meetsMinRole(
+		member.roles.cache.map((role) => role.position),
+		anchor.position
+	)
 }
 
 async function postConnectCard(channelId: string): Promise<boolean> {
@@ -381,6 +433,38 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				{ applicantId: route.args[0] ?? "" },
 				{ getExamApplicants: (include) => unison.getExamApplicants(include) }
 			)
+			return
+		case "avatar.approve":
+			if (!isGuildMod(interaction)) {
+				await interaction.reply({ content: avatarNotAdmin, flags: MessageFlags.Ephemeral })
+				return
+			}
+			await handleAvatarApprove(interaction, route.args[0] ?? "")
+			return
+		case "avatar.approve.confirm":
+			if (!isGuildMod(interaction)) {
+				await interaction.reply({ content: avatarNotAdmin, flags: MessageFlags.Ephemeral })
+				return
+			}
+			await handleAvatarApproveConfirm(interaction, route.args[0] ?? "", {
+				claim: (id, actorId) => claimSuggestion(pool, id, actorId),
+				release: (id) => releaseSuggestion(pool, id),
+				getSuggestion: (id) => getSuggestion(pool, id),
+				createAvatarPreset: (input) => unison.createAvatarPreset(input),
+				markDecided: (decision) => markSuggestionDecided(pool, decision),
+				editCard: (row, outcome) => editAvatarCard(row, outcome),
+				notifyProposer: (row) => notifyAvatarProposer(row),
+			})
+			return
+		case "avatar.approve.cancel":
+			await handleAvatarApproveCancel(interaction)
+			return
+		case "avatar.reject":
+			if (!isGuildMod(interaction)) {
+				await interaction.reply({ content: avatarNotAdmin, flags: MessageFlags.Ephemeral })
+				return
+			}
+			await handleAvatarReject(interaction, route.args[0] ?? "")
 			return
 	}
 }
@@ -578,6 +662,7 @@ async function syncDiscordProfiles(guildId: string, profiles: DiscordProfile[]):
 
 let syncHandle: ReturnType<typeof setInterval> | null = null
 let reviewHandle: ReturnType<typeof setInterval> | null = null
+let avatarPruneHandle: ReturnType<typeof setInterval> | null = null
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
@@ -723,6 +808,50 @@ async function approveRevisionBoardCard(revisionId: string, actorId: string): Pr
 	)
 }
 
+function avatarCardInput(row: AvatarSuggestion) {
+	return {
+		suggestionId: row.id,
+		proposedId: row.proposedId,
+		label: row.label,
+		proposerId: row.proposerDiscordId,
+		imageName: imageFileName(row.proposedId, row.mime),
+	}
+}
+
+async function postAvatarCard(
+	card: ReturnType<typeof buildAvatarCard>
+): Promise<{ channelId: string; messageId: string } | null> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId) return null
+	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return null
+	const message = await channel.send(card).catch((err) => {
+		console.error("avatar card post failed", err)
+		return null
+	})
+	return message ? { channelId: channel.id, messageId: message.id } : null
+}
+
+async function editAvatarCard(row: AvatarSuggestion, outcome: AvatarOutcome): Promise<void> {
+	if (!row.cardChannelId || !row.cardMessageId) return
+	const channel = await discord.channels.fetch(row.cardChannelId).catch(() => null)
+	if (!channel?.isTextBased()) return
+	await channel.messages
+		.edit(row.cardMessageId, avatarCardEdit(buildAvatarCard(avatarCardInput(row), null, outcome)))
+		.catch((err) => console.error("avatar card edit failed", err))
+}
+
+async function notifyAvatarProposer(row: AvatarSuggestion): Promise<void> {
+	const channel = await discord.channels.fetch(config.pfpSuggestChannelId).catch(() => null)
+	if (!channel?.isTextBased() || !channel.isSendable()) return
+	await channel
+		.send({
+			content: `<@${row.proposerDiscordId}> ${avatarPublished(row.label)}`,
+			allowedMentions: { users: [row.proposerDiscordId] },
+		})
+		.catch((err) => console.error("avatar proposer notify failed", err))
+}
+
 async function revisionBoardCard(revisionId: string): Promise<PendingRevisionCard | null> {
 	return (await getRevisionBoardRow(pool, config.guildId, revisionId))?.card ?? null
 }
@@ -831,6 +960,7 @@ discord.once(Events.ClientReady, async (client) => {
 			queueCommand.toJSON(),
 			digestCommand.toJSON(),
 			helpCommand.toJSON(),
+			avatarCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
 		await client.application.commands.set([])
@@ -847,6 +977,11 @@ discord.once(Events.ClientReady, async (client) => {
 	reviewHandle = setInterval(() => {
 		advanceBoard({ force: false }).catch((err) =>
 			console.error("scheduled review board failed", err)
+		)
+	}, SYNC_INTERVAL_MS)
+	avatarPruneHandle = setInterval(() => {
+		pruneDecidedSuggestions(pool, AVATAR_SUGGESTION_RETENTION_MS).catch((err) =>
+			console.error("avatar suggestion prune failed", err)
 		)
 	}, SYNC_INTERVAL_MS)
 })
@@ -1005,6 +1140,22 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		}).catch((err) => console.error("config handler failed", err))
 		return
 	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "avatar") {
+		handleAvatarPropose(interaction, {
+			guildId: config.guildId,
+			suggestChannelId: config.pfpSuggestChannelId,
+			cooldown: avatarSuggestCooldown,
+			isEligible: (id) => isLyricistOrAbove(id),
+			resolveKeyId,
+			fetchBytes: (url) => fetchImageBytes(url),
+			newId: () => randomUUID(),
+			createSuggestion: (input) => createSuggestion(pool, input),
+			deleteSuggestion: (id) => deleteSuggestion(pool, id),
+			postCard: (card) => postAvatarCard(card),
+			setCard: (id, channelId, messageId) => setSuggestionCard(pool, id, channelId, messageId),
+		}).catch((err) => console.error("avatar propose handler failed", err))
+		return
+	}
 	if (interaction.isButton()) {
 		handleButton(interaction).catch((err) => console.error("button handler failed", err))
 		return
@@ -1052,6 +1203,17 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				markDecided: markRevisionBoardDecided,
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("revision reject submit handler failed", err))
+		} else if (modalRoute?.handler === "avatar.reject.submit" && interaction.isFromMessage()) {
+			if (!isGuildMod(interaction)) {
+				interaction
+					.reply({ content: avatarNotAdmin, flags: MessageFlags.Ephemeral })
+					.catch((err) => console.error("avatar reject submit reply failed", err))
+				return
+			}
+			handleAvatarRejectSubmit(interaction, modalRoute.args[0] ?? "", {
+				getSuggestion: (id) => getSuggestion(pool, id),
+				markDecided: (decision) => markSuggestionDecided(pool, decision),
+			}).catch((err) => console.error("avatar reject submit handler failed", err))
 		}
 	}
 })
@@ -1060,6 +1222,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 	process.on(sig, async () => {
 		if (syncHandle) clearInterval(syncHandle)
 		if (reviewHandle) clearInterval(reviewHandle)
+		if (avatarPruneHandle) clearInterval(avatarPruneHandle)
 		await discord.destroy()
 		await pool.end()
 		process.exit(0)

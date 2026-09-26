@@ -41,8 +41,15 @@ describe("loadConfig", () => {
 			composerBaseUrl: "https://composer.betterlyrics.org",
 			ytmCookie: null,
 			guildId: "111111111111111111",
+			pfpSuggestChannelId: "1553126857690456144",
 			announce: { batchThreshold: 5 },
 		})
+	})
+
+	it("overrides the pfp suggestions channel from the env", () => {
+		const env = completeEnv()
+		env.PFP_SUGGEST_CHANNEL_ID = "999999999999999999"
+		expect(loadConfig(env).pfpSuggestChannelId).toBe("999999999999999999")
 	})
 
 	it("carries GUILD_ID, the one guild butler serves", () => {
