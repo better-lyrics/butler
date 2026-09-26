@@ -100,6 +100,9 @@ export interface ApplicantDecisionInteraction {
 	memberPermissions: { has(flag: bigint): boolean } | null
 	update(payload: unknown): Promise<unknown>
 	reply(payload: unknown): Promise<unknown>
+	deferUpdate(): Promise<unknown>
+	editReply(payload: unknown): Promise<unknown>
+	followUp(payload: unknown): Promise<unknown>
 }
 
 export interface ApplicantDecisionArgs {
@@ -151,33 +154,35 @@ export async function handleCouncilApplicantApprove(
 		await interaction.reply(ephemeralText(COUNCIL_APPLICANTS_NO_PERMISSION))
 		return
 	}
+	// Defer first: the council calls run in sequence and can outlast Discord's 3s ack window.
+	await interaction.deferUpdate()
 
 	const keyId = await deps.resolveKeyId(args.discordId)
 	if (!keyId) {
-		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
+		await interaction.followUp(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
 		return
 	}
 
 	const decision = await deps.decideExamApplicant(args.applicantId, "approve", interaction.user.id)
 	if (decision.status === "error") {
-		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
+		await interaction.followUp(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
 		return
 	}
 	if (decision.status === "not_found") {
-		await interaction.update(buildApplicantGoneCard())
+		await interaction.editReply(buildApplicantGoneCard())
 		return
 	}
 
 	const add = await deps.addCouncilMember(keyId)
 	if (add.status !== "added") {
-		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
+		await interaction.followUp(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
 		return
 	}
 
 	const role = await deps.grantCouncilRole(args.discordId)
 	await deps.welcomeMember(args.discordId)
 
-	await interaction.update(
+	await interaction.editReply(
 		buildApplicantApprovedCard({
 			discordId: args.discordId,
 			adminId: interaction.user.id,
@@ -196,14 +201,15 @@ export async function handleCouncilApplicantReject(
 		await interaction.reply(ephemeralText(COUNCIL_APPLICANTS_NO_PERMISSION))
 		return
 	}
+	await interaction.deferUpdate()
 
 	const decision = await deps.decideExamApplicant(args.applicantId, "reject", interaction.user.id)
 	if (decision.status === "error") {
-		await interaction.reply(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
+		await interaction.followUp(ephemeralText(COUNCIL_APPLICANT_DECISION_ERROR))
 		return
 	}
 
-	await interaction.update(
+	await interaction.editReply(
 		buildApplicantRejectedCard({
 			discordId: args.discordId,
 			adminId: interaction.user.id,
@@ -251,13 +257,14 @@ export async function handleCouncilApplicantCancel(
 		await interaction.reply(ephemeralText(COUNCIL_APPLICANTS_NO_PERMISSION))
 		return
 	}
+	await interaction.deferUpdate()
 	const result = await deps.getExamApplicants(true)
 	if (result.status === "ok") {
 		const applicant = result.applicants.find((a) => a.applicantId === args.applicantId)
 		if (applicant) {
-			await interaction.update(buildApplicantCard(applicant))
+			await interaction.editReply(buildApplicantCard(applicant))
 			return
 		}
 	}
-	await interaction.update(buildApplicantGoneCard())
+	await interaction.editReply(buildApplicantGoneCard())
 }
