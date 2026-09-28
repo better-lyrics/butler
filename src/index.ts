@@ -39,7 +39,13 @@ import {
 } from "@/db/guild-config"
 import { deleteHolding, getAllHoldings, setHolding } from "@/db/holdings"
 import { applySchema, createPool } from "@/db/pool"
-import { getBoard, getBoardCard, replaceBoard, updateBoardCard } from "@/db/review-board"
+import {
+	getBoard,
+	getBoardCard,
+	replaceBoard,
+	setBoardBookmark,
+	updateBoardCard,
+} from "@/db/review-board"
 import {
 	type RevisionDecisionRecord,
 	forgetRevisionRow,
@@ -47,8 +53,10 @@ import {
 	listRevisionBoard,
 	markRevisionDecided,
 	recordRevisionPost,
+	setRevisionBookmark,
 } from "@/db/revision-board"
 import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
+import { bookmarkLookup, planBookmarkEdits } from "@/discord/bookmark-sync"
 import { createDiscordClient } from "@/discord/client"
 import {
 	avatarCommand,
@@ -120,7 +128,7 @@ import { buildApplicantCard, buildCouncilWelcomeCard } from "@/discord/component
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import {
 	buildBoardCard,
-	type buildQueueCard,
+	buildQueueCard,
 	buildQueueSealedCard,
 } from "@/discord/components/queue-card"
 import { buildRevisionCard, revisionCardEdit } from "@/discord/components/revision-card"
@@ -675,6 +683,35 @@ async function runAll(): Promise<void> {
 	}
 	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
 	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
+	await syncCouncilBookmarks().catch((err) => console.error("council bookmark sync failed", err))
+}
+
+// Mirror web bookmarks onto open board cards. A card is edited only when the bookmark it shows
+// changes; the time left renders as a Discord relative timestamp, so it never goes stale.
+async function syncCouncilBookmarks(): Promise<void> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.reviewChannelId || !gc.enabled) return
+	const result = await unison.getCouncilBookmarks()
+	if (result.status !== "ok") return
+	const find = bookmarkLookup(result.bookmarks)
+	const queueEdits = planBookmarkEdits(await getBoard(pool, config.guildId), (card) =>
+		find("seal", Number(card.lyricId))
+	)
+	for (const { row, bookmark } of queueEdits) {
+		await editBoardMessage(row.channelId, row.messageId, buildQueueCard(row.entry, bookmark))
+		await setBoardBookmark(pool, config.guildId, row.lyricId, bookmark)
+	}
+	const revisionEdits = planBookmarkEdits(await listRevisionBoard(pool, config.guildId), (row) =>
+		find("edit", Number(row.revisionId))
+	)
+	for (const { row, bookmark } of revisionEdits) {
+		await editBoardMessage(
+			row.channelId,
+			row.messageId,
+			revisionCardEdit(buildRevisionCard(row.card, null, bookmark))
+		)
+		await setRevisionBookmark(pool, config.guildId, row.revisionId, bookmark)
+	}
 }
 
 // Post newly-passed exam applicants to the council channel for admins to decide. Butler has no

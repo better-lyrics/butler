@@ -191,6 +191,20 @@ describe("review-board web bookmarks", () => {
 		expect((await getBoard(pool, "g1"))[0]?.bookmark).toEqual(bookmark)
 	})
 
+	describe("invariants", () => {
+		it("forgets the shown bookmark when the card changes state, since the redraw has none", async () => {
+			await replaceBoard(pool, "g1", [card({ bookmark })])
+			await updateBoardCard(pool, "g1", "5001", { state: "sealed", actorId: "777" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("keeps the shown bookmark on a patch that does not change state", async () => {
+			await replaceBoard(pool, "g1", [card({ bookmark })])
+			await updateBoardCard(pool, "g1", "5001", { messageId: "m2" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toEqual(bookmark)
+		})
+	})
+
 	describe("regressions", () => {
 		it("reads flags from a card stored before labels existed", async () => {
 			const { ttmlFlags: _, ...legacy } = entry()

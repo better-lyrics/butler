@@ -117,6 +117,7 @@ export async function updateBoardCard(
 		sets.push(`${column} = $${values.length}`)
 	}
 	if (sets.length === 0) return
+	if (patch.state !== undefined) sets.push("bookmark = NULL")
 	await pool.query(
 		`UPDATE review_board_card SET ${sets.join(", ")} WHERE guild_id = $1 AND lyric_id = $2`,
 		values
