@@ -2,6 +2,7 @@ import {
 	queueAlreadyRejected,
 	queueError,
 	queueNotCouncil,
+	queueRejectBlockedBySeal,
 	queueRejectModalTitle,
 	queueRejectUndone,
 	queueRejectedBy,
@@ -13,6 +14,7 @@ import {
 	queueSealedBy,
 	queueUnknownUser,
 	sealAlreadyActive,
+	sealBlockedByRejection,
 	sealError,
 	sealNotCouncil,
 	sealNotFound,
@@ -215,6 +217,9 @@ export async function handleQueueSealConfirm(
 		case "already_sealed":
 			await interaction.update(buildQueueResultCard(sealAlreadyActive))
 			return
+		case "blocked_by_rejection":
+			await interaction.update(buildQueueResultCard(sealBlockedByRejection))
+			return
 		default:
 			await interaction.update(buildQueueResultCard(sealError))
 			return
@@ -304,6 +309,9 @@ export async function handleQueueRejectSubmit(
 			return
 		case "already_rejected":
 			await interaction.reply(ephemeralText(queueAlreadyRejected))
+			return
+		case "blocked_by_seal":
+			await interaction.reply(ephemeralText(queueRejectBlockedBySeal))
 			return
 		default:
 			await interaction.reply(ephemeralText(queueError))

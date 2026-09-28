@@ -353,6 +353,9 @@ export const sealTargetCouncil =
 
 export const sealAlreadyActive = "That lyric already has an active seal."
 
+export const sealBlockedByRejection =
+	"The council rejected that lyric. Undo the rejection before sealing it."
+
 export const sealNotOwner = "You can only lift a seal you placed."
 
 export const sealNoVariants = "No lyrics found for that video yet."
@@ -521,6 +524,9 @@ export const queueRejectNoteLabel = "Reason (optional)"
 export const queueRejectUndone = "Rejection lifted. The lyric can surface in the queue again."
 
 export const queueAlreadyRejected = "That lyric is already rejected."
+
+export const queueRejectBlockedBySeal =
+	"That lyric carries a council seal. Ask the member who sealed it to lift the seal before rejecting it."
 
 export function queueSealedBy(userId: string): string {
 	return `Sealed by <@${userId}>. It now carries a council seal and a ranking boost.`

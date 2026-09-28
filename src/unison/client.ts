@@ -170,6 +170,7 @@ export type SealResult =
 	| { status: "target_council" }
 	| { status: "over_quota" }
 	| { status: "already_sealed" }
+	| { status: "blocked_by_rejection" }
 	| { status: "error"; code: number }
 
 export type UnsealResult =
@@ -276,6 +277,7 @@ export type RejectResult =
 	| { status: "not_council" }
 	| { status: "not_found" }
 	| { status: "already_rejected" }
+	| { status: "blocked_by_seal" }
 	| { status: "error"; code: number }
 
 export type UnrejectResult =
@@ -885,6 +887,8 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 					return { status: "over_quota" }
 				case "BOOST_ALREADY_ACTIVE":
 					return { status: "already_sealed" }
+				case "SEAL_BLOCKED_BY_REJECTION":
+					return { status: "blocked_by_rejection" }
 				default:
 					return { status: "error", code: res.status }
 			}
@@ -1038,6 +1042,8 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 					return { status: "not_found" }
 				case "REJECT_ALREADY_ACTIVE":
 					return { status: "already_rejected" }
+				case "REJECT_BLOCKED_BY_SEAL":
+					return { status: "blocked_by_seal" }
 				default:
 					return { status: "error", code: res.status }
 			}

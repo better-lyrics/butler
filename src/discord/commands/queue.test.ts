@@ -4,6 +4,7 @@ import {
 	queueEntryHeading,
 	queueError,
 	queueNotCouncil,
+	queueRejectBlockedBySeal,
 	queueRejectNoteLine,
 	queueRejectUndone,
 	queueRejectedBy,
@@ -15,6 +16,7 @@ import {
 	queueSealedBy,
 	queueUnknownUser,
 	sealAlreadyActive,
+	sealBlockedByRejection,
 	sealError,
 	sealNotCouncil,
 	sealNotFound,
@@ -306,6 +308,7 @@ describe("handleQueueSealConfirm", () => {
 			[{ status: "target_council" }, sealTargetCouncil],
 			[{ status: "over_quota" }, sealOverQuota],
 			[{ status: "already_sealed" }, sealAlreadyActive],
+			[{ status: "blocked_by_rejection" }, sealBlockedByRejection],
 			[{ status: "error", code: 500 }, sealError],
 		]
 
@@ -478,6 +481,7 @@ describe("handleQueueRejectSubmit", () => {
 			[{ status: "not_council" }, queueNotCouncil],
 			[{ status: "not_found" }, sealNotFound],
 			[{ status: "already_rejected" }, queueAlreadyRejected],
+			[{ status: "blocked_by_seal" }, queueRejectBlockedBySeal],
 			[{ status: "error", code: 500 }, queueError],
 		]
 
