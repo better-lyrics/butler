@@ -55,6 +55,37 @@ describe("planCouncilRoles", () => {
 	})
 
 	describe("regressions", () => {
+		it("keeps every recorded account of a member who unlinks, including one awaiting revoke", () => {
+			const plan = planCouncilRoles({
+				previous: [
+					{ keyId: "key-k", discordId: "aaa" },
+					{ keyId: "key-k", discordId: "bbb" },
+				],
+				councilKeyIds: ["key-k", "key-a"],
+				links,
+			})
+			expect(plan?.revoke).toEqual([])
+			expect(plan?.members).toEqual([
+				{ keyId: "key-k", discordId: "aaa" },
+				{ keyId: "key-k", discordId: "bbb" },
+				{ keyId: "key-a", discordId: "111" },
+			])
+		})
+
+		it("revokes every stale account once the member links again", () => {
+			const relinked = new Map([["key-k", "ccc"]])
+			const plan = planCouncilRoles({
+				previous: [
+					{ keyId: "key-k", discordId: "aaa" },
+					{ keyId: "key-k", discordId: "bbb" },
+				],
+				councilKeyIds: ["key-k"],
+				links: relinked,
+			})
+			expect(plan?.grant).toEqual(["ccc"])
+			expect(plan?.revoke.map((m) => m.discordId)).toEqual(["aaa", "bbb"])
+		})
+
 		it("revokes the old account when a member relinks to a new one", () => {
 			const plan = planCouncilRoles({
 				previous: [{ keyId: "key-a", discordId: "999" }],

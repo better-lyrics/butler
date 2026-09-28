@@ -16,15 +16,17 @@ export function planCouncilRoles(input: {
 	links: Map<string, string>
 }): CouncilRolePlan | null {
 	if (input.councilKeyIds.length === 0 || input.links.size === 0) return null
-	const recorded = new Map(input.previous.map((m) => [m.keyId, m.discordId]))
 	const council = new Set(input.councilKeyIds)
 	const grant: string[] = []
 	const members: CouncilRoleMember[] = []
 	for (const keyId of council) {
 		const linked = input.links.get(keyId)
-		if (linked) grant.push(linked)
-		const discordId = linked ?? recorded.get(keyId)
-		if (discordId) members.push({ keyId, discordId })
+		if (linked) {
+			grant.push(linked)
+			members.push({ keyId, discordId: linked })
+		} else {
+			members.push(...input.previous.filter((m) => m.keyId === keyId))
+		}
 	}
 	const granted = new Set(grant)
 	const revoke = input.previous.filter((m) => {
