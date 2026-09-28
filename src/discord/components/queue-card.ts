@@ -1,5 +1,7 @@
 import { PALETTE } from "@/config"
 import {
+	councilBookmarkLine,
+	councilDashboardButtonLabel,
 	queueCancelButtonLabel,
 	queueConfirmSealBody,
 	queueConfirmSealButtonLabel,
@@ -18,7 +20,8 @@ import {
 	queueVerifyButtonLabel,
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
-import type { QueueEntry } from "@/unison/client"
+import type { CouncilBookmark, QueueEntry } from "@/unison/client"
+import { councilItemUrl } from "@/unison/council-links"
 import { ytmWatchUrl } from "@/ytm/watch-url"
 import {
 	ActionRowBuilder,
@@ -39,16 +42,24 @@ function text(content: string): TextDisplayBuilder {
 	return new TextDisplayBuilder().setContent(content)
 }
 
-export function buildQueueCard(entry: QueueEntry): CardPayload {
+export function buildQueueCard(
+	entry: QueueEntry,
+	bookmark: CouncilBookmark | null = null
+): CardPayload {
 	const id = String(entry.id)
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(text(queueEntryHeading(entry.song)))
 		.addTextDisplayComponents(text(queueEntryDetails(entry)))
 
-	const signals = queueSignalsLine(entry.format, entry.ttmlSignals)
+	const signals = queueSignalsLine(entry.format, entry.ttmlFlags)
 	if (signals) {
 		container.addTextDisplayComponents(text(signals))
+	}
+	if (bookmark) {
+		container.addTextDisplayComponents(
+			text(councilBookmarkLine(bookmark.holder, bookmark.expiresAt))
+		)
 	}
 
 	container.addActionRowComponents(
@@ -64,7 +75,11 @@ export function buildQueueCard(entry: QueueEntry): CardPayload {
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Danger)
 				.setCustomId(encodeCustomId("queue.reject", [id]))
-				.setLabel(queueRejectButtonLabel)
+				.setLabel(queueRejectButtonLabel),
+			new ButtonBuilder()
+				.setStyle(ButtonStyle.Link)
+				.setURL(councilItemUrl("seal", entry.id))
+				.setLabel(councilDashboardButtonLabel)
 		)
 	)
 
@@ -136,10 +151,11 @@ export function buildBoardCard(card: {
 	entry: QueueEntry
 	actorId: string | null
 	note: string | null
+	bookmark?: CouncilBookmark | null
 }): CardPayload {
 	if (card.state === "sealed") return buildQueueSealedCard(card.entry, card.actorId)
 	if (card.state === "rejected") return buildQueueRejectedCard(card.entry, card.actorId, card.note)
-	return buildQueueCard(card.entry)
+	return buildQueueCard(card.entry, card.bookmark ?? null)
 }
 
 export function buildConfirmCard(opts: {

@@ -195,6 +195,60 @@ export type CouncilRemoveResult =
 	| { status: "not_found" }
 	| { status: "error"; code: number }
 
+export interface TtmlFlag {
+	code: string
+	label: string
+}
+
+export function parseTtmlFlags(row: { ttmlFlags?: unknown; ttmlSignals?: unknown }): TtmlFlag[] {
+	if (Array.isArray(row.ttmlFlags)) {
+		return row.ttmlFlags.filter(
+			(f): f is TtmlFlag =>
+				typeof f === "object" &&
+				f !== null &&
+				typeof (f as TtmlFlag).code === "string" &&
+				typeof (f as TtmlFlag).label === "string"
+		)
+	}
+	if (Array.isArray(row.ttmlSignals)) {
+		return row.ttmlSignals
+			.filter((code): code is string => typeof code === "string")
+			.map((code) => ({ code, label: code }))
+	}
+	return []
+}
+
+export type BookmarkItemType = "seal" | "edit"
+
+export interface CouncilBookmark {
+	itemType: BookmarkItemType
+	itemId: number
+	holder: { displayName: string; discordId: string | null }
+	expiresAt: number
+}
+
+export type CouncilBookmarksResult =
+	| { status: "ok"; bookmarks: CouncilBookmark[] }
+	| { status: "error"; code: number }
+
+function parseCouncilBookmark(value: unknown): CouncilBookmark | null {
+	if (!value || typeof value !== "object") return null
+	const b = value as Record<string, unknown>
+	const holder = b.holder as Record<string, unknown> | null | undefined
+	if (b.itemType !== "seal" && b.itemType !== "edit") return null
+	if (typeof b.itemId !== "number" || typeof b.expiresAt !== "number") return null
+	if (!holder || typeof holder.displayName !== "string") return null
+	return {
+		itemType: b.itemType,
+		itemId: b.itemId,
+		holder: {
+			displayName: holder.displayName,
+			discordId: typeof holder.discordId === "string" ? holder.discordId : null,
+		},
+		expiresAt: b.expiresAt,
+	}
+}
+
 export type CouncilListResult =
 	| { status: "ok"; keyIds: string[] }
 	| { status: "error"; code: number }
@@ -210,7 +264,7 @@ export interface QueueEntry {
 	score: number
 	voteCount: number
 	submitterName: string | null
-	ttmlSignals: string[]
+	ttmlFlags: TtmlFlag[]
 }
 
 export type QueueResult =
@@ -366,6 +420,7 @@ export interface UnisonClient {
 	addCouncilMember(keyId: string): Promise<CouncilAddResult>
 	removeCouncilMember(keyId: string): Promise<CouncilRemoveResult>
 	getCouncil(): Promise<CouncilListResult>
+	getCouncilBookmarks(): Promise<CouncilBookmarksResult>
 	getLyricsQueue(sort?: QueueSort, limit?: number): Promise<QueueResult>
 	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
 	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
@@ -471,7 +526,8 @@ interface QueueRow {
 	score: number
 	voteCount: number
 	submitter?: { displayName?: string | null } | null
-	ttmlSignals?: string[]
+	ttmlSignals?: unknown
+	ttmlFlags?: unknown
 }
 
 interface QueueResponse {
@@ -912,6 +968,25 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			return { status: "ok", keyIds: keyIds.map(String) }
 		},
 
+		async getCouncilBookmarks() {
+			const res = await doFetch(`${baseUrl}/committee/bookmarks/bot`, { headers: authHeaders })
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as {
+				data?: { bookmarks?: unknown }
+			} | null
+			const rows = json?.data?.bookmarks
+			if (!Array.isArray(rows)) {
+				return { status: "error", code: res.status }
+			}
+			const bookmarks = rows.flatMap((row) => {
+				const bookmark = parseCouncilBookmark(row)
+				return bookmark ? [bookmark] : []
+			})
+			return { status: "ok", bookmarks }
+		},
+
 		async getLyricsQueue(sort, limit) {
 			const params = new URLSearchParams()
 			if (sort) params.set("sort", sort)
@@ -936,7 +1011,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				score: row.score,
 				voteCount: row.voteCount,
 				submitterName: row.submitter?.displayName ?? null,
-				ttmlSignals: Array.isArray(row.ttmlSignals) ? row.ttmlSignals : [],
+				ttmlFlags: parseTtmlFlags(row),
 			}))
 			return { status: "ok", entries }
 		},

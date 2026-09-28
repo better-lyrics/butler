@@ -1003,6 +1003,10 @@ describe("createUnisonClient getLyricsQueue", () => {
 		voteCount: 41,
 		submitter: { displayName: "Alice" },
 		ttmlSignals: ["line-synced", "unbracketed-bg"],
+		ttmlFlags: [
+			{ code: "line-synced", label: "Line-synced, not word-by-word" },
+			{ code: "unbracketed-bg", label: "Unbracketed background vocals" },
+		],
 	}
 
 	it("issues a GET with sort and limit query and bearer auth, parsing entries", async () => {
@@ -1028,7 +1032,10 @@ describe("createUnisonClient getLyricsQueue", () => {
 					score: 87,
 					voteCount: 41,
 					submitterName: "Alice",
-					ttmlSignals: ["line-synced", "unbracketed-bg"],
+					ttmlFlags: [
+						{ code: "line-synced", label: "Line-synced, not word-by-word" },
+						{ code: "unbracketed-bg", label: "Unbracketed background vocals" },
+					],
 				},
 			],
 		})
@@ -1045,7 +1052,7 @@ describe("createUnisonClient getLyricsQueue", () => {
 
 	describe("edge cases", () => {
 		it("defaults a missing submitter to null and missing signals to an empty array", async () => {
-			const row = { ...queueRow, submitter: null, ttmlSignals: undefined }
+			const row = { ...queueRow, submitter: null, ttmlSignals: undefined, ttmlFlags: undefined }
 			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
@@ -1053,7 +1060,39 @@ describe("createUnisonClient getLyricsQueue", () => {
 
 			expect(result).toMatchObject({
 				status: "ok",
-				entries: [{ submitterName: null, ttmlSignals: [] }],
+				entries: [{ submitterName: null, ttmlFlags: [] }],
+			})
+		})
+
+		it("uses the codes as labels when Unison sends codes only", async () => {
+			const row = { ...queueRow, ttmlFlags: undefined }
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.getLyricsQueue()).toMatchObject({
+				status: "ok",
+				entries: [
+					{
+						ttmlFlags: [
+							{ code: "line-synced", label: "line-synced" },
+							{ code: "unbracketed-bg", label: "unbracketed-bg" },
+						],
+					},
+				],
+			})
+		})
+
+		it("drops malformed flags", async () => {
+			const row = {
+				...queueRow,
+				ttmlFlags: [{ code: "line-synced" }, "x", null, { code: "a", label: "A" }],
+			}
+			const { fn } = makeFetch(Response.json({ success: true, data: [row] }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			expect(await client.getLyricsQueue()).toMatchObject({
+				status: "ok",
+				entries: [{ ttmlFlags: [{ code: "a", label: "A" }] }],
 			})
 		})
 
@@ -1734,6 +1773,87 @@ describe("createUnisonClient syncDiscordProfiles", () => {
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
 			expect(await client.syncDiscordProfiles(profiles)).toEqual({ status: "error", code: 200 })
+		})
+	})
+})
+
+describe("createUnisonClient getCouncilBookmarks", () => {
+	const bookmark = {
+		id: 7,
+		itemType: "seal",
+		itemId: 4210,
+		lyricsId: 4210,
+		holder: { keyId: "key-1", displayName: "boidu", discordId: "111" },
+		createdAt: 1_790_000_000,
+		expiresAt: 1_790_259_200,
+	}
+
+	it("issues an authed GET and parses active bookmarks", async () => {
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { bookmarks: [bookmark] } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		const result = await client.getCouncilBookmarks()
+
+		expect(calls[0]?.url).toBe("https://unison.test/api/committee/bookmarks/bot")
+		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+		expect(result).toEqual({
+			status: "ok",
+			bookmarks: [
+				{
+					itemType: "seal",
+					itemId: 4210,
+					holder: { displayName: "boidu", discordId: "111" },
+					expiresAt: 1_790_259_200,
+				},
+			],
+		})
+	})
+
+	describe("edge cases", () => {
+		it("keeps a holder without a linked Discord account", async () => {
+			const unlinked = { ...bookmark, holder: { ...bookmark.holder, discordId: null } }
+			const { fn } = makeFetch(
+				Response.json({ success: true, data: { bookmarks: [unlinked] } }, { status: 200 })
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getCouncilBookmarks()).toMatchObject({
+				status: "ok",
+				bookmarks: [{ holder: { displayName: "boidu", discordId: null } }],
+			})
+		})
+
+		it("skips bookmarks with an unknown item type or missing fields", async () => {
+			const rows = [
+				{ ...bookmark, itemType: "lyric" },
+				{ ...bookmark, itemId: "4210" },
+				{ ...bookmark, holder: null },
+				{ ...bookmark, itemType: "edit", itemId: 9001 },
+			]
+			const { fn } = makeFetch(
+				Response.json({ success: true, data: { bookmarks: rows } }, { status: 200 })
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getCouncilBookmarks()).toMatchObject({
+				status: "ok",
+				bookmarks: [{ itemType: "edit", itemId: 9001 }],
+			})
+		})
+	})
+
+	describe("error paths", () => {
+		it("maps a non-ok response to an error result", async () => {
+			const { fn } = makeFetch(new Response("boom", { status: 500 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getCouncilBookmarks()).toEqual({ status: "error", code: 500 })
+		})
+
+		it("maps a body without a bookmarks list to an error result", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: {} }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getCouncilBookmarks()).toEqual({ status: "error", code: 200 })
 		})
 	})
 })

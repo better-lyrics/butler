@@ -109,4 +109,6 @@ export const PALETTE = {
 export const COUNCIL_GETTING_STARTED_URL =
 	"https://discord.com/channels/1268184963266908220/1547198857111404666/1547216924193194076"
 
+export const COUNCIL_DASHBOARD_URL = "https://unison.betterlyrics.org/council"
+
 export const COUNCIL_WELCOME_GIF_URL = "https://cdn.betterlyrics.org/bb-hell-yeah.gif"

@@ -1,4 +1,4 @@
-import type { QueueEntry } from "@/unison/client"
+import type { CouncilBookmark, QueueEntry } from "@/unison/client"
 import type { Pool } from "pg"
 import { newDb } from "pg-mem"
 import { beforeEach, describe, expect, it } from "vitest"
@@ -8,6 +8,7 @@ import {
 	getBoard,
 	getBoardCard,
 	replaceBoard,
+	setBoardBookmark,
 	updateBoardCard,
 } from "./review-board"
 
@@ -29,7 +30,7 @@ function entry(over: Partial<QueueEntry> = {}): QueueEntry {
 		score: 42,
 		voteCount: 7,
 		submitterName: "mukeenanyafiq",
-		ttmlSignals: ["line-synced"],
+		ttmlFlags: [{ code: "line-synced", label: "Line-synced, not word-by-word" }],
 		...over,
 	}
 }
@@ -44,6 +45,7 @@ function card(over: Partial<BoardCard> = {}): BoardCard {
 		actorId: null,
 		note: null,
 		entry: entry(),
+		bookmark: null,
 		...over,
 	}
 }
@@ -159,6 +161,74 @@ describe("review-board", () => {
 			await expect(
 				replaceBoard(pool, "g1", [card({ lyricId: "dup" }), card({ lyricId: "dup", position: 1 })])
 			).rejects.toThrow()
+		})
+	})
+})
+
+describe("review-board web bookmarks", () => {
+	let pool: Pool
+	const bookmark: CouncilBookmark = {
+		itemType: "seal",
+		itemId: 5001,
+		holder: { displayName: "boidu", discordId: "111" },
+		expiresAt: 1_790_259_200,
+	}
+
+	beforeEach(async () => {
+		pool = await freshPool()
+	})
+
+	it("stores the bookmark a card shows and clears it", async () => {
+		await replaceBoard(pool, "g1", [card()])
+		await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
+		expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toEqual(bookmark)
+		await setBoardBookmark(pool, "g1", "5001", "m1", null)
+		expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+	})
+
+	it("keeps a bookmark through a board replace", async () => {
+		await replaceBoard(pool, "g1", [card({ bookmark })])
+		expect((await getBoard(pool, "g1"))[0]?.bookmark).toEqual(bookmark)
+	})
+
+	describe("invariants", () => {
+		it("forgets the shown bookmark when the card changes state, since the redraw has none", async () => {
+			await replaceBoard(pool, "g1", [card({ bookmark })])
+			await updateBoardCard(pool, "g1", "5001", { state: "sealed", actorId: "777" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("does not record a bookmark onto a decided card", async () => {
+			await replaceBoard(pool, "g1", [card({ state: "sealed" })])
+			await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("does not record a bookmark onto a card whose message was replaced", async () => {
+			await replaceBoard(pool, "g1", [card({ messageId: "m2" })])
+			await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("keeps the shown bookmark on a patch that does not change state", async () => {
+			await replaceBoard(pool, "g1", [card({ bookmark })])
+			await updateBoardCard(pool, "g1", "5001", { messageId: "m2" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toEqual(bookmark)
+		})
+	})
+
+	describe("regressions", () => {
+		it("reads flags from a card stored before labels existed", async () => {
+			const { ttmlFlags: _, ...legacy } = entry()
+			await pool.query(
+				`INSERT INTO review_board_card
+				   (guild_id, lyric_id, message_id, channel_id, position, state, entry)
+				 VALUES ('g1', '5001', 'm1', 'chan1', 0, 'pending', $1)`,
+				[JSON.stringify({ ...legacy, ttmlSignals: ["line-synced"] })]
+			)
+			const stored = await getBoardCard(pool, "g1", "5001")
+			expect(stored?.entry.ttmlFlags).toEqual([{ code: "line-synced", label: "line-synced" }])
+			expect(stored?.bookmark).toBeNull()
 		})
 	})
 })

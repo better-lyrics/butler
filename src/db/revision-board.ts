@@ -1,5 +1,5 @@
 import { parseJsonb } from "@/db/jsonb"
-import type { PendingRevisionCard } from "@/unison/client"
+import type { CouncilBookmark, PendingRevisionCard } from "@/unison/client"
 import type { Pool } from "pg"
 
 export type RevisionBoardState = "pending" | "approved" | "rejected"
@@ -18,6 +18,7 @@ export interface RevisionBoardRow {
 	actorId: string | null
 	note: string | null
 	card: PendingRevisionCard
+	bookmark: CouncilBookmark | null
 }
 
 interface RevisionBoardDbRow {
@@ -28,9 +29,10 @@ interface RevisionBoardDbRow {
 	actor_id: string | null
 	note: string | null
 	card: unknown
+	bookmark: unknown
 }
 
-const SELECT_COLUMNS = "revision_id, message_id, channel_id, state, actor_id, note, card"
+const SELECT_COLUMNS = "revision_id, message_id, channel_id, state, actor_id, note, card, bookmark"
 
 function mapRow(row: RevisionBoardDbRow): RevisionBoardRow {
 	return {
@@ -41,6 +43,7 @@ function mapRow(row: RevisionBoardDbRow): RevisionBoardRow {
 		actorId: row.actor_id,
 		note: row.note,
 		card: parseJsonb<PendingRevisionCard>(row.card),
+		bookmark: row.bookmark == null ? null : parseJsonb<CouncilBookmark>(row.bookmark),
 	}
 }
 
@@ -85,7 +88,7 @@ export async function markRevisionDecided(
 	decision: RevisionDecisionRecord
 ): Promise<void> {
 	await pool.query(
-		`UPDATE revision_board_card SET state = $3, actor_id = $4, note = $5
+		`UPDATE revision_board_card SET state = $3, actor_id = $4, note = $5, bookmark = NULL
 		 WHERE guild_id = $1 AND revision_id = $2`,
 		[guildId, revisionId, decision.state, decision.actorId, decision.note]
 	)
@@ -100,4 +103,18 @@ export async function forgetRevisionRow(
 		guildId,
 		revisionId,
 	])
+}
+
+export async function setRevisionBookmark(
+	pool: Pool,
+	guildId: string,
+	revisionId: string,
+	messageId: string,
+	bookmark: CouncilBookmark | null
+): Promise<void> {
+	await pool.query(
+		`UPDATE revision_board_card SET bookmark = $4
+		 WHERE guild_id = $1 AND revision_id = $2 AND message_id = $3 AND state = 'pending'`,
+		[guildId, revisionId, messageId, bookmark === null ? null : JSON.stringify(bookmark)]
+	)
 }

@@ -1,4 +1,6 @@
 import {
+	councilBookmarkLine,
+	councilDashboardButtonLabel,
 	queueCancelButtonLabel,
 	queueConfirmSealBody,
 	queueConfirmSealButtonLabel,
@@ -14,7 +16,7 @@ import {
 	queueUndoSealButtonLabel,
 	queueVerifyButtonLabel,
 } from "@/copy/strings"
-import type { QueueEntry } from "@/unison/client"
+import type { CouncilBookmark, QueueEntry } from "@/unison/client"
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
@@ -69,7 +71,7 @@ function entry(overrides: Partial<QueueEntry> = {}): QueueEntry {
 		score: 87,
 		voteCount: 41,
 		submitterName: "Alice",
-		ttmlSignals: [],
+		ttmlFlags: [],
 		...overrides,
 	}
 }
@@ -101,21 +103,27 @@ describe("buildQueueCard", () => {
 
 	describe("TTML signals", () => {
 		it("shows a clean line when a ttml lyric has no signals", () => {
-			expect(textBlob(buildQueueCard(entry({ ttmlSignals: [] })))).toContain(
+			expect(textBlob(buildQueueCard(entry({ ttmlFlags: [] })))).toContain(
 				"TTML: no issues flagged."
 			)
 		})
 
-		it("humanizes the signal codes when present", () => {
+		it("shows Unison's labels for the signals", () => {
 			const blob = textBlob(
-				buildQueueCard(entry({ ttmlSignals: ["line-synced", "unbracketed-bg"] }))
+				buildQueueCard(
+					entry({
+						ttmlFlags: [
+							{ code: "line-synced", label: "Line-synced, not word-by-word" },
+							{ code: "unbracketed-bg", label: "Unbracketed background vocals" },
+						],
+					})
+				)
 			)
-			expect(blob).toContain("line-synced (not word-by-word)")
-			expect(blob).toContain("unbracketed background vocals")
+			expect(blob).toContain("Line-synced, not word-by-word · Unbracketed background vocals")
 		})
 
 		it("omits the signals line for a non-ttml lyric", () => {
-			const blob = textBlob(buildQueueCard(entry({ format: "lrc", ttmlSignals: [] })))
+			const blob = textBlob(buildQueueCard(entry({ format: "lrc", ttmlFlags: [] })))
 			expect(blob).not.toContain("TTML")
 		})
 	})
@@ -197,6 +205,55 @@ describe("buildQueueRejectedCard", () => {
 
 	it("falls back to a generic rejected line when no actor is known", () => {
 		expect(textBlob(buildQueueRejectedCard(entry(), null, null))).toContain(queueRejectedGeneric)
+	})
+})
+
+const bookmark: CouncilBookmark = {
+	itemType: "seal",
+	itemId: 4210,
+	holder: { displayName: "boidu", discordId: "111" },
+	expiresAt: 1_790_259_200,
+}
+
+describe("council dashboard on queue cards", () => {
+	it("links a pending card to the item in the dashboard", () => {
+		const link = buttons(buildQueueCard(entry())).find(
+			(b) => b.label === councilDashboardButtonLabel
+		)
+		expect(link?.url).toBe("https://unison.betterlyrics.org/council/queue?item=4210")
+	})
+
+	it("shows who holds a web bookmark and when it lapses", () => {
+		expect(textBlob(buildQueueCard(entry(), bookmark))).toContain(
+			councilBookmarkLine(bookmark.holder, bookmark.expiresAt)
+		)
+	})
+
+	it("has no bookmark line without a bookmark", () => {
+		expect(textBlob(buildQueueCard(entry()))).not.toContain("Bookmarked")
+	})
+
+	it("carries the stored bookmark onto a pending board card only", () => {
+		const pending = buildBoardCard({
+			state: "pending",
+			entry: entry(),
+			actorId: null,
+			note: null,
+			bookmark,
+		})
+		const sealed = buildBoardCard({
+			state: "sealed",
+			entry: entry(),
+			actorId: "777",
+			note: null,
+			bookmark,
+		})
+		expect(textBlob(pending)).toContain("Bookmarked on the web")
+		expect(textBlob(sealed)).not.toContain("Bookmarked on the web")
+	})
+
+	it("regression: a bookmark line pings nobody", () => {
+		expect(buildQueueCard(entry(), bookmark).allowedMentions).toEqual({ parse: [] })
 	})
 })
 

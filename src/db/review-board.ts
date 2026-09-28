@@ -1,5 +1,5 @@
 import { parseJsonb } from "@/db/jsonb"
-import type { QueueEntry } from "@/unison/client"
+import { type CouncilBookmark, type QueueEntry, parseTtmlFlags } from "@/unison/client"
 import type { Pool } from "pg"
 
 export type BoardCardState = "pending" | "sealed" | "rejected"
@@ -13,6 +13,7 @@ export interface BoardCard {
 	actorId: string | null
 	note: string | null
 	entry: QueueEntry
+	bookmark: CouncilBookmark | null
 }
 
 interface BoardCardRow {
@@ -24,6 +25,13 @@ interface BoardCardRow {
 	actor_id: string | null
 	note: string | null
 	entry: unknown
+	bookmark: unknown
+}
+
+function storedEntry(raw: unknown): QueueEntry {
+	const entry = parseJsonb<QueueEntry & { ttmlSignals?: unknown }>(raw)
+	const { ttmlSignals: _, ...rest } = entry
+	return { ...rest, ttmlFlags: parseTtmlFlags(entry) }
 }
 
 function mapRow(row: BoardCardRow): BoardCard {
@@ -35,11 +43,13 @@ function mapRow(row: BoardCardRow): BoardCard {
 		state: row.state as BoardCardState,
 		actorId: row.actor_id,
 		note: row.note,
-		entry: parseJsonb<QueueEntry>(row.entry),
+		entry: storedEntry(row.entry),
+		bookmark: row.bookmark == null ? null : parseJsonb<CouncilBookmark>(row.bookmark),
 	}
 }
 
-const SELECT_COLUMNS = "lyric_id, message_id, channel_id, position, state, actor_id, note, entry"
+const SELECT_COLUMNS =
+	"lyric_id, message_id, channel_id, position, state, actor_id, note, entry, bookmark"
 
 export async function getBoard(pool: Pool, guildId: string): Promise<BoardCard[]> {
 	const result = await pool.query<BoardCardRow>(
@@ -67,8 +77,8 @@ export async function replaceBoard(pool: Pool, guildId: string, cards: BoardCard
 	for (const c of cards) {
 		await pool.query(
 			`INSERT INTO review_board_card
-			   (guild_id, lyric_id, message_id, channel_id, position, state, actor_id, note, entry)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			   (guild_id, lyric_id, message_id, channel_id, position, state, actor_id, note, entry, bookmark)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 			[
 				guildId,
 				c.lyricId,
@@ -79,6 +89,7 @@ export async function replaceBoard(pool: Pool, guildId: string, cards: BoardCard
 				c.actorId,
 				c.note,
 				JSON.stringify(c.entry),
+				c.bookmark === null ? null : JSON.stringify(c.bookmark),
 			]
 		)
 	}
@@ -106,8 +117,23 @@ export async function updateBoardCard(
 		sets.push(`${column} = $${values.length}`)
 	}
 	if (sets.length === 0) return
+	if (patch.state !== undefined) sets.push("bookmark = NULL")
 	await pool.query(
 		`UPDATE review_board_card SET ${sets.join(", ")} WHERE guild_id = $1 AND lyric_id = $2`,
 		values
+	)
+}
+
+export async function setBoardBookmark(
+	pool: Pool,
+	guildId: string,
+	lyricId: string,
+	messageId: string,
+	bookmark: CouncilBookmark | null
+): Promise<void> {
+	await pool.query(
+		`UPDATE review_board_card SET bookmark = $4
+		 WHERE guild_id = $1 AND lyric_id = $2 AND message_id = $3 AND state = 'pending'`,
+		[guildId, lyricId, messageId, bookmark === null ? null : JSON.stringify(bookmark)]
 	)
 }

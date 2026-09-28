@@ -92,7 +92,7 @@ function entry(overrides: Partial<QueueEntry> = {}): QueueEntry {
 		score: 87,
 		voteCount: 41,
 		submitterName: "Alice",
-		ttmlSignals: [],
+		ttmlFlags: [],
 		...overrides,
 	}
 }
