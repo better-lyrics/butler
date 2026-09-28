@@ -141,11 +141,19 @@ export type MigrationCommitResult =
 	| { status: "expired" }
 	| { status: "error"; code: number }
 
+export interface QuotaBasis {
+	active: boolean
+	upvotedLyrics: number
+	bonus: number
+	monthStart: number
+}
+
 export interface BoostQuota {
 	quota: number
 	used: number
 	remaining: number
 	resetsAt: number
+	basis?: QuotaBasis
 }
 
 export interface LyricVariant {
@@ -552,7 +560,33 @@ function parseBoostQuota(value: unknown): BoostQuota | null {
 		typeof q.remaining === "number" &&
 		typeof q.resetsAt === "number"
 	) {
-		return { quota: q.quota, used: q.used, remaining: q.remaining, resetsAt: q.resetsAt }
+		const basis = parseQuotaBasis(q.basis)
+		return {
+			quota: q.quota,
+			used: q.used,
+			remaining: q.remaining,
+			resetsAt: q.resetsAt,
+			...(basis && { basis }),
+		}
+	}
+	return null
+}
+
+function parseQuotaBasis(value: unknown): QuotaBasis | null {
+	if (!value || typeof value !== "object") return null
+	const b = value as Record<string, unknown>
+	if (
+		typeof b.active === "boolean" &&
+		typeof b.upvotedLyrics === "number" &&
+		typeof b.bonus === "number" &&
+		typeof b.monthStart === "number"
+	) {
+		return {
+			active: b.active,
+			upvotedLyrics: b.upvotedLyrics,
+			bonus: b.bonus,
+			monthStart: b.monthStart,
+		}
 	}
 	return null
 }
