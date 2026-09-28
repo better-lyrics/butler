@@ -26,6 +26,12 @@ import {
 	setSuggestionCard,
 } from "@/db/avatar-suggestions"
 import { getBadgeHoldings, isSeeded, markSeeded, setBadgeHolding } from "@/db/badge-holdings"
+import {
+	hasCouncilWelcome,
+	listCouncilRoleMembers,
+	recordCouncilWelcome,
+	replaceCouncilRoleMembers,
+} from "@/db/council-roles"
 import { getPostedApplicantIds, planApplicantPosts, recordApplicantPost } from "@/db/exam-board"
 import {
 	type GuildConfig,
@@ -142,6 +148,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { planRevisionBoard } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
+import { planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
 	type DiscordProfile,
@@ -421,7 +428,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 					decideExamApplicant: (applicantId, decision, decider) =>
 						unison.decideExamApplicant(applicantId, decision, decider),
 					welcomeMember: async (id) => {
-						await sendCouncilWelcome(id)
+						await welcomeOnce(id)
 					},
 					getExamReports: (id) => unison.getExamReports(id),
 				}
@@ -684,6 +691,52 @@ async function runAll(): Promise<void> {
 	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
 	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
 	await syncCouncilBookmarks().catch((err) => console.error("council bookmark sync failed", err))
+	await reconcileCouncilRoles().catch((err) => console.error("council role sync failed", err))
+}
+
+async function welcomeOnce(discordId: string): Promise<void> {
+	if (await hasCouncilWelcome(pool, config.guildId, discordId)) return
+	if (await sendCouncilWelcome(discordId)) {
+		await recordCouncilWelcome(pool, config.guildId, discordId, Date.now())
+	}
+}
+
+// The council role mirrors Unison's member list, so members added or removed on the web get
+// the role changed here. Only accounts butler recorded as members are ever revoked.
+async function reconcileCouncilRoles(): Promise<void> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	if (!gc?.councilRoleId || !gc.enabled) return
+	const roleId = gc.councilRoleId
+	const council = await unison.getCouncil()
+	if (council.status !== "ok") return
+	const links = await unison.getBotLinks()
+	const plan = planCouncilRoles({
+		previous: await listCouncilRoleMembers(pool, config.guildId),
+		councilKeyIds: council.keyIds,
+		links: new Map(links.map((l) => [l.keyId, l.discordId])),
+	})
+	if (!plan) return
+	const guild = await discord.guilds.fetch(config.guildId)
+	for (const discordId of plan.grant) {
+		const member = await unlessGoneFromGuild(guild.members.fetch(discordId))
+		if (!member || member.roles.cache.has(roleId)) continue
+		const added = await member.roles.add(roleId).then(
+			() => true,
+			(err) => {
+				console.error("council role grant failed", err)
+				return false
+			}
+		)
+		if (added) await welcomeOnce(discordId)
+	}
+	for (const discordId of plan.revoke) {
+		const member = await unlessGoneFromGuild(guild.members.fetch(discordId))
+		if (!member?.roles.cache.has(roleId)) continue
+		await member.roles
+			.remove(roleId)
+			.catch((err) => console.error("council role revoke failed", err))
+	}
+	await replaceCouncilRoleMembers(pool, config.guildId, plan.members)
 }
 
 // Mirror web bookmarks onto open board cards. A card is edited only when the bookmark it shows
