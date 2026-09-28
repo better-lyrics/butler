@@ -1,3 +1,4 @@
+import { PermissionFlagsBits } from "discord.js"
 import { describe, expect, it } from "vitest"
 import { planCouncilAdmins, readManageAccess } from "./council-admins"
 
@@ -73,7 +74,11 @@ describe("readManageAccess", () => {
 					const kind = members[options.user]
 					if (kind === "error") throw new Error("rate limited")
 					if (kind === "gone") throw Object.assign(new Error("Unknown Member"), { gone: true })
-					return { permissions: { has: () => kind === "manage" } }
+					return {
+						permissions: {
+							has: (flag: bigint) => flag === PermissionFlagsBits.ManageGuild && kind === "manage",
+						},
+					}
 				},
 			},
 		}
