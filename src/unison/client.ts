@@ -378,6 +378,11 @@ export type DiscordProfilesSyncResult =
 	| { status: "not_deployed" }
 	| { status: "error"; code: number }
 
+export type CouncilAdminsSyncResult =
+	| { status: "ok"; changed: number }
+	| { status: "not_deployed" }
+	| { status: "error"; code: number }
+
 export type CreateAvatarPresetResult =
 	| { status: "created"; id: string; label: string; url: string }
 	| { status: "exists" }
@@ -445,6 +450,7 @@ export interface UnisonClient {
 		note?: string
 	): Promise<RevisionDecisionResult>
 	syncDiscordProfiles(profiles: DiscordProfile[]): Promise<DiscordProfilesSyncResult>
+	syncCouncilAdmins(admins: { keyId: string; admin: boolean }[]): Promise<CouncilAdminsSyncResult>
 	createAvatarPreset(input: CreateAvatarPresetInput): Promise<CreateAvatarPresetResult>
 }
 
@@ -1168,6 +1174,26 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "error", code: res.status }
 			}
 			return { status: "ok", updated }
+		},
+
+		async syncCouncilAdmins(admins) {
+			const res = await doFetch(`${baseUrl}/committee/bot/admins`, {
+				method: "PUT",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ admins }),
+			})
+			if (res.status === 404) {
+				return { status: "not_deployed" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { changed?: unknown } } | null
+			const changed = json?.data?.changed
+			if (typeof changed !== "number") {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", changed }
 		},
 
 		async createAvatarPreset(input) {
