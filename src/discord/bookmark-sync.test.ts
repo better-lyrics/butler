@@ -1,6 +1,6 @@
 import type { BookmarkItemType, CouncilBookmark } from "@/unison/client"
 import { describe, expect, it } from "vitest"
-import { bookmarkLookup, planBookmarkEdits } from "./bookmark-sync"
+import { applyBookmarkEdits, bookmarkLookup, planBookmarkEdits } from "./bookmark-sync"
 
 function bookmark(itemType: BookmarkItemType, itemId: number, over: Partial<CouncilBookmark> = {}) {
 	return {
@@ -72,6 +72,105 @@ describe("planBookmarkEdits", () => {
 
 		it("is empty for no cards", () => {
 			expect(planBookmarkEdits([], desired([bookmark("seal", 1)]))).toEqual([])
+		})
+	})
+})
+
+describe("applyBookmarkEdits", () => {
+	type Card = { id: number; state: string; messageId: string; bookmark: CouncilBookmark | null }
+	const b = bookmark("seal", 1)
+	const card = (over: Partial<Card> = {}): Card => ({
+		id: 1,
+		state: "pending",
+		messageId: "m1",
+		bookmark: null,
+		...over,
+	})
+
+	function harness(opts: {
+		before?: Card | null
+		after?: Card | null
+		edited?: boolean
+	}) {
+		const log: string[] = []
+		let reads = 0
+		return {
+			log,
+			deps: {
+				current: async () => {
+					reads += 1
+					const value = reads === 1 ? opts.before : opts.after
+					return value === undefined ? card() : value
+				},
+				edit: async (_: Card, shown: CouncilBookmark | null) => {
+					log.push(`edit ${shown ? "bookmark" : "none"}`)
+					return opts.edited ?? true
+				},
+				redraw: async (row: Card) => {
+					log.push(`redraw ${row.state}`)
+				},
+				store: async (_: Card, shown: CouncilBookmark | null) => {
+					log.push(`store ${shown ? "bookmark" : "none"}`)
+				},
+			},
+		}
+	}
+
+	it("edits the card and records what it now shows", async () => {
+		const { log, deps } = harness({})
+		await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+		expect(log).toEqual(["edit bookmark", "store bookmark"])
+	})
+
+	describe("regressions", () => {
+		it("does not record a bookmark the card failed to show, so the next sync retries", async () => {
+			const { log, deps } = harness({ edited: false })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual(["edit bookmark"])
+		})
+
+		it("skips a card decided before the edit", async () => {
+			const { log, deps } = harness({ before: card({ state: "sealed" }) })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual([])
+		})
+
+		it("redraws a card decided during the edit, so it never keeps live buttons", async () => {
+			const { log, deps } = harness({ after: card({ state: "rejected" }) })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual(["edit bookmark", "redraw rejected"])
+		})
+
+		it("leaves a card alone once the board was reposted", async () => {
+			const { log, deps } = harness({ before: card({ messageId: "m2" }) })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual([])
+		})
+
+		it("does not record onto a reposted card after the edit", async () => {
+			const { log, deps } = harness({ after: card({ messageId: "m2" }) })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual(["edit bookmark"])
+		})
+
+		it("skips a card that is gone", async () => {
+			const { log, deps } = harness({ before: null })
+			await applyBookmarkEdits([{ row: card(), bookmark: b }], deps)
+			expect(log).toEqual([])
+		})
+	})
+
+	describe("edge cases", () => {
+		it("does nothing for no edits", async () => {
+			const { log, deps } = harness({})
+			await applyBookmarkEdits([], deps)
+			expect(log).toEqual([])
+		})
+
+		it("records a cleared bookmark", async () => {
+			const { log, deps } = harness({})
+			await applyBookmarkEdits([{ row: card({ bookmark: b }), bookmark: null }], deps)
+			expect(log).toEqual(["edit none", "store none"])
 		})
 	})
 })

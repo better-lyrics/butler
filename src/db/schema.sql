@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS council_role_member (
   guild_id   TEXT NOT NULL,
   key_id     TEXT NOT NULL,
   discord_id TEXT NOT NULL,
-  PRIMARY KEY (guild_id, key_id)
+  PRIMARY KEY (guild_id, discord_id)
 );
 CREATE TABLE IF NOT EXISTS council_welcome (
   guild_id   TEXT NOT NULL,

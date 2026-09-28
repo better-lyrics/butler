@@ -128,10 +128,12 @@ export async function setBoardBookmark(
 	pool: Pool,
 	guildId: string,
 	lyricId: string,
+	messageId: string,
 	bookmark: CouncilBookmark | null
 ): Promise<void> {
 	await pool.query(
-		"UPDATE review_board_card SET bookmark = $3 WHERE guild_id = $1 AND lyric_id = $2",
-		[guildId, lyricId, bookmark === null ? null : JSON.stringify(bookmark)]
+		`UPDATE review_board_card SET bookmark = $4
+		 WHERE guild_id = $1 AND lyric_id = $2 AND message_id = $3 AND state = 'pending'`,
+		[guildId, lyricId, messageId, bookmark === null ? null : JSON.stringify(bookmark)]
 	)
 }

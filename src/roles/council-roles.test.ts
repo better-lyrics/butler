@@ -19,7 +19,7 @@ describe("planCouncilRoles", () => {
 		})
 		expect(plan).toEqual({
 			grant: ["111", "222"],
-			revoke: ["333"],
+			revoke: [{ keyId: "key-c", discordId: "333" }],
 			members: [
 				{ keyId: "key-a", discordId: "111" },
 				{ keyId: "key-b", discordId: "222" },
@@ -50,11 +50,22 @@ describe("planCouncilRoles", () => {
 				councilKeyIds: ["key-a"],
 				links: moved,
 			})
-			expect(plan?.revoke).toEqual(["333"])
+			expect(plan?.revoke).toEqual([{ keyId: "key-c", discordId: "333" }])
 		})
 	})
 
 	describe("regressions", () => {
+		it("revokes the old account when a member relinks to a new one", () => {
+			const plan = planCouncilRoles({
+				previous: [{ keyId: "key-a", discordId: "999" }],
+				councilKeyIds: ["key-a"],
+				links,
+			})
+			expect(plan?.grant).toEqual(["111"])
+			expect(plan?.revoke).toEqual([{ keyId: "key-a", discordId: "999" }])
+			expect(plan?.members).toEqual([{ keyId: "key-a", discordId: "111" }])
+		})
+
 		it("does nothing when the council list is empty, so a bad read never strips everyone", () => {
 			const plan = planCouncilRoles({
 				previous: [{ keyId: "key-a", discordId: "111" }],

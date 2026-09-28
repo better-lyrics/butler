@@ -5,12 +5,11 @@ export interface CouncilRoleMember {
 
 export interface CouncilRolePlan {
 	grant: string[]
-	revoke: string[]
+	revoke: CouncilRoleMember[]
 	members: CouncilRoleMember[]
 }
 
-// Unison owns council membership. Returns null when either list looks empty, so a failed read
-// can never strip the role from the whole council.
+// Null when either list reads empty, so a failed read never strips the whole council.
 export function planCouncilRoles(input: {
 	previous: CouncilRoleMember[]
 	councilKeyIds: string[]
@@ -28,8 +27,10 @@ export function planCouncilRoles(input: {
 		if (discordId) members.push({ keyId, discordId })
 	}
 	const granted = new Set(grant)
-	const revoke = input.previous
-		.filter((m) => !council.has(m.keyId) && !granted.has(m.discordId))
-		.map((m) => m.discordId)
+	const revoke = input.previous.filter((m) => {
+		if (granted.has(m.discordId)) return false
+		const linked = input.links.get(m.keyId)
+		return !council.has(m.keyId) || (linked !== undefined && linked !== m.discordId)
+	})
 	return { grant, revoke, members }
 }

@@ -6,7 +6,7 @@ export async function listCouncilRoleMembers(
 	guildId: string
 ): Promise<CouncilRoleMember[]> {
 	const result = await pool.query<{ key_id: string; discord_id: string }>(
-		"SELECT key_id, discord_id FROM council_role_member WHERE guild_id = $1 ORDER BY key_id",
+		"SELECT key_id, discord_id FROM council_role_member WHERE guild_id = $1 ORDER BY key_id, discord_id",
 		[guildId]
 	)
 	return result.rows.map((row) => ({ keyId: row.key_id, discordId: row.discord_id }))
@@ -20,7 +20,8 @@ export async function replaceCouncilRoleMembers(
 	await pool.query("DELETE FROM council_role_member WHERE guild_id = $1", [guildId])
 	for (const m of members) {
 		await pool.query(
-			"INSERT INTO council_role_member (guild_id, key_id, discord_id) VALUES ($1, $2, $3)",
+			`INSERT INTO council_role_member (guild_id, key_id, discord_id) VALUES ($1, $2, $3)
+			 ON CONFLICT (guild_id, discord_id) DO NOTHING`,
 			[guildId, m.keyId, m.discordId]
 		)
 	}

@@ -157,16 +157,53 @@ describe("revision board web bookmarks", () => {
 	it("starts a new post without a bookmark, then stores and clears one", async () => {
 		await recordRevisionPost(pool, "g1", post())
 		expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toBeNull()
-		await setRevisionBookmark(pool, "g1", "918", bookmark)
+		await setRevisionBookmark(pool, "g1", "918", "m-918", bookmark)
 		expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toEqual(bookmark)
-		await setRevisionBookmark(pool, "g1", "918", null)
+		await setRevisionBookmark(pool, "g1", "918", "m-918", null)
 		expect((await listRevisionBoard(pool, "g1"))[0]?.bookmark).toBeNull()
+	})
+
+	describe("invariants", () => {
+		it("forgets the shown bookmark once the revision is decided, since the redraw has none", async () => {
+			await recordRevisionPost(pool, "g1", post())
+			await setRevisionBookmark(pool, "g1", "918", "m-918", bookmark)
+			await markRevisionDecided(pool, "g1", "918", {
+				state: "approved",
+				actorId: "777",
+				note: null,
+			})
+			expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toBeNull()
+		})
+
+		it("does not record a bookmark onto a decided revision", async () => {
+			await recordRevisionPost(pool, "g1", post())
+			await markRevisionDecided(pool, "g1", "918", {
+				state: "rejected",
+				actorId: "777",
+				note: null,
+			})
+			await setRevisionBookmark(pool, "g1", "918", "m-918", bookmark)
+			expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toBeNull()
+		})
+	})
+
+	describe("edge cases", () => {
+		it("does nothing for an untracked revision", async () => {
+			await setRevisionBookmark(pool, "g1", "404", "m-404", bookmark)
+			expect(await listRevisionBoard(pool, "g1")).toEqual([])
+		})
+
+		it("does not record onto a revision whose message differs", async () => {
+			await recordRevisionPost(pool, "g1", post())
+			await setRevisionBookmark(pool, "g1", "918", "m-other", bookmark)
+			expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toBeNull()
+		})
 	})
 
 	it("only touches the named revision", async () => {
 		await recordRevisionPost(pool, "g1", post(918))
 		await recordRevisionPost(pool, "g1", post(919))
-		await setRevisionBookmark(pool, "g1", "918", bookmark)
+		await setRevisionBookmark(pool, "g1", "918", "m-918", bookmark)
 		expect((await getRevisionBoardRow(pool, "g1", "919"))?.bookmark).toBeNull()
 	})
 })

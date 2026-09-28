@@ -88,7 +88,7 @@ export async function markRevisionDecided(
 	decision: RevisionDecisionRecord
 ): Promise<void> {
 	await pool.query(
-		`UPDATE revision_board_card SET state = $3, actor_id = $4, note = $5
+		`UPDATE revision_board_card SET state = $3, actor_id = $4, note = $5, bookmark = NULL
 		 WHERE guild_id = $1 AND revision_id = $2`,
 		[guildId, revisionId, decision.state, decision.actorId, decision.note]
 	)
@@ -109,10 +109,12 @@ export async function setRevisionBookmark(
 	pool: Pool,
 	guildId: string,
 	revisionId: string,
+	messageId: string,
 	bookmark: CouncilBookmark | null
 ): Promise<void> {
 	await pool.query(
-		"UPDATE revision_board_card SET bookmark = $3 WHERE guild_id = $1 AND revision_id = $2",
-		[guildId, revisionId, bookmark === null ? null : JSON.stringify(bookmark)]
+		`UPDATE revision_board_card SET bookmark = $4
+		 WHERE guild_id = $1 AND revision_id = $2 AND message_id = $3 AND state = 'pending'`,
+		[guildId, revisionId, messageId, bookmark === null ? null : JSON.stringify(bookmark)]
 	)
 }

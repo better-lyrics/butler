@@ -1,7 +1,7 @@
 import type { RevisionBoardRow } from "@/db/revision-board"
 import { pendingRevision } from "@/unison/__fixtures__/pending-revision"
 import { describe, expect, it } from "vitest"
-import { planRevisionBoard } from "./revision-board-sync"
+import { planRevisionBoard, revisionOutcomeOf } from "./revision-board-sync"
 
 function row(revisionId: number, overrides: Partial<RevisionBoardRow> = {}): RevisionBoardRow {
 	return {
@@ -106,6 +106,32 @@ describe("planRevisionBoard", () => {
 			const before = structuredClone({ tracked, list })
 			planRevisionBoard(tracked, list)
 			expect({ tracked, list }).toEqual(before)
+		})
+	})
+})
+
+describe("revisionOutcomeOf", () => {
+	it("rebuilds the outcome a decided revision card shows", () => {
+		expect(revisionOutcomeOf(row(1, { state: "approved", actorId: "777" }))).toEqual({
+			kind: "approved",
+			actorId: "777",
+		})
+		expect(
+			revisionOutcomeOf(row(1, { state: "rejected", actorId: "777", note: "keep it" }))
+		).toEqual({
+			kind: "rejected",
+			actorId: "777",
+			note: "keep it",
+		})
+	})
+
+	describe("edge cases", () => {
+		it("has no outcome for a pending revision", () => {
+			expect(revisionOutcomeOf(row(1))).toBeNull()
+		})
+
+		it("has no outcome for a decision without an actor", () => {
+			expect(revisionOutcomeOf(row(1, { state: "approved", actorId: null }))).toBeNull()
 		})
 	})
 })

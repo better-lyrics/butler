@@ -62,7 +62,7 @@ import {
 	setRevisionBookmark,
 } from "@/db/revision-board"
 import { type PlannedCard, carryForwardStates, syncBoard } from "@/discord/board-sync"
-import { bookmarkLookup, planBookmarkEdits } from "@/discord/bookmark-sync"
+import { applyBookmarkEdits, bookmarkLookup, planBookmarkEdits } from "@/discord/bookmark-sync"
 import { createDiscordClient } from "@/discord/client"
 import {
 	avatarCommand,
@@ -146,9 +146,9 @@ import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/con
 import { handleMigrateContinue } from "@/discord/migrate/continue"
 import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
-import { planRevisionBoard } from "@/discord/revision-board-sync"
+import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
-import { planCouncilRoles } from "@/roles/council-roles"
+import { type CouncilRoleMember, planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
 	type DiscordProfile,
@@ -160,11 +160,13 @@ import { pushDiscordProfiles, toDiscordProfile } from "@/unison/discord-profiles
 import { createYoutubeiSource, fetchTrackMeta } from "@/ytm/metadata"
 import {
 	type ButtonInteraction,
+	DiscordAPIError,
 	Events,
 	type Interaction,
 	type Message,
 	MessageFlags,
 	PermissionFlagsBits,
+	RESTJSONErrorCodes,
 } from "discord.js"
 
 const config = loadConfig(process.env)
@@ -701,8 +703,7 @@ async function welcomeOnce(discordId: string): Promise<void> {
 	}
 }
 
-// The council role mirrors Unison's member list, so members added or removed on the web get
-// the role changed here. Only accounts butler recorded as members are ever revoked.
+// Only accounts butler recorded as members are ever revoked; failed revokes stay recorded to retry.
 async function reconcileCouncilRoles(): Promise<void> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	if (!gc?.councilRoleId || !gc.enabled) return
@@ -729,42 +730,68 @@ async function reconcileCouncilRoles(): Promise<void> {
 		)
 		if (added) await welcomeOnce(discordId)
 	}
-	for (const discordId of plan.revoke) {
-		const member = await unlessGoneFromGuild(guild.members.fetch(discordId))
+	const pendingRevokes: CouncilRoleMember[] = []
+	for (const target of plan.revoke) {
+		const member = await unlessGoneFromGuild(guild.members.fetch(target.discordId))
 		if (!member?.roles.cache.has(roleId)) continue
-		await member.roles
-			.remove(roleId)
-			.catch((err) => console.error("council role revoke failed", err))
+		const removed = await member.roles.remove(roleId).then(
+			() => true,
+			(err) => {
+				console.error("council role revoke failed", err)
+				return false
+			}
+		)
+		if (!removed) pendingRevokes.push(target)
 	}
-	await replaceCouncilRoleMembers(pool, config.guildId, plan.members)
+	await replaceCouncilRoleMembers(pool, config.guildId, [...plan.members, ...pendingRevokes])
 }
 
-// Mirror web bookmarks onto open board cards. A card is edited only when the bookmark it shows
-// changes; the time left renders as a Discord relative timestamp, so it never goes stale.
+// Cards show time left as a Discord relative timestamp, so only a changed bookmark needs an edit.
 async function syncCouncilBookmarks(): Promise<void> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	if (!gc?.reviewChannelId || !gc.enabled) return
 	const result = await unison.getCouncilBookmarks()
 	if (result.status !== "ok") return
 	const find = bookmarkLookup(result.bookmarks)
-	const queueEdits = planBookmarkEdits(await getBoard(pool, config.guildId), (card) =>
-		find("seal", Number(card.lyricId))
+	const guildId = config.guildId
+	await applyBookmarkEdits(
+		planBookmarkEdits(await getBoard(pool, guildId), (card) => find("seal", Number(card.lyricId))),
+		{
+			current: (card) => getBoardCard(pool, guildId, card.lyricId),
+			edit: (card, bookmark) =>
+				editBoardMessage(card.channelId, card.messageId, buildQueueCard(card.entry, bookmark)),
+			redraw: async (card) => {
+				await editBoardMessage(card.channelId, card.messageId, buildBoardCard(card))
+			},
+			store: (card, bookmark) =>
+				setBoardBookmark(pool, guildId, card.lyricId, card.messageId, bookmark),
+		}
 	)
-	for (const { row, bookmark } of queueEdits) {
-		await editBoardMessage(row.channelId, row.messageId, buildQueueCard(row.entry, bookmark))
-		await setBoardBookmark(pool, config.guildId, row.lyricId, bookmark)
-	}
-	const revisionEdits = planBookmarkEdits(await listRevisionBoard(pool, config.guildId), (row) =>
-		find("edit", Number(row.revisionId))
+	await applyBookmarkEdits(
+		planBookmarkEdits(await listRevisionBoard(pool, guildId), (row) =>
+			find("edit", Number(row.revisionId))
+		),
+		{
+			current: (row) => getRevisionBoardRow(pool, guildId, row.revisionId),
+			edit: (row, bookmark) =>
+				editBoardMessage(
+					row.channelId,
+					row.messageId,
+					revisionCardEdit(buildRevisionCard(row.card, null, bookmark))
+				),
+			redraw: async (row) => {
+				const outcome = revisionOutcomeOf(row)
+				if (!outcome) return
+				await editBoardMessage(
+					row.channelId,
+					row.messageId,
+					revisionCardEdit(buildRevisionCard(row.card, outcome))
+				)
+			},
+			store: (row, bookmark) =>
+				setRevisionBookmark(pool, guildId, row.revisionId, row.messageId, bookmark),
+		}
 	)
-	for (const { row, bookmark } of revisionEdits) {
-		await editBoardMessage(
-			row.channelId,
-			row.messageId,
-			revisionCardEdit(buildRevisionCard(row.card, null, bookmark))
-		)
-		await setRevisionBookmark(pool, config.guildId, row.revisionId, bookmark)
-	}
 }
 
 // Post newly-passed exam applicants to the council channel for admins to decide. Butler has no
@@ -847,16 +874,23 @@ async function deleteBoardMessages(
 	}
 }
 
+// True once the message shows the payload, or is gone for good so a retry is pointless.
 async function editBoardMessage(
 	channelId: string,
 	messageId: string,
 	payload: ReturnType<typeof buildQueueCard>
-): Promise<void> {
+): Promise<boolean> {
 	const channel = await discord.channels.fetch(channelId).catch(() => null)
-	if (!channel?.isTextBased()) return
-	await channel.messages
-		.edit(messageId, payload)
-		.catch((err) => console.error("board card edit failed", err))
+	if (!channel?.isTextBased()) return false
+	return channel.messages.edit(messageId, payload).then(
+		() => true,
+		(err) => {
+			if (err instanceof DiscordAPIError && err.code === RESTJSONErrorCodes.UnknownMessage)
+				return true
+			console.error("board card edit failed", err)
+			return false
+		}
+	)
 }
 
 async function sealBoardCard(lyricsId: string, actorId: string): Promise<void> {

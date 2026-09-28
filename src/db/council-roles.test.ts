@@ -34,6 +34,24 @@ describe("council role members", () => {
 	})
 
 	describe("edge cases", () => {
+		it("keeps an old account awaiting revoke next to the member's new account", async () => {
+			await replaceCouncilRoleMembers(pool, "g1", [
+				{ keyId: "key-a", discordId: "111" },
+				{ keyId: "key-a", discordId: "999" },
+			])
+			expect(await listCouncilRoleMembers(pool, "g1")).toHaveLength(2)
+		})
+
+		it("records an account once even if it appears twice", async () => {
+			await replaceCouncilRoleMembers(pool, "g1", [
+				{ keyId: "key-a", discordId: "111" },
+				{ keyId: "key-b", discordId: "111" },
+			])
+			expect(await listCouncilRoleMembers(pool, "g1")).toEqual([
+				{ keyId: "key-a", discordId: "111" },
+			])
+		})
+
 		it("is empty before the first sync", async () => {
 			expect(await listCouncilRoleMembers(pool, "g1")).toEqual([])
 		})

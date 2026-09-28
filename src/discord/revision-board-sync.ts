@@ -1,5 +1,6 @@
 import type { RevisionBoardRow } from "@/db/revision-board"
 import type { PendingRevisionCard } from "@/unison/client"
+import type { RevisionOutcome } from "./components/revision-card"
 
 export interface RevisionBoardPlan {
 	toPost: PendingRevisionCard[]
@@ -22,4 +23,11 @@ export function planRevisionBoard(
 	const pendingIds = new Set(pending.map((card) => String(card.revisionId)))
 	const toForget = tracked.filter((row) => !pendingIds.has(row.revisionId))
 	return { toPost, toResolve: toForget.filter((row) => row.state === "pending"), toForget }
+}
+
+export function revisionOutcomeOf(row: RevisionBoardRow): RevisionOutcome | null {
+	if (row.actorId === null) return null
+	if (row.state === "approved") return { kind: "approved", actorId: row.actorId }
+	if (row.state === "rejected") return { kind: "rejected", actorId: row.actorId, note: row.note }
+	return null
 }

@@ -180,9 +180,9 @@ describe("review-board web bookmarks", () => {
 
 	it("stores the bookmark a card shows and clears it", async () => {
 		await replaceBoard(pool, "g1", [card()])
-		await setBoardBookmark(pool, "g1", "5001", bookmark)
+		await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
 		expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toEqual(bookmark)
-		await setBoardBookmark(pool, "g1", "5001", null)
+		await setBoardBookmark(pool, "g1", "5001", "m1", null)
 		expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
 	})
 
@@ -195,6 +195,18 @@ describe("review-board web bookmarks", () => {
 		it("forgets the shown bookmark when the card changes state, since the redraw has none", async () => {
 			await replaceBoard(pool, "g1", [card({ bookmark })])
 			await updateBoardCard(pool, "g1", "5001", { state: "sealed", actorId: "777" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("does not record a bookmark onto a decided card", async () => {
+			await replaceBoard(pool, "g1", [card({ state: "sealed" })])
+			await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
+			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
+		})
+
+		it("does not record a bookmark onto a card whose message was replaced", async () => {
+			await replaceBoard(pool, "g1", [card({ messageId: "m2" })])
+			await setBoardBookmark(pool, "g1", "5001", "m1", bookmark)
 			expect((await getBoardCard(pool, "g1", "5001"))?.bookmark).toBeNull()
 		})
 
