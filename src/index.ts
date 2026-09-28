@@ -140,7 +140,7 @@ import {
 import { buildRevisionCard, revisionCardEdit } from "@/discord/components/revision-card"
 import { meetsMinRole } from "@/discord/eligibility"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
-import { unlessGoneFromGuild } from "@/discord/gone-from-guild"
+import { isGoneFromGuild, unlessGoneFromGuild } from "@/discord/gone-from-guild"
 import { routeInteraction } from "@/discord/interactions/router"
 import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/confirm"
 import { handleMigrateContinue } from "@/discord/migrate/continue"
@@ -148,7 +148,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
-import { type ManageAccess, planCouncilAdmins } from "@/roles/council-admins"
+import { planCouncilAdmins, readManageAccess } from "@/roles/council-admins"
 import { type CouncilRoleMember, planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
@@ -746,24 +746,21 @@ async function reconcileCouncilRoles(): Promise<void> {
 		if (!removed) pendingRevokes.push(target)
 	}
 	await replaceCouncilRoleMembers(pool, config.guildId, [...plan.members, ...pendingRevokes])
-	await syncCouncilAdminFlags(guild, plan.members)
+	await syncCouncilAdminFlags(guild, council.keyIds, plan.members)
 }
 
 // Discord's Manage Server permission is the one source of council admin; Unison mirrors it.
-async function syncCouncilAdminFlags(guild: Guild, members: CouncilRoleMember[]): Promise<void> {
-	const access = new Map<string, ManageAccess>()
-	for (const m of members) {
-		const member = await unlessGoneFromGuild(guild.members.fetch(m.discordId)).catch((err) => {
-			console.error("council admin read failed", err)
-			return undefined
-		})
-		if (member === undefined) continue
-		access.set(
-			m.discordId,
-			member === null ? "gone" : member.permissions.has(PermissionFlagsBits.ManageGuild)
-		)
-	}
-	const admins = planCouncilAdmins(members, access)
+async function syncCouncilAdminFlags(
+	guild: Guild,
+	councilKeyIds: string[],
+	members: CouncilRoleMember[]
+): Promise<void> {
+	const access = await readManageAccess(
+		guild,
+		members.map((m) => m.discordId),
+		isGoneFromGuild
+	)
+	const admins = planCouncilAdmins(councilKeyIds, members, access)
 	if (admins.length === 0) return
 	const result = await unison.syncCouncilAdmins(admins)
 	if (result.status === "error") console.error(`council admin sync failed: HTTP ${result.code}`)
