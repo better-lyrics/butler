@@ -915,7 +915,27 @@ describe("createUnisonClient getBoostQuota", () => {
 		})
 	})
 
+	it("carries the rule the quota was worked out with", async () => {
+		const rule = { base: 6, inactive: 3, max: 12, upvotedLyricsPerSeal: 2 }
+		const { fn } = makeFetch(
+			Response.json({ success: true, quota: { ...quota, rule } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({ status: "ok", quota: { ...quota, rule } })
+	})
+
 	describe("edge cases", () => {
+		it("drops a malformed rule and keeps the quota", async () => {
+			const { fn } = makeFetch(
+				Response.json(
+					{ success: true, quota: { ...quota, rule: { base: 6, max: "12" } } },
+					{ status: 200 }
+				)
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getBoostQuota(keyId)).toEqual({ status: "ok", quota })
+		})
+
 		it("drops a malformed basis and keeps the quota", async () => {
 			const { fn } = makeFetch(
 				Response.json(

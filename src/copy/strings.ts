@@ -1,5 +1,5 @@
 import { TIER_ORDER } from "@/config"
-import type { PendingReason, QuotaBasis, TtmlFlag } from "@/unison/client"
+import type { PendingReason, QuotaBasis, QuotaRule, TtmlFlag } from "@/unison/client"
 import { TimestampStyles, escapeMarkdown, time, userMention } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -328,11 +328,20 @@ export function sealQuotaBasisLine(quota: number, basis: QuotaBasis): string {
 		timeZone: "UTC",
 	})
 	if (!basis.active) {
-		return `None of your ${month} lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's.`
+		return `None of your ${month} lyrics count, so you have fewer seals this month. Submit lyrics now to get more next month.`
 	}
 	const base = quota - basis.bonus
-	if (basis.bonus === 0) return `${base} base. Your upvoted lyrics this month add seals next month.`
-	return `${base} base + ${basis.bonus} earned from ${countLabel(basis.upvotedLyrics, "upvoted lyric")} in ${month}.`
+	if (basis.bonus === 0)
+		return `${base} base. Upvoted lyrics you submit this month add seals next month.`
+	return `${base} base, plus ${basis.bonus} earned from ${countLabel(basis.upvotedLyrics, "upvoted lyric")} in ${month}.`
+}
+
+export function sealQuotaRuleLine(rule: QuotaRule): string {
+	const earn =
+		rule.upvotedLyricsPerSeal === 1
+			? "Each of those that got upvoted adds 1 more"
+			: `Every ${rule.upvotedLyricsPerSeal} of those that got upvoted add 1 more`
+	return `You get ${rule.base} seals a month if at least one of your lyrics from last month still counts (not removed, hidden or rejected), or ${rule.inactive} if none do. ${earn}, up to ${rule.max}. New members count as active in the month they join and the next one.`
 }
 
 export function sealResetsLine(resetsAt: number): string {
@@ -355,7 +364,7 @@ export const sealUnknownUser =
 	"I could not find your Better Lyrics account. If it was removed, link again and retry."
 
 export const sealOverQuota =
-	"You are out of seals for this month. They reset at the start of next month."
+	"You're out of seals for this month. They reset on the 1st, and lyrics you submit now that get upvoted earn you more next month."
 
 export const sealNotFound = "Could not find that lyric. It may have been removed."
 
@@ -393,7 +402,7 @@ export const helpApplyLine =
 export const helpCouncilLabel = "**For the council**"
 
 export const helpSealLine =
-	"`/seal add` seals a lyric variant as council-approved, `/seal remove` lifts a seal you placed, and `/seal quota` shows how many seals you have left this month."
+	"`/seal add` seals a lyric variant as council-approved, `/seal remove` lifts a seal you placed, and `/seal quota` shows how many seals you have left and how that number was worked out."
 
 export const helpQueueLine =
 	"`/queue` reposts the current review board so the council can pick it back up, with each card marked open, sealed, or rejected."

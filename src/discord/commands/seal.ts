@@ -10,6 +10,7 @@ import {
 	sealOverQuota,
 	sealQuotaBasisLine,
 	sealQuotaHeading,
+	sealQuotaRuleLine,
 	sealQuotaSummary,
 	sealResetsLine,
 	sealSelf,
@@ -127,6 +128,7 @@ export async function handleSeal(
 					sealQuotaHeading,
 					sealQuotaSummary(quota.quota),
 					...(quota.quota.basis ? [sealQuotaBasisLine(quota.quota.quota, quota.quota.basis)] : []),
+					...(quota.quota.rule ? [sealQuotaRuleLine(quota.quota.rule)] : []),
 					sealResetsLine(quota.quota.resetsAt),
 				])
 			)

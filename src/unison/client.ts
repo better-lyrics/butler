@@ -148,12 +148,20 @@ export interface QuotaBasis {
 	monthStart: number
 }
 
+export interface QuotaRule {
+	base: number
+	inactive: number
+	max: number
+	upvotedLyricsPerSeal: number
+}
+
 export interface BoostQuota {
 	quota: number
 	used: number
 	remaining: number
 	resetsAt: number
 	basis?: QuotaBasis
+	rule?: QuotaRule
 }
 
 export interface LyricVariant {
@@ -561,12 +569,33 @@ function parseBoostQuota(value: unknown): BoostQuota | null {
 		typeof q.resetsAt === "number"
 	) {
 		const basis = parseQuotaBasis(q.basis)
+		const rule = parseQuotaRule(q.rule)
 		return {
 			quota: q.quota,
 			used: q.used,
 			remaining: q.remaining,
 			resetsAt: q.resetsAt,
 			...(basis && { basis }),
+			...(rule && { rule }),
+		}
+	}
+	return null
+}
+
+function parseQuotaRule(value: unknown): QuotaRule | null {
+	if (!value || typeof value !== "object") return null
+	const r = value as Record<string, unknown>
+	if (
+		typeof r.base === "number" &&
+		typeof r.inactive === "number" &&
+		typeof r.max === "number" &&
+		typeof r.upvotedLyricsPerSeal === "number"
+	) {
+		return {
+			base: r.base,
+			inactive: r.inactive,
+			max: r.max,
+			upvotedLyricsPerSeal: r.upvotedLyricsPerSeal,
 		}
 	}
 	return null

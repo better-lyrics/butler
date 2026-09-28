@@ -10,6 +10,7 @@ import {
 	examApplicantMisses,
 	examApplicantScore,
 	examApplicantVerdict,
+	helpSealLine,
 	migrateExpiresLine,
 	migratePreviewBody,
 	migratePreviewCollisions,
@@ -22,7 +23,9 @@ import {
 	revisionPercent,
 	revisionReasonLabel,
 	revisionReasonLine,
+	sealOverQuota,
 	sealQuotaBasisLine,
+	sealQuotaRuleLine,
 	sealQuotaSummary,
 	sealResetsLine,
 	sealVariantDescription,
@@ -265,19 +268,19 @@ describe("sealQuotaBasisLine", () => {
 	describe("happy paths", () => {
 		it("splits the base from the earned seals", () => {
 			expect(sealQuotaBasisLine(8, basis({ upvotedLyrics: 4, bonus: 2 }))).toBe(
-				"6 base + 2 earned from 4 upvoted lyrics in August."
+				"6 base, plus 2 earned from 4 upvoted lyrics in August."
 			)
 		})
 
 		it("explains the reduced quota after a month without lyrics", () => {
 			expect(sealQuotaBasisLine(3, basis({ active: false }))).toBe(
-				"None of your August lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's."
+				"None of your August lyrics count, so you have fewer seals this month. Submit lyrics now to get more next month."
 			)
 		})
 
 		it("names the base when nothing was earned", () => {
 			expect(sealQuotaBasisLine(6, basis())).toBe(
-				"6 base. Your upvoted lyrics this month add seals next month."
+				"6 base. Upvoted lyrics you submit this month add seals next month."
 			)
 		})
 	})
@@ -292,9 +295,41 @@ describe("sealQuotaBasisLine", () => {
 
 		it("reads the capped quota", () => {
 			expect(sealQuotaBasisLine(12, basis({ upvotedLyrics: 20, bonus: 6 }))).toBe(
-				"6 base + 6 earned from 20 upvoted lyrics in August."
+				"6 base, plus 6 earned from 20 upvoted lyrics in August."
 			)
 		})
+	})
+})
+
+describe("sealQuotaRuleLine", () => {
+	it("states the whole rule in the same words as the council page", () => {
+		expect(sealQuotaRuleLine({ base: 6, inactive: 3, max: 12, upvotedLyricsPerSeal: 2 })).toBe(
+			"You get 6 seals a month if at least one of your lyrics from last month still counts (not removed, hidden or rejected), or 3 if none do. Every 2 of those that got upvoted add 1 more, up to 12. New members count as active in the month they join and the next one."
+		)
+	})
+
+	describe("edge cases", () => {
+		it("follows a changed rule instead of fixed numbers", () => {
+			expect(sealQuotaRuleLine({ base: 5, inactive: 2, max: 9, upvotedLyricsPerSeal: 3 })).toBe(
+				"You get 5 seals a month if at least one of your lyrics from last month still counts (not removed, hidden or rejected), or 2 if none do. Every 3 of those that got upvoted add 1 more, up to 9. New members count as active in the month they join and the next one."
+			)
+		})
+
+		it("says every upvoted lyric when one earns a seal", () => {
+			expect(
+				sealQuotaRuleLine({ base: 6, inactive: 3, max: 12, upvotedLyricsPerSeal: 1 })
+			).toContain("Each of those that got upvoted adds 1 more")
+		})
+	})
+})
+
+describe("seal quota help", () => {
+	it("tells members how to earn more seals when they run out", () => {
+		expect(sealOverQuota).toContain("upvoted")
+	})
+
+	it("says /seal quota explains the number", () => {
+		expect(helpSealLine).toContain("how that number was worked out")
 	})
 })
 

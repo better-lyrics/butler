@@ -219,7 +219,19 @@ describe("handleSeal quota subcommand", () => {
 		})
 		await handleSeal(interaction, deps)
 		expect(JSON.stringify(replies[0])).toContain(
-			"6 base + 2 earned from 4 upvoted lyrics in August."
+			"6 base, plus 2 earned from 4 upvoted lyrics in August."
+		)
+	})
+
+	it("adds the rule when the quota carries it", async () => {
+		const { interaction, replies } = chatInteraction({ sub: "quota" })
+		const rule = { base: 6, inactive: 3, max: 12, upvotedLyricsPerSeal: 2 }
+		const { deps } = commandDeps({
+			getBoostQuota: async () => ({ status: "ok", quota: { ...okQuota, rule } }),
+		})
+		await handleSeal(interaction, deps)
+		expect(JSON.stringify(replies[0])).toContain(
+			"You get 6 seals a month if at least one of your lyrics from last month still counts (not removed, hidden or rejected), or 3 if none do. Every 2 of those that got upvoted add 1 more, up to 12. New members count as active in the month they join and the next one."
 		)
 	})
 
