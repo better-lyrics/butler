@@ -332,8 +332,7 @@ export function sealQuotaBasisLine(quota: number, basis: QuotaBasis): string {
 	}
 	const base = quota - basis.bonus
 	if (basis.bonus === 0) return `${base} base. Your upvoted lyrics this month add seals next month.`
-	const lyrics = basis.upvotedLyrics === 1 ? "upvoted lyric" : "upvoted lyrics"
-	return `${base} base + ${basis.bonus} earned from ${basis.upvotedLyrics} ${lyrics} in ${month}.`
+	return `${base} base + ${basis.bonus} earned from ${countLabel(basis.upvotedLyrics, "upvoted lyric")} in ${month}.`
 }
 
 export function sealResetsLine(resetsAt: number): string {
