@@ -1857,3 +1857,43 @@ describe("createUnisonClient getCouncilBookmarks", () => {
 		})
 	})
 })
+
+describe("createUnisonClient syncCouncilAdmins", () => {
+	const admins = [
+		{ keyId: "key-1", admin: true },
+		{ keyId: "key-2", admin: false },
+	]
+
+	it("PUTs the admin flags with bot auth and returns the changed count", async () => {
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { changed: 1 } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		expect(await client.syncCouncilAdmins(admins)).toEqual({ status: "ok", changed: 1 })
+		expect(calls[0]?.url).toBe("https://unison.test/api/committee/bot/admins")
+		expect(calls[0]?.method).toBe("PUT")
+		expect(calls[0]?.headers.get("Authorization")).toBe(`Bearer ${botSecret}`)
+		expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ admins })
+	})
+
+	describe("error paths", () => {
+		it("reports not_deployed on a 404 so an older Unison is tolerated", async () => {
+			const { fn } = makeFetch(new Response("Not Found", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.syncCouncilAdmins(admins)).toEqual({ status: "not_deployed" })
+		})
+
+		it("maps any other non-2xx to an error carrying the status", async () => {
+			const { fn } = makeFetch(Response.json({ code: "AUTH_REQUIRED" }, { status: 401 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.syncCouncilAdmins(admins)).toEqual({ status: "error", code: 401 })
+		})
+
+		it("maps a 2xx with a malformed body to an error", async () => {
+			const { fn } = makeFetch(new Response("<html>", { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.syncCouncilAdmins(admins)).toEqual({ status: "error", code: 200 })
+		})
+	})
+})

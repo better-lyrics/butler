@@ -148,6 +148,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
+import { type ManageAccess, planCouncilAdmins } from "@/roles/council-admins"
 import { type CouncilRoleMember, planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
@@ -162,6 +163,7 @@ import {
 	type ButtonInteraction,
 	DiscordAPIError,
 	Events,
+	type Guild,
 	type Interaction,
 	type Message,
 	MessageFlags,
@@ -744,6 +746,30 @@ async function reconcileCouncilRoles(): Promise<void> {
 		if (!removed) pendingRevokes.push(target)
 	}
 	await replaceCouncilRoleMembers(pool, config.guildId, [...plan.members, ...pendingRevokes])
+	await syncCouncilAdminFlags(guild, plan.members)
+}
+
+// Discord's Manage Server permission is the one source of council admin; Unison mirrors it.
+async function syncCouncilAdminFlags(guild: Guild, members: CouncilRoleMember[]): Promise<void> {
+	const access = new Map<string, ManageAccess>()
+	for (const m of members) {
+		const member = await unlessGoneFromGuild(guild.members.fetch(m.discordId)).catch((err) => {
+			console.error("council admin read failed", err)
+			return undefined
+		})
+		if (member === undefined) continue
+		access.set(
+			m.discordId,
+			member === null ? "gone" : member.permissions.has(PermissionFlagsBits.ManageGuild)
+		)
+	}
+	const admins = planCouncilAdmins(members, access)
+	if (admins.length === 0) return
+	const result = await unison.syncCouncilAdmins(admins)
+	if (result.status === "error") console.error(`council admin sync failed: HTTP ${result.code}`)
+	else if (result.status === "not_deployed")
+		console.warn("council admin sync skipped: Unison route not deployed")
+	else if (result.changed > 0) console.log(`council admin sync changed ${result.changed}`)
 }
 
 // Cards show time left as a Discord relative timestamp, so only a changed bookmark needs an edit.
