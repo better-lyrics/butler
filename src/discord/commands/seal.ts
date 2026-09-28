@@ -1,6 +1,7 @@
 import {
 	sealAlreadyActive,
 	sealBadVideo,
+	sealBlockedByRejection,
 	sealError,
 	sealNoVariants,
 	sealNotCouncil,
@@ -205,6 +206,9 @@ export async function handleSealPick(
 			return
 		case "already_sealed":
 			await interaction.update(buildSealResultCard([sealAlreadyActive]))
+			return
+		case "blocked_by_rejection":
+			await interaction.update(buildSealResultCard([sealBlockedByRejection]))
 			return
 		default:
 			await interaction.update(buildSealResultCard([sealError]))

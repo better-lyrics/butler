@@ -808,6 +808,12 @@ describe("createUnisonClient boostLyrics", () => {
 		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "already_sealed" })
 	})
 
+	it("maps 409 SEAL_BLOCKED_BY_REJECTION to blocked_by_rejection", async () => {
+		const { fn } = makeFetch(errorResponse(409, "SEAL_BLOCKED_BY_REJECTION"))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.boostLyrics("42", keyId)).toEqual({ status: "blocked_by_rejection" })
+	})
+
 	it("maps an unknown error code to a generic error carrying the http status", async () => {
 		const { fn } = makeFetch(errorResponse(418, "SURPRISE"))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
@@ -1163,6 +1169,12 @@ describe("createUnisonClient rejectLyric", () => {
 			const { fn } = makeFetch(errorResponse(409, "REJECT_ALREADY_ACTIVE"))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 			expect(await client.rejectLyric("1", KEY_ID)).toEqual({ status: "already_rejected" })
+		})
+
+		it("maps REJECT_BLOCKED_BY_SEAL to blocked_by_seal", async () => {
+			const { fn } = makeFetch(errorResponse(409, "REJECT_BLOCKED_BY_SEAL"))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.rejectLyric("1", KEY_ID)).toEqual({ status: "blocked_by_seal" })
 		})
 
 		it("maps an unknown error code to a generic error", async () => {

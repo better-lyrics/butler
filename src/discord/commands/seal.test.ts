@@ -1,6 +1,7 @@
 import {
 	sealAlreadyActive,
 	sealBadVideo,
+	sealBlockedByRejection,
 	sealConfirmButtonLabel,
 	sealError,
 	sealNoVariants,
@@ -382,6 +383,7 @@ describe("handleSealPick", () => {
 			[{ status: "target_council" }, sealTargetCouncil],
 			[{ status: "over_quota" }, sealOverQuota],
 			[{ status: "already_sealed" }, sealAlreadyActive],
+			[{ status: "blocked_by_rejection" }, sealBlockedByRejection],
 			[{ status: "error", code: 500 }, sealError],
 		]
 
