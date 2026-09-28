@@ -55,6 +55,29 @@ describe("planCouncilRoles", () => {
 	})
 
 	describe("regressions", () => {
+		it("revokes an account now linked to a key outside the council", () => {
+			const plan = planCouncilRoles({
+				previous: [{ keyId: "key-k", discordId: "111" }],
+				councilKeyIds: ["key-k", "key-b"],
+				links: new Map([
+					["key-x", "111"],
+					["key-b", "222"],
+				]),
+			})
+			expect(plan?.revoke).toEqual([{ keyId: "key-k", discordId: "111" }])
+			expect(plan?.members).toEqual([{ keyId: "key-b", discordId: "222" }])
+		})
+
+		it("records a moved account under the council key it now belongs to", () => {
+			const plan = planCouncilRoles({
+				previous: [{ keyId: "key-k", discordId: "111" }],
+				councilKeyIds: ["key-k", "key-a"],
+				links,
+			})
+			expect(plan?.revoke).toEqual([])
+			expect(plan?.members).toEqual([{ keyId: "key-a", discordId: "111" }])
+		})
+
 		it("keeps every recorded account of a member who unlinks, including one awaiting revoke", () => {
 			const plan = planCouncilRoles({
 				previous: [
