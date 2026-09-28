@@ -1,5 +1,7 @@
 import { PALETTE } from "@/config"
 import {
+	councilBookmarkLine,
+	councilDashboardButtonLabel,
 	queueEntryHeading,
 	queueRejectButtonLabel,
 	queueRejectNoteLine,
@@ -17,7 +19,8 @@ import {
 	revisionResolved,
 } from "@/copy/strings"
 import { encodeCustomId } from "@/interactions/custom-id"
-import type { PendingRevisionCard } from "@/unison/client"
+import type { CouncilBookmark, PendingRevisionCard } from "@/unison/client"
+import { councilItemUrl } from "@/unison/council-links"
 import { ytmWatchUrl } from "@/ytm/watch-url"
 import {
 	ActionRowBuilder,
@@ -93,7 +96,8 @@ function outcomeLine(outcome: RevisionOutcome): string {
 
 export function buildRevisionCard(
 	card: PendingRevisionCard,
-	outcome: RevisionOutcome | null = null
+	outcome: RevisionOutcome | null = null,
+	bookmark: CouncilBookmark | null = null
 ): RevisionCardPayload {
 	const ids = [String(card.lyricsId), String(card.revisionId)]
 	const author = card.author ? { displayName: truncate(card.author.displayName, MAX_AUTHOR) } : null
@@ -115,6 +119,12 @@ export function buildRevisionCard(
 		const name = `lyric-${card.lyricsId}-rev-${card.revNo}.diff`
 		files.push(new AttachmentBuilder(Buffer.from(card.diffFull, "utf8"), { name }))
 		container.addFileComponents(new FileBuilder().setURL(`attachment://${name}`))
+	}
+
+	if (!outcome && bookmark) {
+		container.addTextDisplayComponents(
+			text(councilBookmarkLine(bookmark.holder, bookmark.expiresAt))
+		)
 	}
 
 	if (outcome) {
@@ -139,7 +149,11 @@ export function buildRevisionCard(
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Danger)
 				.setCustomId(encodeCustomId("revision.reject", ids))
-				.setLabel(queueRejectButtonLabel)
+				.setLabel(queueRejectButtonLabel),
+			new ButtonBuilder()
+				.setStyle(ButtonStyle.Link)
+				.setURL(councilItemUrl("edit", card.revisionId))
+				.setLabel(councilDashboardButtonLabel)
 		)
 	}
 	container.addActionRowComponents(actions)

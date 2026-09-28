@@ -13,7 +13,7 @@ function entry(id: number): QueueEntry {
 		score: 87,
 		voteCount: 41,
 		submitterName: "Alice",
-		ttmlSignals: [],
+		ttmlFlags: [],
 	}
 }
 
@@ -27,6 +27,7 @@ function card(overrides: Partial<BoardCard> = {}): BoardCard {
 		actorId: null,
 		note: null,
 		entry: entry(4210),
+		bookmark: null,
 		...overrides,
 	}
 }

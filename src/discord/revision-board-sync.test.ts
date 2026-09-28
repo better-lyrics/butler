@@ -12,6 +12,7 @@ function row(revisionId: number, overrides: Partial<RevisionBoardRow> = {}): Rev
 		actorId: null,
 		note: null,
 		card: pendingRevision({ revisionId }),
+		bookmark: null,
 		...overrides,
 	}
 }

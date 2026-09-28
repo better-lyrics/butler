@@ -9,6 +9,7 @@ import {
 	listRevisionBoard,
 	markRevisionDecided,
 	recordRevisionPost,
+	setRevisionBookmark,
 } from "./revision-board"
 
 async function freshPool(): Promise<Pool> {
@@ -46,6 +47,7 @@ describe("revision board store", () => {
 				actorId: null,
 				note: null,
 				card: pendingRevision(),
+				bookmark: null,
 			})
 		})
 
@@ -136,5 +138,35 @@ describe("revision board store", () => {
 			await recordRevisionPost(pool, "g1", { ...post(), card })
 			expect((await getRevisionBoardRow(pool, "g1", "918"))?.card).toEqual(card)
 		})
+	})
+})
+
+describe("revision board web bookmarks", () => {
+	let pool: Pool
+	const bookmark = {
+		itemType: "edit" as const,
+		itemId: 918,
+		holder: { displayName: "boidu", discordId: null },
+		expiresAt: 1_790_259_200,
+	}
+
+	beforeEach(async () => {
+		pool = await freshPool()
+	})
+
+	it("starts a new post without a bookmark, then stores and clears one", async () => {
+		await recordRevisionPost(pool, "g1", post())
+		expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toBeNull()
+		await setRevisionBookmark(pool, "g1", "918", bookmark)
+		expect((await getRevisionBoardRow(pool, "g1", "918"))?.bookmark).toEqual(bookmark)
+		await setRevisionBookmark(pool, "g1", "918", null)
+		expect((await listRevisionBoard(pool, "g1"))[0]?.bookmark).toBeNull()
+	})
+
+	it("only touches the named revision", async () => {
+		await recordRevisionPost(pool, "g1", post(918))
+		await recordRevisionPost(pool, "g1", post(919))
+		await setRevisionBookmark(pool, "g1", "918", bookmark)
+		expect((await getRevisionBoardRow(pool, "g1", "919"))?.bookmark).toBeNull()
 	})
 })

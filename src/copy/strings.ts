@@ -1,6 +1,6 @@
 import { TIER_ORDER } from "@/config"
-import type { PendingReason } from "@/unison/client"
-import { TimestampStyles, time } from "discord.js"
+import type { PendingReason, TtmlFlag } from "@/unison/client"
+import { TimestampStyles, escapeMarkdown, time, userMention } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
 	legendary: "#1 Legendary Lyricist",
@@ -545,30 +545,21 @@ export function queueEntryDetails(entry: {
 	return parts.join(" · ")
 }
 
-const QUEUE_SIGNAL_LABELS: Record<string, string> = {
-	"line-synced": "line-synced (not word-by-word)",
-	"filler-line": "filler/instrumental lines",
-	"not-sentence-case": "capitalization",
-	"unbracketed-bg": "unbracketed background vocals",
-	"multi-bracket-bg": "multiple bracket pairs",
-	"distant-adlib": "distant ad-lib",
-	"handoff-candidate": "mid-line voice change",
-	"possible-unison-mistag": "possible unison mistag",
-	"stretched-spelling": "stretched spelling",
-	"split-without-stretch": "syllable split without a stretch",
-	"flattened-pauses": "flattened pauses",
-	"linked-repeat-drift": "linked-repeat drift",
-}
-
-export function queueSignalLabel(code: string): string {
-	return QUEUE_SIGNAL_LABELS[code] ?? code
-}
-
-export function queueSignalsLine(format: string, signals: string[]): string | null {
+export function queueSignalsLine(format: string, flags: TtmlFlag[]): string | null {
 	if (format !== "ttml") return null
-	if (signals.length === 0) return "TTML: no issues flagged."
-	return `TTML signals: ${signals.map(queueSignalLabel).join(", ")}`
+	if (flags.length === 0) return "TTML: no issues flagged."
+	return `TTML signals: ${flags.map((f) => f.label).join(" · ")}`
 }
+
+export function councilBookmarkLine(
+	holder: { displayName: string; discordId: string | null },
+	expiresAt: number
+): string {
+	const who = holder.discordId ? userMention(holder.discordId) : escapeMarkdown(holder.displayName)
+	return `Bookmarked on the web by ${who}. Back in the open queue ${time(expiresAt, TimestampStyles.RelativeTime)}.`
+}
+
+export const councilDashboardButtonLabel = "Open in dashboard"
 
 export const queueSealedGeneric =
 	"Sealed by the council. It carries a council seal and a ranking boost."

@@ -3,6 +3,8 @@ import {
 	announceSummaryBadgeLine,
 	announceSummaryPromotionLine,
 	badgeAwardTitle,
+	councilBookmarkLine,
+	councilDashboardButtonLabel,
 	examApplicantFullMarks,
 	examApplicantGrade,
 	examApplicantMisses,
@@ -14,6 +16,7 @@ import {
 	promotionStats,
 	promotionSubtitle,
 	promotionTitle,
+	queueSignalsLine,
 	reportHelp,
 	revisionDetails,
 	revisionPercent,
@@ -497,5 +500,52 @@ describe("revisionDetails", () => {
 				"Rick Astley · Rev 3 would replace live Rev 2"
 			)
 		})
+	})
+})
+
+describe("queueSignalsLine", () => {
+	it("lists the labels Unison sends, apart from each other", () => {
+		expect(
+			queueSignalsLine("ttml", [
+				{ code: "line-synced", label: "Line-synced, not word-by-word" },
+				{ code: "not-sentence-case", label: "Capitalization" },
+			])
+		).toBe("TTML signals: Line-synced, not word-by-word · Capitalization")
+	})
+
+	describe("edge cases", () => {
+		it("says so when a ttml lyric has no signals", () => {
+			expect(queueSignalsLine("ttml", [])).toBe("TTML: no issues flagged.")
+		})
+
+		it("has no line for other formats", () => {
+			expect(queueSignalsLine("lrc", [{ code: "x", label: "X" }])).toBeNull()
+		})
+	})
+})
+
+describe("councilBookmarkLine", () => {
+	it("names the linked holder and when the item returns to the queue", () => {
+		expect(councilBookmarkLine({ displayName: "boidu", discordId: "111" }, 1_790_259_200)).toBe(
+			"Bookmarked on the web by <@111>. Back in the open queue <t:1790259200:R>."
+		)
+	})
+
+	describe("edge cases", () => {
+		it("uses the display name when the holder has no linked Discord account", () => {
+			expect(councilBookmarkLine({ displayName: "boidu", discordId: null }, 1)).toBe(
+				"Bookmarked on the web by boidu. Back in the open queue <t:1:R>."
+			)
+		})
+
+		it("regression: escapes markdown in a display name", () => {
+			expect(councilBookmarkLine({ displayName: "**big**", discordId: null }, 1)).toContain(
+				"\\*\\*big\\*\\*"
+			)
+		})
+	})
+
+	it("has a verb-first dashboard button label", () => {
+		expect(councilDashboardButtonLabel).toBe("Open in dashboard")
 	})
 })

@@ -90,3 +90,5 @@ CREATE TABLE IF NOT EXISTS avatar_suggestion (
   decided_by          TEXT,
   decided_at          BIGINT
 );
+ALTER TABLE review_board_card ADD COLUMN IF NOT EXISTS bookmark JSONB;
+ALTER TABLE revision_board_card ADD COLUMN IF NOT EXISTS bookmark JSONB;

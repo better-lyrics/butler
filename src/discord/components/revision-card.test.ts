@@ -1,4 +1,6 @@
 import {
+	councilBookmarkLine,
+	councilDashboardButtonLabel,
 	queueCancelButtonLabel,
 	queueEntryHeading,
 	queueRejectButtonLabel,
@@ -372,5 +374,33 @@ describe("revisionCardEdit", () => {
 		const payload = buildRevisionCard(pendingRevision())
 		revisionCardEdit(payload)
 		expect("attachments" in payload).toBe(false)
+	})
+})
+
+describe("council dashboard on revision cards", () => {
+	const bookmark = {
+		itemType: "edit" as const,
+		itemId: 918,
+		holder: { displayName: "boidu", discordId: "111" },
+		expiresAt: 1_790_259_200,
+	}
+
+	it("links a pending revision to the edit in the dashboard", () => {
+		const link = buttons(buildRevisionCard(pendingRevision())).find(
+			(b) => b.label === councilDashboardButtonLabel
+		)
+		expect(link?.url).toBe("https://unison.betterlyrics.org/council/edits?item=918")
+	})
+
+	it("shows the web bookmark on a pending revision", () => {
+		expect(textBlob(buildRevisionCard(pendingRevision(), null, bookmark))).toContain(
+			councilBookmarkLine(bookmark.holder, bookmark.expiresAt)
+		)
+	})
+
+	it("drops the bookmark and dashboard link once decided", () => {
+		const card = buildRevisionCard(pendingRevision(), { kind: "resolved" }, bookmark)
+		expect(textBlob(card)).not.toContain("Bookmarked on the web")
+		expect(buttons(card).find((b) => b.label === councilDashboardButtonLabel)).toBeUndefined()
 	})
 })

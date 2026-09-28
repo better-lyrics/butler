@@ -907,6 +907,7 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 			actorId: card.actorId,
 			note: card.note,
 			entry: card.entry,
+			bookmark: null,
 		}),
 	}))
 	const synced = await syncBoard(previous, planned, {
