@@ -526,7 +526,7 @@ export const queueRejectUndone = "Rejection lifted. The lyric can surface in the
 export const queueAlreadyRejected = "That lyric is already rejected."
 
 export const queueRejectBlockedBySeal =
-	"That lyric carries a council seal. Remove the seal before rejecting it."
+	"That lyric carries a council seal. Ask the member who sealed it to lift the seal before rejecting it."
 
 export function queueSealedBy(userId: string): string {
 	return `Sealed by <@${userId}>. It now carries a council seal and a ranking boost.`
