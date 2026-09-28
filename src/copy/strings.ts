@@ -328,7 +328,7 @@ export function sealQuotaBasisLine(quota: number, basis: QuotaBasis): string {
 		timeZone: "UTC",
 	})
 	if (!basis.active) {
-		return `No lyrics in ${month}, so this month's quota is reduced. Submit lyrics this month to lift next month's.`
+		return `None of your ${month} lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's.`
 	}
 	const base = quota - basis.bonus
 	if (basis.bonus === 0) return `${base} base. Your upvoted lyrics this month add seals next month.`

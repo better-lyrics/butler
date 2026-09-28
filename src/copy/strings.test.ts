@@ -271,7 +271,7 @@ describe("sealQuotaBasisLine", () => {
 
 		it("explains the reduced quota after a month without lyrics", () => {
 			expect(sealQuotaBasisLine(3, basis({ active: false }))).toBe(
-				"No lyrics in August, so this month's quota is reduced. Submit lyrics this month to lift next month's."
+				"None of your August lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's."
 			)
 		})
 
@@ -286,7 +286,7 @@ describe("sealQuotaBasisLine", () => {
 		it("names the counted month in UTC across a year boundary", () => {
 			const december = Date.UTC(2025, 11, 1) / 1000
 			expect(sealQuotaBasisLine(3, basis({ active: false, monthStart: december }))).toContain(
-				"No lyrics in December"
+				"None of your December lyrics count"
 			)
 		})
 
