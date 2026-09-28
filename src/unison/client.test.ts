@@ -902,6 +902,31 @@ describe("createUnisonClient getBoostQuota", () => {
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 		expect(await client.getBoostQuota(keyId)).toEqual({ status: "error", code: 200 })
 	})
+
+	it("carries the basis the quota was worked out from", async () => {
+		const basis = { active: true, upvotedLyrics: 4, bonus: 2, monthStart: 1_785_542_400 }
+		const { fn } = makeFetch(
+			Response.json({ success: true, quota: { ...quota, basis } }, { status: 200 })
+		)
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.getBoostQuota(keyId)).toEqual({
+			status: "ok",
+			quota: { ...quota, basis },
+		})
+	})
+
+	describe("edge cases", () => {
+		it("drops a malformed basis and keeps the quota", async () => {
+			const { fn } = makeFetch(
+				Response.json(
+					{ success: true, quota: { ...quota, basis: { active: "yes", bonus: 2 } } },
+					{ status: 200 }
+				)
+			)
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getBoostQuota(keyId)).toEqual({ status: "ok", quota })
+		})
+	})
 })
 
 describe("createUnisonClient addCouncilMember", () => {

@@ -8,6 +8,7 @@ import {
 	sealNotFound,
 	sealNotOwner,
 	sealOverQuota,
+	sealQuotaBasisLine,
 	sealQuotaHeading,
 	sealQuotaSummary,
 	sealResetsLine,
@@ -125,6 +126,7 @@ export async function handleSeal(
 				buildSealResultCard([
 					sealQuotaHeading,
 					sealQuotaSummary(quota.quota),
+					...(quota.quota.basis ? [sealQuotaBasisLine(quota.quota.quota, quota.quota.basis)] : []),
 					sealResetsLine(quota.quota.resetsAt),
 				])
 			)

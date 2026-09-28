@@ -1,5 +1,5 @@
 import { TIER_ORDER } from "@/config"
-import type { PendingReason, TtmlFlag } from "@/unison/client"
+import type { PendingReason, QuotaBasis, TtmlFlag } from "@/unison/client"
 import { TimestampStyles, escapeMarkdown, time, userMention } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -320,6 +320,19 @@ export function sealQuotaSummary(quota: {
 	remaining: number
 }): string {
 	return `${quota.used} of ${quota.quota} seals used this month. ${quota.remaining} left.`
+}
+
+export function sealQuotaBasisLine(quota: number, basis: QuotaBasis): string {
+	const month = new Date(basis.monthStart * 1000).toLocaleString("en-US", {
+		month: "long",
+		timeZone: "UTC",
+	})
+	if (!basis.active) {
+		return `None of your ${month} lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's.`
+	}
+	const base = quota - basis.bonus
+	if (basis.bonus === 0) return `${base} base. Your upvoted lyrics this month add seals next month.`
+	return `${base} base + ${basis.bonus} earned from ${countLabel(basis.upvotedLyrics, "upvoted lyric")} in ${month}.`
 }
 
 export function sealResetsLine(resetsAt: number): string {

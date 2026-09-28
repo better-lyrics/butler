@@ -206,6 +206,30 @@ describe("handleSeal quota subcommand", () => {
 		expect(calls.variants).toEqual([])
 	})
 
+	it("explains how the quota was worked out when the basis is known", async () => {
+		const { interaction, replies } = chatInteraction({ sub: "quota" })
+		const basis = {
+			active: true,
+			upvotedLyrics: 4,
+			bonus: 2,
+			monthStart: Date.UTC(2026, 7, 1) / 1000,
+		}
+		const { deps } = commandDeps({
+			getBoostQuota: async () => ({ status: "ok", quota: { ...okQuota, basis } }),
+		})
+		await handleSeal(interaction, deps)
+		expect(JSON.stringify(replies[0])).toContain(
+			"6 base + 2 earned from 4 upvoted lyrics in August."
+		)
+	})
+
+	it("leaves the basis line out when the basis is unknown", async () => {
+		const { interaction, replies } = chatInteraction({ sub: "quota" })
+		const { deps } = commandDeps()
+		await handleSeal(interaction, deps)
+		expect(JSON.stringify(replies[0])).not.toContain("base")
+	})
+
 	it("refuses the quota subcommand for a non-council user", async () => {
 		const { interaction, replies } = chatInteraction({ sub: "quota" })
 		const { deps } = commandDeps({ getBoostQuota: async () => ({ status: "not_council" }) })

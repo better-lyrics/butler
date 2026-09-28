@@ -22,6 +22,7 @@ import {
 	revisionPercent,
 	revisionReasonLabel,
 	revisionReasonLine,
+	sealQuotaBasisLine,
 	sealQuotaSummary,
 	sealResetsLine,
 	sealVariantDescription,
@@ -246,6 +247,52 @@ describe("sealQuotaSummary", () => {
 		it("reads correctly for a fresh quota with nothing used", () => {
 			expect(sealQuotaSummary({ quota: 6, used: 0, remaining: 6 })).toContain(
 				"0 of 6 seals used this month"
+			)
+		})
+	})
+})
+
+describe("sealQuotaBasisLine", () => {
+	const AUGUST = Date.UTC(2026, 7, 1) / 1000
+	const basis = (over: Partial<Parameters<typeof sealQuotaBasisLine>[1]> = {}) => ({
+		active: true,
+		upvotedLyrics: 0,
+		bonus: 0,
+		monthStart: AUGUST,
+		...over,
+	})
+
+	describe("happy paths", () => {
+		it("splits the base from the earned seals", () => {
+			expect(sealQuotaBasisLine(8, basis({ upvotedLyrics: 4, bonus: 2 }))).toBe(
+				"6 base + 2 earned from 4 upvoted lyrics in August."
+			)
+		})
+
+		it("explains the reduced quota after a month without lyrics", () => {
+			expect(sealQuotaBasisLine(3, basis({ active: false }))).toBe(
+				"None of your August lyrics count, so this month's quota is reduced. Submit lyrics this month to lift next month's."
+			)
+		})
+
+		it("names the base when nothing was earned", () => {
+			expect(sealQuotaBasisLine(6, basis())).toBe(
+				"6 base. Your upvoted lyrics this month add seals next month."
+			)
+		})
+	})
+
+	describe("edge cases", () => {
+		it("names the counted month in UTC across a year boundary", () => {
+			const december = Date.UTC(2025, 11, 1) / 1000
+			expect(sealQuotaBasisLine(3, basis({ active: false, monthStart: december }))).toContain(
+				"None of your December lyrics count"
+			)
+		})
+
+		it("reads the capped quota", () => {
+			expect(sealQuotaBasisLine(12, basis({ upvotedLyrics: 20, bonus: 6 }))).toBe(
+				"6 base + 6 earned from 20 upvoted lyrics in August."
 			)
 		})
 	})
