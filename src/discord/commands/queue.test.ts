@@ -5,6 +5,7 @@ import {
 	queueError,
 	queueNotCouncil,
 	queueRejectBlockedBySeal,
+	queueRejectNoLongerActive,
 	queueRejectNoteLine,
 	queueRejectUndone,
 	queueRejectedBy,
@@ -604,7 +605,7 @@ describe("handleQueueRejectUndo", () => {
 	describe("error paths reply ephemerally", () => {
 		const cases: Array<[UnrejectResult, string]> = [
 			[{ status: "not_council" }, queueNotCouncil],
-			[{ status: "not_found" }, sealNotFound],
+			[{ status: "not_found" }, queueRejectNoLongerActive],
 			[{ status: "error", code: 500 }, queueError],
 		]
 

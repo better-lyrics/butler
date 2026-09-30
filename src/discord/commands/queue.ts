@@ -4,6 +4,7 @@ import {
 	queueNotCouncil,
 	queueRejectBlockedBySeal,
 	queueRejectModalTitle,
+	queueRejectNoLongerActive,
 	queueRejectUndone,
 	queueRejectedBy,
 	queueResendEmpty,
@@ -358,7 +359,7 @@ export async function handleQueueRejectUndo(
 			await interaction.reply(ephemeralText(queueNotCouncil))
 			return
 		case "not_found":
-			await interaction.reply(ephemeralText(sealNotFound))
+			await interaction.reply(ephemeralText(queueRejectNoLongerActive))
 			return
 		default:
 			await interaction.reply(ephemeralText(queueError))

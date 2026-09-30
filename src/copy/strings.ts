@@ -545,6 +545,9 @@ export const queueRejectNoteLabel = "Reason (optional)"
 
 export const queueRejectUndone = "Rejection lifted. The lyric can surface in the queue again."
 
+export const queueRejectNoLongerActive =
+	"That rejection is no longer active, so there is nothing to undo."
+
 export const queueAlreadyRejected = "That lyric is already rejected."
 
 export const queueRejectBlockedBySeal =
