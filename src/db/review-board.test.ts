@@ -44,6 +44,7 @@ function card(over: Partial<BoardCard> = {}): BoardCard {
 		state: "pending",
 		actorId: null,
 		note: null,
+		rejectionId: null,
 		entry: entry(),
 		bookmark: null,
 		...over,
@@ -229,6 +230,78 @@ describe("review-board web bookmarks", () => {
 			const stored = await getBoardCard(pool, "g1", "5001")
 			expect(stored?.entry.ttmlFlags).toEqual([{ code: "line-synced", label: "line-synced" }])
 			expect(stored?.bookmark).toBeNull()
+		})
+	})
+})
+
+describe("review-board rejection ids", () => {
+	let pool: Pool
+
+	beforeEach(async () => {
+		pool = await freshPool()
+	})
+
+	describe("happy paths", () => {
+		it("round-trips the rejection a rejected card names", async () => {
+			const rejected = card({ state: "rejected", actorId: "111", rejectionId: 318 })
+			await replaceBoard(pool, "g1", [rejected])
+			expect(await getBoard(pool, "g1")).toEqual([rejected])
+		})
+
+		it("records the rejection id alongside the rejected state", async () => {
+			await replaceBoard(pool, "g1", [card()])
+			await updateBoardCard(pool, "g1", "5001", {
+				state: "rejected",
+				actorId: "111",
+				note: "bad sync",
+				rejectionId: 318,
+			})
+			const stored = await getBoardCard(pool, "g1", "5001")
+			expect([stored?.state, stored?.note, stored?.rejectionId]).toEqual([
+				"rejected",
+				"bad sync",
+				318,
+			])
+		})
+	})
+
+	describe("edge cases", () => {
+		it("stores a null rejection id when the server named none", async () => {
+			await replaceBoard(pool, "g1", [card()])
+			await updateBoardCard(pool, "g1", "5001", { state: "rejected", rejectionId: null })
+			expect((await getBoardCard(pool, "g1", "5001"))?.rejectionId).toBeNull()
+		})
+
+		it("keeps an id past the 32-bit range", async () => {
+			await replaceBoard(pool, "g1", [card({ state: "rejected", rejectionId: 3_000_000_000 })])
+			expect((await getBoardCard(pool, "g1", "5001"))?.rejectionId).toBe(3_000_000_000)
+		})
+	})
+
+	describe("invariants", () => {
+		it("forgets the rejection id when the card changes state without naming one", async () => {
+			await replaceBoard(pool, "g1", [card({ state: "rejected", rejectionId: 318 })])
+			await updateBoardCard(pool, "g1", "5001", { state: "pending", actorId: null, note: null })
+			expect((await getBoardCard(pool, "g1", "5001"))?.rejectionId).toBeNull()
+		})
+
+		it("keeps the rejection id on a patch that does not change state", async () => {
+			await replaceBoard(pool, "g1", [card({ state: "rejected", rejectionId: 318 })])
+			await updateBoardCard(pool, "g1", "5001", { messageId: "m2" })
+			expect((await getBoardCard(pool, "g1", "5001"))?.rejectionId).toBe(318)
+		})
+	})
+
+	describe("regressions", () => {
+		it("regression: a rejected row stored before rejection ids reads back with none", async () => {
+			await pool.query(
+				`INSERT INTO review_board_card
+				   (guild_id, lyric_id, message_id, channel_id, position, state, actor_id, entry)
+				 VALUES ('g1', '5001', 'm1', 'chan1', 0, 'rejected', '111', $1)`,
+				[JSON.stringify(entry())]
+			)
+			const stored = await getBoardCard(pool, "g1", "5001")
+			expect([stored?.state, stored?.rejectionId]).toEqual(["rejected", null])
 		})
 	})
 })

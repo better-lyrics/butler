@@ -11,6 +11,7 @@ export interface CarriedState {
 	state: BoardCardState
 	actorId: string | null
 	note: string | null
+	rejectionId: number | null
 }
 
 export function carryForwardStates(previous: BoardCard[], entries: QueueEntry[]): CarriedState[] {
@@ -22,6 +23,7 @@ export function carryForwardStates(previous: BoardCard[], entries: QueueEntry[])
 			state: prior?.state ?? "pending",
 			actorId: prior?.actorId ?? null,
 			note: prior?.note ?? null,
+			rejectionId: prior?.rejectionId ?? null,
 		}
 	})
 }

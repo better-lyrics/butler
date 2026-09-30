@@ -289,12 +289,18 @@ export type QueueResult =
 	| { status: "error"; code: number }
 
 export type RejectResult =
-	| { status: "rejected" }
+	| { status: "rejected"; rejectionId: number | null }
 	| { status: "not_council" }
 	| { status: "not_found" }
 	| { status: "already_rejected" }
 	| { status: "blocked_by_seal" }
 	| { status: "error"; code: number }
+
+/** A Unison rejection id: a positive safe integer, given as a number or a digit string. */
+export function parseRejectionId(value: unknown): number | null {
+	const id = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value
+	return typeof id === "number" && Number.isSafeInteger(id) && id >= 1 ? id : null
+}
 
 export type UnrejectResult =
 	| { status: "unrejected" }
@@ -446,7 +452,11 @@ export interface UnisonClient {
 	getCouncilBookmarks(): Promise<CouncilBookmarksResult>
 	getLyricsQueue(sort?: QueueSort, limit?: number): Promise<QueueResult>
 	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
-	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
+	unrejectLyric(
+		lyricsId: string,
+		keyId: string,
+		rejectionId: number | null
+	): Promise<UnrejectResult>
 	startExam(keyId: string, discordId: string): Promise<ExamStartResult>
 	getExamApplicants(includeBelowCutoff?: boolean): Promise<ExamApplicantsResult>
 	getExamReports(discordId: string): Promise<ExamReportsResult>
@@ -1096,7 +1106,10 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				body: JSON.stringify(note ? { keyId, note } : { keyId }),
 			})
 			if (res.ok) {
-				return { status: "rejected" }
+				const json = (await res.json().catch(() => null)) as {
+					data?: { rejectionId?: unknown }
+				} | null
+				return { status: "rejected", rejectionId: parseRejectionId(json?.data?.rejectionId) }
 			}
 			switch (await errorCode(res)) {
 				case "NOT_COMMITTEE":
@@ -1112,11 +1125,11 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 			}
 		},
 
-		async unrejectLyric(lyricsId, keyId) {
+		async unrejectLyric(lyricsId, keyId, rejectionId) {
 			const res = await doFetch(`${baseUrl}/lyrics/${encodeURIComponent(lyricsId)}/reject/bot`, {
 				method: "DELETE",
 				headers: { ...authHeaders, "Content-Type": "application/json" },
-				body: JSON.stringify({ keyId }),
+				body: JSON.stringify(rejectionId === null ? { keyId } : { keyId, rejectionId }),
 			})
 			if (res.ok) {
 				return { status: "unrejected" }

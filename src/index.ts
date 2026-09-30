@@ -383,9 +383,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleQueueReject(interaction, route.args[0] ?? "")
 			return
 		case "queue.reject.undo":
-			await handleQueueRejectUndo(interaction, route.args[0] ?? "", {
+			await handleQueueRejectUndo(interaction, route.args[0] ?? "", route.args[1] ?? "", {
 				resolveKeyId,
-				unrejectLyric: (lyricsId, keyId) => unison.unrejectLyric(lyricsId, keyId),
+				unrejectLyric: (lyricsId, keyId, rejectionId) =>
+					unison.unrejectLyric(lyricsId, keyId, rejectionId),
 				getEntry: boardEntry,
 				markPending: markBoardPending,
 				linkPageUrl: config.linkPageUrl,
@@ -938,9 +939,15 @@ async function markBoardPending(lyricsId: string): Promise<void> {
 async function markBoardRejected(
 	lyricsId: string,
 	actorId: string,
-	note: string | null
+	note: string | null,
+	rejectionId: number | null
 ): Promise<void> {
-	await updateBoardCard(pool, config.guildId, lyricsId, { state: "rejected", actorId, note })
+	await updateBoardCard(pool, config.guildId, lyricsId, {
+		state: "rejected",
+		actorId,
+		note,
+		rejectionId,
+	})
 }
 
 async function approveRevisionBoardCard(revisionId: string, actorId: string): Promise<void> {
@@ -1053,6 +1060,7 @@ async function advanceBoard(opts: { force: boolean; now?: number }): Promise<Dig
 			state: card.state,
 			actorId: card.actorId,
 			note: card.note,
+			rejectionId: card.rejectionId,
 			entry: card.entry,
 			bookmark: null,
 		}),

@@ -1,5 +1,10 @@
 import { parseJsonb } from "@/db/jsonb"
-import { type CouncilBookmark, type QueueEntry, parseTtmlFlags } from "@/unison/client"
+import {
+	type CouncilBookmark,
+	type QueueEntry,
+	parseRejectionId,
+	parseTtmlFlags,
+} from "@/unison/client"
 import type { Pool } from "pg"
 
 export type BoardCardState = "pending" | "sealed" | "rejected"
@@ -12,6 +17,7 @@ export interface BoardCard {
 	state: BoardCardState
 	actorId: string | null
 	note: string | null
+	rejectionId: number | null
 	entry: QueueEntry
 	bookmark: CouncilBookmark | null
 }
@@ -24,6 +30,7 @@ interface BoardCardRow {
 	state: string
 	actor_id: string | null
 	note: string | null
+	rejection_id: string | number | null
 	entry: unknown
 	bookmark: unknown
 }
@@ -43,13 +50,14 @@ function mapRow(row: BoardCardRow): BoardCard {
 		state: row.state as BoardCardState,
 		actorId: row.actor_id,
 		note: row.note,
+		rejectionId: parseRejectionId(row.rejection_id),
 		entry: storedEntry(row.entry),
 		bookmark: row.bookmark == null ? null : parseJsonb<CouncilBookmark>(row.bookmark),
 	}
 }
 
 const SELECT_COLUMNS =
-	"lyric_id, message_id, channel_id, position, state, actor_id, note, entry, bookmark"
+	"lyric_id, message_id, channel_id, position, state, actor_id, note, rejection_id, entry, bookmark"
 
 export async function getBoard(pool: Pool, guildId: string): Promise<BoardCard[]> {
 	const result = await pool.query<BoardCardRow>(
@@ -77,8 +85,9 @@ export async function replaceBoard(pool: Pool, guildId: string, cards: BoardCard
 	for (const c of cards) {
 		await pool.query(
 			`INSERT INTO review_board_card
-			   (guild_id, lyric_id, message_id, channel_id, position, state, actor_id, note, entry, bookmark)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			   (guild_id, lyric_id, message_id, channel_id, position, state, actor_id, note,
+			    rejection_id, entry, bookmark)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 			[
 				guildId,
 				c.lyricId,
@@ -88,6 +97,7 @@ export async function replaceBoard(pool: Pool, guildId: string, cards: BoardCard
 				c.state,
 				c.actorId,
 				c.note,
+				c.rejectionId,
 				JSON.stringify(c.entry),
 				c.bookmark === null ? null : JSON.stringify(c.bookmark),
 			]
@@ -99,6 +109,7 @@ const PATCH_COLUMNS: Record<string, string> = {
 	state: "state",
 	actorId: "actor_id",
 	note: "note",
+	rejectionId: "rejection_id",
 	messageId: "message_id",
 }
 
@@ -106,7 +117,7 @@ export async function updateBoardCard(
 	pool: Pool,
 	guildId: string,
 	lyricId: string,
-	patch: Partial<Pick<BoardCard, "state" | "actorId" | "note" | "messageId">>
+	patch: Partial<Pick<BoardCard, "state" | "actorId" | "note" | "rejectionId" | "messageId">>
 ): Promise<void> {
 	const sets: string[] = []
 	const values: unknown[] = [guildId, lyricId]
@@ -118,6 +129,7 @@ export async function updateBoardCard(
 	}
 	if (sets.length === 0) return
 	if (patch.state !== undefined) sets.push("bookmark = NULL")
+	if (patch.state !== undefined && patch.rejectionId === undefined) sets.push("rejection_id = NULL")
 	await pool.query(
 		`UPDATE review_board_card SET ${sets.join(", ")} WHERE guild_id = $1 AND lyric_id = $2`,
 		values
