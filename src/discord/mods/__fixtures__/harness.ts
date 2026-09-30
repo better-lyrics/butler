@@ -47,6 +47,7 @@ export class DiscordDouble {
 	dms: { discordId: string; card: CardPayload }[] = []
 	eligible = new Set<string>([ADMIN, ALICE, BOB, CARA])
 	failPost = false
+	roleAssignable = true
 	failGrant = new Set<string>()
 	failDm = new Set<string>()
 	private nextMessage = 1400000000000000000n
@@ -66,6 +67,8 @@ export class DiscordDouble {
 
 	meetsMinRole = async (discordId: string, minRoleId: string): Promise<boolean> =>
 		minRoleId === ACTIVE_MEMBER_ROLE && this.eligible.has(discordId)
+
+	canAssignRole = async (_roleId: string): Promise<boolean> => this.roleAssignable
 
 	grantRole = async (discordId: string, _roleId: string): Promise<boolean> => {
 		if (this.failGrant.has(discordId)) return false

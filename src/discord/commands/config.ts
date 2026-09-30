@@ -21,7 +21,7 @@ import {
 	configTierRoleSet,
 	configView,
 } from "@/copy/strings"
-import type { GuildConfig, GuildTextField } from "@/db/guild-config"
+import type { GuildConfig, GuildTextField, ModsConfig } from "@/db/guild-config"
 import { ephemeralText } from "@/discord/migrate/reply"
 import { PermissionFlagsBits, SlashCommandBuilder } from "discord.js"
 
@@ -156,6 +156,7 @@ export interface ConfigCommandDeps {
 	setField(field: GuildTextField, value: string | null): Promise<void>
 	setTierRole(tier: string, roleId: string): Promise<void>
 	getConfig(): Promise<GuildConfig | null>
+	getModsConfig(): Promise<ModsConfig>
 	postConnectCard(channelId: string): Promise<boolean>
 }
 
@@ -306,7 +307,9 @@ export async function handleConfig(
 	}
 
 	if (sub === "view") {
-		await interaction.reply(ephemeralText(configView(await deps.getConfig())))
+		await interaction.reply(
+			ephemeralText(configView(await deps.getConfig(), await deps.getModsConfig()))
+		)
 		return
 	}
 

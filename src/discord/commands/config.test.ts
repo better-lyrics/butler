@@ -96,6 +96,11 @@ function deps(overrides: Partial<ConfigCommandDeps> = {}): {
 			calls.getConfig++
 			return sampleConfig()
 		},
+		getModsConfig: async () => ({
+			channelId: "mods-1",
+			roleId: "role-mod",
+			minRoleId: "role-active",
+		}),
 		postConnectCard: async (channelId) => {
 			calls.postConnectCard.push(channelId)
 			return true
@@ -354,6 +359,27 @@ describe("handleConfig view", () => {
 			deps({ getConfig: async () => sampleConfig({ modChannelId: null }) }).deps
 		)
 		expect(replies[0]?.content).toContain("Mod channel: not set")
+	})
+
+	it("shows the mod application settings", async () => {
+		const { interaction: int, replies } = interaction({ sub: "view" })
+		await handleConfig(int, deps().deps)
+		const content = replies[0]?.content ?? ""
+		expect(content).toContain("Mod applications channel: <#mods-1>")
+		expect(content).toContain("Mod role: <@&role-mod>")
+		expect(content).toContain("Mod applications min role: <@&role-active>")
+	})
+
+	it("marks unset mod application settings as not set", async () => {
+		const { interaction: int, replies } = interaction({ sub: "view" })
+		await handleConfig(
+			int,
+			deps({ getModsConfig: async () => ({ channelId: null, roleId: null, minRoleId: null }) }).deps
+		)
+		const content = replies[0]?.content ?? ""
+		expect(content).toContain("Mod applications channel: not set")
+		expect(content).toContain("Mod role: not set")
+		expect(content).toContain("Mod applications min role: not set")
 	})
 })
 

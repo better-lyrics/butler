@@ -16,6 +16,7 @@ export interface ModsDiscord {
 	postCard(channelId: string, card: CardPayload): Promise<string | null>
 	editCard(channelId: string, messageId: string, card: CardPayload): Promise<boolean>
 	meetsMinRole(discordId: string, minRoleId: string): Promise<boolean>
+	canAssignRole(roleId: string): Promise<boolean>
 	grantRole(discordId: string, roleId: string): Promise<boolean>
 	sendDm(discordId: string, card: CardPayload): Promise<boolean>
 }

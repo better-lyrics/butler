@@ -4,6 +4,7 @@ import {
 	modsNothingOpen,
 	modsOpenAlready,
 	modsOpenFailed,
+	modsOpenRoleTooHigh,
 	modsPickAlreadyDone,
 	modsPickNotClosed,
 	modsPickNothing,
@@ -371,6 +372,17 @@ describe("mod applications, admin side", () => {
 			expect(content(edits[0])).toContain("mods-min-role")
 			expect(content(edits[0])).not.toContain("mods-role,")
 			expect(await getActiveSession(pool, GUILD)).toBeNull()
+		})
+
+		it("refuses to open when my role sits below the mod role, naming the role", async () => {
+			discord.roleAssignable = false
+			const { deps } = makeDeps(pool, discord)
+			const { interaction, edits } = command("open")
+			await handleMods(interaction, deps)
+			expect(content(edits[0])).toBe(modsOpenRoleTooHigh(MODS_ROLE))
+			expect(content(edits[0])).toContain(`<@&${MODS_ROLE}>`)
+			expect(await getActiveSession(pool, GUILD)).toBeNull()
+			expect(discord.posted).toEqual([])
 		})
 
 		it("refuses to open a second round", async () => {

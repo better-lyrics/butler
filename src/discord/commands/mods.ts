@@ -7,6 +7,7 @@ import {
 	modsOpenAlready,
 	modsOpenFailed,
 	modsOpenMissing,
+	modsOpenRoleTooHigh,
 	modsOpened,
 	modsPickAlreadyDone,
 	modsPickNotClosed,
@@ -113,8 +114,13 @@ async function openRound(interaction: ModsCommandInteraction, deps: ModsDeps): P
 		settings.roleId ? null : "mods-role",
 		settings.minRoleId ? null : "mods-min-role",
 	].filter((name) => name !== null)
-	if (!settings.channelId || missing.length > 0) {
+	if (!settings.channelId || !settings.roleId || missing.length > 0) {
 		await interaction.editReply({ content: modsOpenMissing(missing) })
+		return
+	}
+
+	if (!(await deps.discord.canAssignRole(settings.roleId))) {
+		await interaction.editReply({ content: modsOpenRoleTooHigh(settings.roleId) })
 		return
 	}
 

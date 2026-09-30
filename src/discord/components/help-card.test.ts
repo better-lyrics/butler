@@ -9,6 +9,7 @@ import {
 	helpMigrateLine,
 	helpModsApplyLine,
 	helpModsLine,
+	helpModsSetupLine,
 	helpQueueLine,
 	helpSealLine,
 	helpSetupLine,
@@ -63,6 +64,27 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpWelcomePreviewLine)
 			expect(blob).toContain(helpDigestLine)
 			expect(blob).toContain(helpModsLine)
+			expect(blob).toContain(helpModsSetupLine)
+		})
+
+		it("walks an admin through setting up and running a mod round", () => {
+			const blob = textBlob(buildHelpCard({ isAdmin: true }))
+			for (const command of [
+				"/config mods-channel",
+				"/config mods-role",
+				"/config mods-min-role",
+				"/mods open",
+				"/mods close",
+				"/mods pick",
+			]) {
+				expect(blob).toContain(command)
+			}
+		})
+
+		it("tells everyone how to apply and how to vote", () => {
+			const blob = textBlob(buildHelpCard({ isAdmin: false }))
+			expect(blob).toContain("/mods-apply")
+			expect(blob).toContain("Support")
 		})
 	})
 
@@ -74,6 +96,7 @@ describe("buildHelpCard", () => {
 			expect(blob).not.toContain(helpApplicantsLine)
 			expect(blob).not.toContain(helpWelcomePreviewLine)
 			expect(blob).not.toContain(helpModsLine)
+			expect(blob).not.toContain(helpModsSetupLine)
 		})
 
 		it("is a components v2 payload", () => {

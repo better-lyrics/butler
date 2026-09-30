@@ -487,7 +487,8 @@ export function configView(
 		councilRoleId: string | null
 		reviewChannelId: string | null
 		roleIds: Record<string, string>
-	} | null
+	} | null,
+	mods: { channelId: string | null; roleId: string | null; minRoleId: string | null }
 ): string {
 	if (!config) {
 		return "Nothing is configured yet. Run `/setup` for the full flow, or set fields one at a time with `/config`."
@@ -506,6 +507,9 @@ export function configView(
 		`Council channel: ${channel(config.reviewChannelId)}`,
 		`Council role: ${role(config.councilRoleId)}`,
 		`Tier roles: ${tierRoles}`,
+		`Mod applications channel: ${channel(mods.channelId)}`,
+		`Mod role: ${role(mods.roleId)}`,
+		`Mod applications min role: ${role(mods.minRoleId)}`,
 	].join("\n")
 }
 
@@ -999,10 +1003,13 @@ export function configModsMinRoleSet(mention: string): string {
 }
 
 export const helpModsApplyLine =
-	"`/mods-apply` sends in your mod application while applications are open. Run it again to edit your answers."
+	"`/mods-apply` sends in your mod application while a round is open. Run it again to edit your answers. To vote, hit **Support** on the applications you back. Nobody sees who you voted for."
+
+export const helpModsSetupLine =
+	"Before your first mod round, set `/config mods-channel` (where the board and applications post), `/config mods-role` (the role new mods get), and `/config mods-min-role` (the lowest role that can apply and vote). My role has to sit above the mod role so I can hand it out."
 
 export const helpModsLine =
-	"`/mods open` starts a mod application round, `/mods close` ends voting early, and `/mods pick` chooses the new mods once voting ends."
+	"`/mods open` starts a round and posts the live board. Voting ends on its own, or early with `/mods close`. Then `/mods pick` lists everyone by support: choose the new mods, review, and confirm. I give them the role, DM every applicant their result, and announce the new mods."
 
 export const modsBoardHeading = "**Mod applications are open**"
 
@@ -1089,6 +1096,10 @@ export const modsVoteGone = "This application is no longer in the running."
 
 export function modsOpenMissing(settings: string[]): string {
 	return `Set these first with \`/config\`: ${settings.join(", ")}.`
+}
+
+export function modsOpenRoleTooHigh(roleId: string): string {
+	return `My role has to sit above <@&${roleId}> before I can hand it out. Move my role up in Server Settings, then try again.`
 }
 
 export const modsOpenAlready =

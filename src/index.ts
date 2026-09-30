@@ -38,6 +38,7 @@ import {
 	type GuildConfig,
 	getExamMinRoleId,
 	getGuildConfig,
+	getModsConfig,
 	getReviewLastPostedAt,
 	listGuildConfigs,
 	markReviewPosted,
@@ -348,6 +349,17 @@ const modsDeps: ModsDeps = {
 		},
 		editCard: (channelId, messageId, card) => editBoardMessage(channelId, messageId, card),
 		meetsMinRole: (discordId, minRoleId) => holdsRoleAtOrAbove(discordId, minRoleId),
+		canAssignRole: async (roleId) => {
+			try {
+				const guild = await discord.guilds.fetch(config.guildId)
+				if (!guild.members.me) await guild.members.fetchMe()
+				const role = guild.roles.cache.get(roleId) ?? (await guild.roles.fetch(roleId))
+				return role?.editable ?? false
+			} catch (err) {
+				console.error("mod role check failed", err)
+				return false
+			}
+		},
 		grantRole: async (discordId, roleId) => {
 			const guild = await discord.guilds.fetch(config.guildId)
 			const member = await unlessGoneFromGuild(guild.members.fetch(discordId))
@@ -1397,6 +1409,7 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 			setField: (field, value) => setGuildField(pool, config.guildId, field, value),
 			setTierRole: (tier, roleId) => setTierRole(pool, config.guildId, tier, roleId),
 			getConfig: () => getGuildConfig(pool, config.guildId),
+			getModsConfig: () => getModsConfig(pool, config.guildId),
 			postConnectCard,
 		}).catch((err) => console.error("config handler failed", err))
 		return
