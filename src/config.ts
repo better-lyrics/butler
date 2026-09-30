@@ -92,6 +92,8 @@ export const AVATAR_SUGGESTION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
 
 export const AVATAR_PUBLISH_CLAIM_TTL_MS = 5 * 60 * 1000
 
+export const MODS_REFRESH_MS = 5 * 1000
+
 // keep in sync with unison sessionTtlSeconds (900s); the start-card expiry is derived from this
 export const MIGRATE_SESSION_TTL_MS = 15 * 60 * 1000
 

@@ -5,6 +5,7 @@ import {
 	type GuildConfig,
 	getExamMinRoleId,
 	getGuildConfig,
+	getModsConfig,
 	getReviewLastPostedAt,
 	listGuildConfigs,
 	markReviewPosted,
@@ -173,6 +174,50 @@ describe("guild-config", () => {
 			await upsertGuildConfig(pool, fullConfig())
 			await setGuildField(pool, "g1", "examMinRole", "role-min")
 			expect(await getGuildConfig(pool, "g1")).toEqual(fullConfig())
+		})
+	})
+
+	describe("mod applications settings", () => {
+		it("sets and reads back the channel, role, and min role", async () => {
+			await setGuildField(pool, "g1", "modsChannel", "1300000000000000001")
+			await setGuildField(pool, "g1", "modsRole", "1300000000000000002")
+			await setGuildField(pool, "g1", "modsMinRole", "1300000000000000003")
+			expect(await getModsConfig(pool, "g1")).toEqual({
+				channelId: "1300000000000000001",
+				roleId: "1300000000000000002",
+				minRoleId: "1300000000000000003",
+			})
+		})
+
+		it("reads all nulls for a guild with no config row", async () => {
+			expect(await getModsConfig(pool, "nope")).toEqual({
+				channelId: null,
+				roleId: null,
+				minRoleId: null,
+			})
+		})
+
+		it("clears one setting without touching the others", async () => {
+			await setGuildField(pool, "g1", "modsChannel", "1300000000000000001")
+			await setGuildField(pool, "g1", "modsRole", "1300000000000000002")
+			await setGuildField(pool, "g1", "modsRole", null)
+			expect(await getModsConfig(pool, "g1")).toEqual({
+				channelId: "1300000000000000001",
+				roleId: null,
+				minRoleId: null,
+			})
+		})
+
+		it("does not disturb the rest of the config", async () => {
+			await upsertGuildConfig(pool, fullConfig())
+			await setGuildField(pool, "g1", "modsMinRole", "1300000000000000003")
+			expect(await getGuildConfig(pool, "g1")).toEqual(fullConfig())
+		})
+
+		it("regression: a /setup re-run keeps the mod applications settings", async () => {
+			await setGuildField(pool, "g1", "modsChannel", "1300000000000000001")
+			await upsertGuildConfig(pool, fullConfig())
+			expect((await getModsConfig(pool, "g1")).channelId).toBe("1300000000000000001")
 		})
 	})
 

@@ -4,6 +4,27 @@ import { routeInteraction } from "./router"
 
 describe("routeInteraction", () => {
 	describe("known actions", () => {
+		it("routes every mod applications control with its round and applicant ids", () => {
+			const round = "9c1f6d2e-5b1a-4f7e-9a51-6f0d4c3b2a10"
+			const applicant = "1049311214321823774"
+			expect(routeInteraction(encodeCustomId("mods.support", [round, applicant]))).toEqual({
+				handler: "mods.support",
+				args: [round, applicant],
+			})
+			for (const action of [
+				"mods.apply.submit",
+				"mods.pick.select",
+				"mods.pick.review",
+				"mods.pick.go",
+				"mods.pick.back",
+			]) {
+				expect(routeInteraction(encodeCustomId(action, [round]))).toEqual({
+					handler: action,
+					args: [round],
+				})
+			}
+		})
+
 		it('routes a "revision.approve" button id carrying the lyrics and revision ids', () => {
 			expect(routeInteraction(encodeCustomId("revision.approve", ["4210", "918"]))).toEqual({
 				handler: "revision.approve",

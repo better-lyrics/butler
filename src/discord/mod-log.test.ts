@@ -133,6 +133,53 @@ describe("formatModLogEvent", () => {
 		})
 	})
 
+	describe("mod application events", () => {
+		it("notes who opened a round and when voting ends", () => {
+			const line = formatModLogEvent({
+				kind: "mods_opened",
+				discordId,
+				closesAt: 1_790_604_800_000,
+			})
+			expect(line).toContain(mention)
+			expect(line).toContain("<t:1790604800:R>")
+		})
+
+		it("notes a new application", () => {
+			expect(formatModLogEvent({ kind: "mods_applied", discordId })).toContain(mention)
+		})
+
+		it("counts applicants when voting closes, with singular and plural", () => {
+			expect(formatModLogEvent({ kind: "mods_closed", applicants: 1 })).toContain("1 applicant.")
+			expect(formatModLogEvent({ kind: "mods_closed", applicants: 0 })).toContain("0 applicants.")
+		})
+
+		it("names the picks and any failures when a round is wrapped up", () => {
+			const line = formatModLogEvent({
+				kind: "mods_finalized",
+				discordId: "999888777666555444",
+				picked: [discordId],
+				grantFailed: 1,
+				dmFailed: 2,
+			})
+			expect(line).toContain("<@999888777666555444>")
+			expect(line).toContain(mention)
+			expect(line).toContain("1 role grant failed")
+			expect(line).toContain("2 DMs failed")
+		})
+
+		it("says so when nobody was picked", () => {
+			const line = formatModLogEvent({
+				kind: "mods_finalized",
+				discordId,
+				picked: [],
+				grantFailed: 0,
+				dmFailed: 0,
+			})
+			expect(line).toContain("picked nobody")
+			expect(line).not.toContain("failed")
+		})
+	})
+
 	describe("invariants", () => {
 		const samples: ModLogEvent[] = [
 			{ kind: "sync_triggered", discordId },
@@ -153,6 +200,10 @@ describe("formatModLogEvent", () => {
 			{ kind: "setup_updated", discordId },
 			{ kind: "power_toggled", discordId, on: true },
 			{ kind: "digest_triggered", discordId },
+			{ kind: "mods_opened", discordId, closesAt: 1_790_604_800_000 },
+			{ kind: "mods_applied", discordId },
+			{ kind: "mods_closed", applicants: 4 },
+			{ kind: "mods_finalized", discordId, picked: [discordId], grantFailed: 0, dmFailed: 1 },
 		]
 
 		it("every event produces a non-empty single-line message with a bold tag", () => {

@@ -31,6 +31,12 @@ export type HandlerName =
 	| "avatar.approve.cancel"
 	| "avatar.reject"
 	| "avatar.reject.submit"
+	| "mods.support"
+	| "mods.apply.submit"
+	| "mods.pick.select"
+	| "mods.pick.review"
+	| "mods.pick.go"
+	| "mods.pick.back"
 
 const HANDLERS: readonly HandlerName[] = [
 	"report.add",
@@ -62,6 +68,12 @@ const HANDLERS: readonly HandlerName[] = [
 	"avatar.approve.cancel",
 	"avatar.reject",
 	"avatar.reject.submit",
+	"mods.support",
+	"mods.apply.submit",
+	"mods.pick.select",
+	"mods.pick.review",
+	"mods.pick.go",
+	"mods.pick.back",
 ]
 
 /** A resolved interaction route: which handler to run and its decoded args. */

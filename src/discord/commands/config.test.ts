@@ -10,6 +10,9 @@ import {
 	configGuildOnly,
 	configModChannelCleared,
 	configModChannelSet,
+	configModsChannelSet,
+	configModsMinRoleSet,
+	configModsRoleSet,
 	configNoPermission,
 	configReportSet,
 	configReviewChannelCleared,
@@ -237,6 +240,43 @@ describe("handleConfig role setters", () => {
 		await handleConfig(int, d.deps)
 		expect(d.calls.setField).toEqual([["examMinRole", "role-min"]])
 		expect(replies[0]?.content).toBe(configExamMinRoleSet("<@&role-min>"))
+	})
+
+	it("sets the mod applications channel", async () => {
+		const { interaction: int, replies } = interaction({ sub: "mods-channel", channelId: "mods-1" })
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["modsChannel", "mods-1"]])
+		expect(replies[0]?.content).toBe(configModsChannelSet("<#mods-1>"))
+	})
+
+	it("sets the role given to new mods", async () => {
+		const { interaction: int, replies } = interaction({ sub: "mods-role", roleId: "role-mod" })
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["modsRole", "role-mod"]])
+		expect(replies[0]?.content).toBe(configModsRoleSet("<@&role-mod>"))
+	})
+
+	it("sets the minimum role to apply for mod and vote", async () => {
+		const { interaction: int, replies } = interaction({
+			sub: "mods-min-role",
+			roleId: "role-active",
+		})
+		const d = deps()
+		await handleConfig(int, d.deps)
+		expect(d.calls.setField).toEqual([["modsMinRole", "role-active"]])
+		expect(replies[0]?.content).toBe(configModsMinRoleSet("<@&role-active>"))
+	})
+
+	it("refuses a mods setting with no channel or role given", async () => {
+		for (const sub of ["mods-channel", "mods-role", "mods-min-role"]) {
+			const { interaction: int, replies } = interaction({ sub })
+			const d = deps()
+			await handleConfig(int, d.deps)
+			expect(d.calls.setField).toEqual([])
+			expect(replies[0]?.content).toBe(configError)
+		}
 	})
 
 	it("sets a single tier role through setTierRole, not setField", async () => {

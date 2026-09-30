@@ -11,6 +11,8 @@ import {
 	helpEveryoneLabel,
 	helpHeading,
 	helpMigrateLine,
+	helpModsApplyLine,
+	helpModsLine,
 	helpPowerLine,
 	helpPreviewLine,
 	helpQueueLine,
@@ -36,7 +38,8 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 			text(helpEveryoneLabel),
 			text(helpReportLine),
 			text(helpMigrateLine),
-			text(helpApplyLine)
+			text(helpApplyLine),
+			text(helpModsApplyLine)
 		)
 		.addSeparatorComponents(new SeparatorBuilder().setDivider(true))
 		.addTextDisplayComponents(text(helpCouncilLabel), text(helpSealLine), text(helpQueueLine))
@@ -52,6 +55,7 @@ export function buildHelpCard(opts: { isAdmin: boolean }): CardPayload {
 				text(helpApplicantsLine),
 				text(helpCouncilReportLine),
 				text(helpWelcomePreviewLine),
+				text(helpModsLine),
 				text(helpSyncLine),
 				text(helpDigestLine),
 				text(helpPowerLine),

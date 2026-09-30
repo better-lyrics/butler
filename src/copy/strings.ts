@@ -415,7 +415,7 @@ export const helpCouncilLine =
 	"`/council add` and `/council remove` manage council members, and `/council list` shows them."
 
 export const helpConfigLine =
-	"`/config` changes one setting at a time (a channel, a tier role, the council role, the council channel, or the exam min role), `/config clear` unsets the mod channel, council role, council channel, or exam min role, and `/config view` shows the current setup."
+	"`/config` changes one setting at a time (a channel, a tier role, the council role, the council channel, the exam min role, or a mod application setting), `/config clear` unsets the mod channel, council role, council channel, or exam min role, and `/config view` shows the current setup."
 
 export const helpApplicantsLine =
 	"`/council-applicants` shows who passed the exam so you can approve or reject them."
@@ -985,3 +985,181 @@ export function avatarCooldown(retryAfterMs: number): string {
 	const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000))
 	return `You just suggested one. Try again in ${seconds}s.`
 }
+
+export function configModsChannelSet(mention: string): string {
+	return `Mod applications will post in ${mention}.`
+}
+
+export function configModsRoleSet(mention: string): string {
+	return `New mods will get ${mention}.`
+}
+
+export function configModsMinRoleSet(mention: string): string {
+	return `Anyone with ${mention} or a role above it can apply for mod and vote.`
+}
+
+export const helpModsApplyLine =
+	"`/mods-apply` sends in your mod application while applications are open. Run it again to edit your answers."
+
+export const helpModsLine =
+	"`/mods open` starts a mod application round, `/mods close` ends voting early, and `/mods pick` chooses the new mods once voting ends."
+
+export const modsBoardHeading = "**Mod applications are open**"
+
+export const modsBoardClosedHeading = "**Mod applications are closed**"
+
+export function modsBoardIntro(closesAt: Date): string {
+	return `Want to help run the server? Use \`/mods-apply\` to throw your name in. If you can apply, you can vote too: hit **Support** on anyone you'd back. Votes guide the admins, but they make the final call. Voting ends ${time(closesAt, TimestampStyles.RelativeTime)}.`
+}
+
+export const modsBoardClosedIntro = "Voting's over. The admins are picking the new mods now."
+
+export const modsBoardEmpty = "No applications yet. Be the first."
+
+export function modsBoardLine(input: {
+	rank: number
+	discordId: string
+	bar: string
+	support: number
+}): string {
+	return `\`#${input.rank}\` ${userMention(input.discordId)}  ${input.bar}  ${input.support}`
+}
+
+export function modsBoardMore(count: number): string {
+	return `And ${count} more.`
+}
+
+export function modsApplicationHeading(discordId: string): string {
+	return `**Mod application from ${userMention(discordId)}**`
+}
+
+export const modsQuestionWhy = "Why do you want to be a mod here?"
+
+export const modsQuestionHours = "Your timezone and when you're usually on"
+
+export const modsQuestionExperience = "Any moderation experience?"
+
+export const modsQuestionScenario = "How would you handle this?"
+
+export const modsScenarioPrompt =
+	"Someone keeps derailing chat after a friendly warning. What do you do?"
+
+export const modsQuestionExtra = "Anything else we should know?"
+
+export const modsModalTitle = "Mod application"
+
+export function modsSupportButtonLabel(support: number): string {
+	return `Support · ${support}`
+}
+
+export function modsFinalSupport(support: number): string {
+	return `Voting closed with ${support} ${support === 1 ? "supporter" : "supporters"}.`
+}
+
+export const modsApplyClosed = "Mod applications aren't open right now."
+
+export const modsApplyIneligible =
+	"Mod applications are open to Active Members and up. Stick around and you'll get there."
+
+export const modsApplyPosted = "Your application is up. Good luck."
+
+export const modsApplyUpdated = "Your application is updated."
+
+export const modsApplyNotPosted =
+	"Your answers are saved, but I couldn't post your application. Let an admin know."
+
+export const modsVoteClosed = "Voting has ended for this round."
+
+export const modsVoteIneligible = "Voting is open to Active Members and up."
+
+export const modsVoteSelf = "You can't vote for your own application."
+
+export const modsVoteAdded = "You're supporting this application. Click again to take it back."
+
+export const modsVoteRemoved = "Your support is removed."
+
+export const modsVoteGone = "This application is no longer in the running."
+
+export function modsOpenMissing(settings: string[]): string {
+	return `Set these first with \`/config\`: ${settings.join(", ")}.`
+}
+
+export const modsOpenAlready =
+	"A round is already running. Close it with `/mods close` and pick the new mods with `/mods pick` first."
+
+export const modsOpenFailed =
+	"I couldn't post in the mod applications channel. Check my permissions there."
+
+export function modsOpened(closesAt: Date): string {
+	return `Applications are open. Voting ends ${time(closesAt, TimestampStyles.RelativeTime)}.`
+}
+
+export const modsNothingOpen = "There's no open round to close."
+
+export const modsClosed = "Voting is closed. Run `/mods pick` to choose the new mods."
+
+export const modsPickNotClosed =
+	"Close voting first with `/mods close`, or wait for the round to end."
+
+export const modsPickNothing = "There's no round waiting for picks."
+
+export const modsPickHeading = "**Pick the new mods**"
+
+export const modsPickHelp =
+	"Ranked by support. Choose anyone, whatever their rank. Nothing is sent until you confirm."
+
+export const modsPickNoApplicants =
+	"Nobody applied this round. Confirm to close it out so you can start a new one."
+
+export const modsPickPlaceholder = "Choose the new mods"
+
+export function modsPickOptionDescription(rank: number, support: number): string {
+	return `#${rank} with ${support} ${support === 1 ? "supporter" : "supporters"}`
+}
+
+export const modsPickReviewButtonLabel = "Review picks"
+
+export function modsPickConfirm(input: { picked: string[]; applicants: number }): string {
+	const who =
+		input.picked.length > 0
+			? `Give the mod role to ${input.picked.map(userMention).join(", ")}`
+			: "Pick nobody this round"
+	return `${who}, then DM all ${input.applicants} ${input.applicants === 1 ? "applicant" : "applicants"} their result? This can't be undone.`
+}
+
+export const modsPickGoButtonLabel = "Confirm and notify"
+
+export const modsPickBackButtonLabel = "Back"
+
+export const modsPickAlreadyDone = "This round is already wrapped up."
+
+export function modsFinalizedSummary(input: {
+	granted: number
+	grantFailed: string[]
+	dmFailed: string[]
+}): string {
+	const lines = [`Done. ${input.granted} new ${input.granted === 1 ? "mod" : "mods"}.`]
+	if (input.grantFailed.length > 0) {
+		lines.push(`Couldn't give the role to ${input.grantFailed.map(userMention).join(", ")}.`)
+	}
+	if (input.dmFailed.length > 0) {
+		lines.push(`Couldn't DM ${input.dmFailed.map(userMention).join(", ")}.`)
+	}
+	return lines.join("\n")
+}
+
+export const modsWinnersHeading = "**Meet the new mods**"
+
+export function modsWinnersLine(picked: string[]): string {
+	return `Welcome to the team, ${picked.map(userMention).join(", ")}. Thanks to everyone who applied and voted.`
+}
+
+export const modsResultSelectedHeading = "**You're a mod**"
+
+export const modsResultSelectedBody =
+	"Your mod application was accepted. Thanks for stepping up. An admin will message you about what's next."
+
+export const modsResultNotSelectedHeading = "**About your mod application**"
+
+export const modsResultNotSelectedBody =
+	"Thanks for applying. You weren't picked this time, but every application got read, yours included. Try again next round."

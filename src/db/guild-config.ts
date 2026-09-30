@@ -122,6 +122,9 @@ export type GuildTextField =
 	| "council"
 	| "review"
 	| "examMinRole"
+	| "modsChannel"
+	| "modsRole"
+	| "modsMinRole"
 
 const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 	connect:
@@ -137,6 +140,12 @@ const TEXT_FIELD_UPSERT: Record<GuildTextField, string> = {
 		"INSERT INTO guild_config (guild_id, review_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET review_channel_id = EXCLUDED.review_channel_id",
 	examMinRole:
 		"INSERT INTO guild_config (guild_id, exam_min_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET exam_min_role_id = EXCLUDED.exam_min_role_id",
+	modsChannel:
+		"INSERT INTO guild_config (guild_id, mods_channel_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET mods_channel_id = EXCLUDED.mods_channel_id",
+	modsRole:
+		"INSERT INTO guild_config (guild_id, mods_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET mods_role_id = EXCLUDED.mods_role_id",
+	modsMinRole:
+		"INSERT INTO guild_config (guild_id, mods_min_role_id) VALUES ($1, $2) ON CONFLICT (guild_id) DO UPDATE SET mods_min_role_id = EXCLUDED.mods_min_role_id",
 }
 
 export async function setGuildField(
@@ -154,6 +163,29 @@ export async function getExamMinRoleId(pool: Pool, guildId: string): Promise<str
 		[guildId]
 	)
 	return result.rows[0]?.exam_min_role_id ?? null
+}
+
+export interface ModsConfig {
+	channelId: string | null
+	roleId: string | null
+	minRoleId: string | null
+}
+
+export async function getModsConfig(pool: Pool, guildId: string): Promise<ModsConfig> {
+	const result = await pool.query<{
+		mods_channel_id: string | null
+		mods_role_id: string | null
+		mods_min_role_id: string | null
+	}>(
+		"SELECT mods_channel_id, mods_role_id, mods_min_role_id FROM guild_config WHERE guild_id = $1",
+		[guildId]
+	)
+	const row = result.rows[0]
+	return {
+		channelId: row?.mods_channel_id ?? null,
+		roleId: row?.mods_role_id ?? null,
+		minRoleId: row?.mods_min_role_id ?? null,
+	}
 }
 
 export async function getReviewLastPostedAt(pool: Pool, guildId: string): Promise<number | null> {

@@ -7,6 +7,8 @@ import {
 	helpDigestLine,
 	helpEveryoneLabel,
 	helpMigrateLine,
+	helpModsApplyLine,
+	helpModsLine,
 	helpQueueLine,
 	helpSealLine,
 	helpSetupLine,
@@ -46,6 +48,7 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpEveryoneLabel)
 			expect(blob).toContain(helpMigrateLine)
 			expect(blob).toContain(helpApplyLine)
+			expect(blob).toContain(helpModsApplyLine)
 			expect(blob).toContain(helpCouncilLabel)
 			expect(blob).toContain(helpSealLine)
 			expect(blob).toContain(helpQueueLine)
@@ -59,6 +62,7 @@ describe("buildHelpCard", () => {
 			expect(blob).toContain(helpApplicantsLine)
 			expect(blob).toContain(helpWelcomePreviewLine)
 			expect(blob).toContain(helpDigestLine)
+			expect(blob).toContain(helpModsLine)
 		})
 	})
 
@@ -69,6 +73,7 @@ describe("buildHelpCard", () => {
 			expect(blob).not.toContain(helpSetupLine)
 			expect(blob).not.toContain(helpApplicantsLine)
 			expect(blob).not.toContain(helpWelcomePreviewLine)
+			expect(blob).not.toContain(helpModsLine)
 		})
 
 		it("is a components v2 payload", () => {

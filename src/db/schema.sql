@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS guild_config (
   review_channel_id   TEXT,
   review_last_posted_at BIGINT,
   exam_min_role_id    TEXT,
+  mods_channel_id     TEXT,
+  mods_role_id        TEXT,
+  mods_min_role_id    TEXT,
   enabled             BOOLEAN NOT NULL DEFAULT FALSE
 );
 -- Migration for guild_config tables created before the on/off switch existed.
@@ -29,6 +32,10 @@ ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_channel_id TEXT;
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS review_last_posted_at BIGINT;
 -- Migration for guild_config tables created before the exam minimum role existed.
 ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS exam_min_role_id TEXT;
+-- Migration for guild_config tables created before mod applications existed.
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS mods_channel_id TEXT;
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS mods_role_id TEXT;
+ALTER TABLE guild_config ADD COLUMN IF NOT EXISTS mods_min_role_id TEXT;
 CREATE TABLE IF NOT EXISTS badge_holdings (
   discord_id TEXT NOT NULL,
   guild_id   TEXT NOT NULL,
@@ -104,4 +111,33 @@ CREATE TABLE IF NOT EXISTS council_welcome (
   discord_id TEXT NOT NULL,
   sent_at    BIGINT NOT NULL,
   PRIMARY KEY (guild_id, discord_id)
+);
+CREATE TABLE IF NOT EXISTS mod_session (
+  id               TEXT PRIMARY KEY,
+  guild_id         TEXT NOT NULL,
+  state            TEXT NOT NULL DEFAULT 'open',
+  opened_by        TEXT NOT NULL,
+  opened_at        BIGINT NOT NULL,
+  closes_at        BIGINT NOT NULL,
+  board_channel_id TEXT,
+  board_message_id TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS mod_session_one_active ON mod_session (guild_id) WHERE state <> 'finalized';
+CREATE TABLE IF NOT EXISTS mod_application (
+  session_id   TEXT NOT NULL,
+  discord_id   TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  answers      JSONB NOT NULL,
+  submitted_at BIGINT NOT NULL,
+  channel_id   TEXT,
+  message_id   TEXT,
+  picked       BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (session_id, discord_id)
+);
+CREATE TABLE IF NOT EXISTS mod_vote (
+  session_id   TEXT NOT NULL,
+  applicant_id TEXT NOT NULL,
+  voter_id     TEXT NOT NULL,
+  cast_at      BIGINT NOT NULL,
+  PRIMARY KEY (session_id, applicant_id, voter_id)
 );

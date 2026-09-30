@@ -7,6 +7,7 @@ import {
 	COUNCIL_GETTING_STARTED_URL,
 	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
+	MODS_REFRESH_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
 	isReviewDue,
@@ -94,6 +95,20 @@ import { type DigestResult, digestCommand, handleDigest } from "@/discord/comman
 import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
 import {
+	handleMods,
+	handleModsPickBack,
+	handleModsPickGo,
+	handleModsPickReview,
+	handleModsPickSelect,
+	modsCommand,
+} from "@/discord/commands/mods"
+import {
+	handleModsApply,
+	handleModsApplySubmit,
+	handleModsSupport,
+	modsApplyCommand,
+} from "@/discord/commands/mods-apply"
+import {
 	activateCommand,
 	deactivateCommand,
 	handleActivate,
@@ -146,6 +161,8 @@ import { handleMigrateCommit, handleMigrateConfirm } from "@/discord/migrate/con
 import { handleMigrateContinue } from "@/discord/migrate/continue"
 import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
+import { createCoalescer } from "@/discord/mods/coalesce"
+import { type ModsDeps, closeExpiredRounds, renderBoard, renderCard } from "@/discord/mods/round"
 import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { planCouncilAdmins, readManageAccess } from "@/roles/council-admins"
@@ -227,12 +244,7 @@ async function sendCouncilWelcome(discordId: string): Promise<boolean> {
 	}
 }
 
-// Position-based exam gate. The anchor is /config exam-min-role if set, else the Lyricist tier
-// role, so "Lyricist and above" holds by default while an admin can point it anywhere.
-async function isExamEligible(discordId: string): Promise<boolean> {
-	const gc = await getGuildConfig(pool, config.guildId)
-	const anchorId = (await getExamMinRoleId(pool, config.guildId)) ?? gc?.roleIds.lyricist ?? null
-	if (!anchorId) return false
+async function holdsRoleAtOrAbove(discordId: string, anchorId: string): Promise<boolean> {
 	const guild = await discord.guilds.fetch(config.guildId)
 	const anchor =
 		guild.roles.cache.get(anchorId) ?? (await guild.roles.fetch(anchorId).catch(() => null))
@@ -243,6 +255,14 @@ async function isExamEligible(discordId: string): Promise<boolean> {
 		member.roles.cache.map((role) => role.position),
 		anchor.position
 	)
+}
+
+// Position-based exam gate. The anchor is /config exam-min-role if set, else the Lyricist tier
+// role, so "Lyricist and above" holds by default while an admin can point it anywhere.
+async function isExamEligible(discordId: string): Promise<boolean> {
+	const gc = await getGuildConfig(pool, config.guildId)
+	const anchorId = (await getExamMinRoleId(pool, config.guildId)) ?? gc?.roleIds.lyricist ?? null
+	return anchorId ? holdsRoleAtOrAbove(discordId, anchorId) : false
 }
 
 async function isCouncilMember(discordId: string): Promise<boolean> {
@@ -258,17 +278,7 @@ async function isCouncilMember(discordId: string): Promise<boolean> {
 async function isLyricistOrAbove(discordId: string): Promise<boolean> {
 	const gc = await getGuildConfig(pool, config.guildId)
 	const anchorId = gc?.roleIds.lyricist ?? null
-	if (!anchorId) return false
-	const guild = await discord.guilds.fetch(config.guildId)
-	const anchor =
-		guild.roles.cache.get(anchorId) ?? (await guild.roles.fetch(anchorId).catch(() => null))
-	if (!anchor) return false
-	const member = await guild.members.fetch(discordId).catch(() => null)
-	if (!member) return false
-	return meetsMinRole(
-		member.roles.cache.map((role) => role.position),
-		anchor.position
-	)
+	return anchorId ? holdsRoleAtOrAbove(discordId, anchorId) : false
 }
 
 async function postConnectCard(channelId: string): Promise<boolean> {
@@ -300,6 +310,76 @@ function isGuildMod(interaction: {
 	memberPermissions: ButtonInteraction["memberPermissions"]
 }): boolean {
 	return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild) ?? false
+}
+
+const scheduleAfter = (run: () => void, delayMs: number) => {
+	setTimeout(run, delayMs)
+}
+
+const refreshModsBoard = createCoalescer(
+	MODS_REFRESH_MS,
+	(sessionId) => renderBoard(modsDeps, sessionId),
+	scheduleAfter
+)
+
+const refreshModsCard = createCoalescer(
+	MODS_REFRESH_MS,
+	(key) => {
+		const [sessionId = "", applicantId = ""] = key.split(":")
+		return renderCard(modsDeps, sessionId, applicantId)
+	},
+	scheduleAfter
+)
+
+const modsDeps: ModsDeps = {
+	pool,
+	guildId: config.guildId,
+	now: () => Date.now(),
+	newId: () => randomUUID(),
+	discord: {
+		postCard: async (channelId, card) => {
+			const channel = await discord.channels.fetch(channelId).catch(() => null)
+			if (!channel?.isTextBased() || !channel.isSendable()) return null
+			const message = await channel.send(card).catch((err) => {
+				console.error("mods card post failed", err)
+				return null
+			})
+			return message?.id ?? null
+		},
+		editCard: (channelId, messageId, card) => editBoardMessage(channelId, messageId, card),
+		meetsMinRole: (discordId, minRoleId) => holdsRoleAtOrAbove(discordId, minRoleId),
+		grantRole: async (discordId, roleId) => {
+			const guild = await discord.guilds.fetch(config.guildId)
+			const member = await unlessGoneFromGuild(guild.members.fetch(discordId))
+			if (!member) return false
+			return member.roles.add(roleId).then(
+				() => true,
+				(err) => {
+					console.error("mod role grant failed", err)
+					return false
+				}
+			)
+		},
+		sendDm: async (discordId, card) => {
+			try {
+				const user = await discord.users.fetch(discordId)
+				await user.send(card)
+				return true
+			} catch (err) {
+				console.error("mods result dm failed", err)
+				return false
+			}
+		},
+	},
+	refresh: {
+		board: (sessionId) => refreshModsBoard(sessionId),
+		card: (sessionId, applicantId) => refreshModsCard(`${sessionId}:${applicantId}`),
+	},
+	modLog: (event) => {
+		getGuildConfig(pool, config.guildId)
+			.then((gc) => modLog(gc?.modChannelId ?? null, event))
+			.catch((err) => console.error("mods mod log failed", err))
+	},
 }
 
 async function handleReportButton(interaction: ButtonInteraction): Promise<void> {
@@ -488,6 +568,18 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 				return
 			}
 			await handleAvatarReject(interaction, route.args[0] ?? "")
+			return
+		case "mods.support":
+			await handleModsSupport(interaction, route.args[0] ?? "", route.args[1] ?? "", modsDeps)
+			return
+		case "mods.pick.review":
+			await handleModsPickReview(interaction, route.args[0] ?? "", modsDeps)
+			return
+		case "mods.pick.back":
+			await handleModsPickBack(interaction, route.args[0] ?? "", modsDeps)
+			return
+		case "mods.pick.go":
+			await handleModsPickGo(interaction, route.args[0] ?? "", modsDeps)
 			return
 	}
 }
@@ -697,6 +789,7 @@ async function runAll(): Promise<void> {
 	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
 	await syncCouncilBookmarks().catch((err) => console.error("council bookmark sync failed", err))
 	await reconcileCouncilRoles().catch((err) => console.error("council role sync failed", err))
+	await closeExpiredRounds(modsDeps).catch((err) => console.error("mods round close failed", err))
 }
 
 async function welcomeOnce(discordId: string): Promise<void> {
@@ -1121,6 +1214,8 @@ discord.once(Events.ClientReady, async (client) => {
 			digestCommand.toJSON(),
 			helpCommand.toJSON(),
 			avatarCommand.toJSON(),
+			modsCommand.toJSON(),
+			modsApplyCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
 		await client.application.commands.set([])
@@ -1322,6 +1417,16 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 		}).catch((err) => console.error("avatar propose handler failed", err))
 		return
 	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "mods") {
+		handleMods(interaction, modsDeps).catch((err) => console.error("mods handler failed", err))
+		return
+	}
+	if (interaction.isChatInputCommand() && interaction.commandName === "mods-apply") {
+		handleModsApply(interaction, modsDeps).catch((err) =>
+			console.error("mods-apply handler failed", err)
+		)
+		return
+	}
 	if (interaction.isButton()) {
 		handleButton(interaction).catch((err) => console.error("button handler failed", err))
 		return
@@ -1335,6 +1440,10 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				boostLyrics: (id, keyId) => unison.boostLyrics(id, keyId),
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("seal pick handler failed", err))
+		} else if (route?.handler === "mods.pick.select") {
+			handleModsPickSelect(interaction, route.args[0] ?? "", modsDeps).catch((err) =>
+				console.error("mods pick select handler failed", err)
+			)
 		} else if (route?.handler === "seal.unpick") {
 			handleSealUnpick(interaction, lyricsId, {
 				resolveKeyId,
@@ -1352,6 +1461,10 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				commitMigration: (sessionId, discordId, keepNickname) =>
 					unison.commitMigration(sessionId, discordId, keepNickname),
 			}).catch((err) => console.error("migrate commit handler failed", err))
+		} else if (modalRoute?.handler === "mods.apply.submit") {
+			handleModsApplySubmit(interaction, modalRoute.args[0] ?? "", modsDeps).catch((err) =>
+				console.error("mods apply submit handler failed", err)
+			)
 		} else if (modalRoute?.handler === "queue.reject.submit" && interaction.isFromMessage()) {
 			handleQueueRejectSubmit(interaction, modalRoute.args[0] ?? "", {
 				resolveKeyId,

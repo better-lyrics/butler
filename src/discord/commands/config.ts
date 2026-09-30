@@ -11,6 +11,9 @@ import {
 	configGuildOnly,
 	configModChannelCleared,
 	configModChannelSet,
+	configModsChannelSet,
+	configModsMinRoleSet,
+	configModsRoleSet,
 	configNoPermission,
 	configReportSet,
 	configReviewChannelCleared,
@@ -78,6 +81,28 @@ export const configCommand = new SlashCommandBuilder()
 			.setDescription("Set the minimum role to apply for the Council exam (default: Lyricist)")
 			.addRoleOption((o) =>
 				o.setName("role").setDescription("Minimum role to apply").setRequired(true)
+			)
+	)
+	.addSubcommand((s) =>
+		s
+			.setName("mods-channel")
+			.setDescription("Set the channel where mod applications and the vote board post")
+			.addChannelOption((o) =>
+				o.setName("channel").setDescription("Mod applications channel").setRequired(true)
+			)
+	)
+	.addSubcommand((s) =>
+		s
+			.setName("mods-role")
+			.setDescription("Set the role given to new mods")
+			.addRoleOption((o) => o.setName("role").setDescription("Mod role").setRequired(true))
+	)
+	.addSubcommand((s) =>
+		s
+			.setName("mods-min-role")
+			.setDescription("Set the minimum role to apply for mod and vote")
+			.addRoleOption((o) =>
+				o.setName("role").setDescription("Minimum role to apply and vote").setRequired(true)
 			)
 	)
 	.addSubcommand((s) =>
@@ -211,6 +236,34 @@ export async function handleConfig(
 		}
 		await deps.setField("examMinRole", role.id)
 		await interaction.reply(ephemeralText(configExamMinRoleSet(`<@&${role.id}>`)))
+		return
+	}
+
+	if (sub === "mods-channel") {
+		const channel = interaction.options.getChannel("channel", true)
+		if (!channel) {
+			await interaction.reply(ephemeralText(configError))
+			return
+		}
+		await deps.setField("modsChannel", channel.id)
+		await interaction.reply(ephemeralText(configModsChannelSet(`<#${channel.id}>`)))
+		return
+	}
+
+	if (sub === "mods-role" || sub === "mods-min-role") {
+		const role = interaction.options.getRole("role", true)
+		if (!role) {
+			await interaction.reply(ephemeralText(configError))
+			return
+		}
+		const mention = `<@&${role.id}>`
+		if (sub === "mods-role") {
+			await deps.setField("modsRole", role.id)
+			await interaction.reply(ephemeralText(configModsRoleSet(mention)))
+			return
+		}
+		await deps.setField("modsMinRole", role.id)
+		await interaction.reply(ephemeralText(configModsMinRoleSet(mention)))
 		return
 	}
 
