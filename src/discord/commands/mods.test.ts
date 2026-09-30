@@ -224,7 +224,7 @@ describe("mod applications, admin side", () => {
 			)
 
 			const select = component({ values: [ALICE, CARA] })
-			await handleModsPickSelect(select.interaction, "round-1", deps)
+			await handleModsPickSelect(select.interaction, "round-1", 0, deps)
 			expect((await getApplication(pool, "round-1", ALICE))?.picked).toBe(true)
 			expect((await getApplication(pool, "round-1", BOB))?.picked).toBe(false)
 
@@ -308,9 +308,9 @@ describe("mod applications, admin side", () => {
 			await openRound(pool)
 			await addApplicant(pool, ALICE, "1400000000000000101")
 			await closeSession(pool, "round-1")
-			await setPicks(pool, "round-1", [ALICE])
+			await setPicks(pool, "round-1", { among: [ALICE], picked: [ALICE] })
 			const { deps } = makeDeps(pool, discord)
-			await handleModsPickSelect(component({ values: [] }).interaction, "round-1", deps)
+			await handleModsPickSelect(component({ values: [] }).interaction, "round-1", 0, deps)
 			expect((await getApplication(pool, "round-1", ALICE))?.picked).toBe(false)
 		})
 
@@ -319,7 +319,12 @@ describe("mod applications, admin side", () => {
 			await addApplicant(pool, ALICE, "1400000000000000101")
 			await closeSession(pool, "round-1")
 			const { deps } = makeDeps(pool, discord)
-			await handleModsPickSelect(component({ values: [ALICE, BOB] }).interaction, "round-1", deps)
+			await handleModsPickSelect(
+				component({ values: [ALICE, BOB] }).interaction,
+				"round-1",
+				0,
+				deps
+			)
 			await handleModsPickGo(component().interaction, "round-1", deps)
 			expect(discord.granted).toEqual([ALICE])
 		})
@@ -342,7 +347,8 @@ describe("mod applications, admin side", () => {
 			await closeSession(pool, "round-1")
 			const { deps } = makeDeps(pool, discord)
 			for (const handle of [
-				handleModsPickSelect,
+				(i: Parameters<typeof handleModsPickReview>[0], id: string, d: typeof deps) =>
+					handleModsPickSelect(i, id, 0, d),
 				handleModsPickReview,
 				handleModsPickBack,
 				handleModsPickGo,
@@ -414,7 +420,7 @@ describe("mod applications, admin side", () => {
 			await openRound(pool)
 			await addApplicant(pool, ALICE, "1400000000000000101")
 			await closeSession(pool, "round-1")
-			await setPicks(pool, "round-1", [ALICE])
+			await setPicks(pool, "round-1", { among: [ALICE], picked: [ALICE] })
 			const { deps } = makeDeps(pool, discord)
 			await handleModsPickGo(component().interaction, "round-1", deps)
 			const again = component()
@@ -431,7 +437,7 @@ describe("mod applications, admin side", () => {
 			await finalizeSession(pool, "round-1")
 			const { deps } = makeDeps(pool, discord)
 			const select = component({ values: [ALICE] })
-			await handleModsPickSelect(select.interaction, "round-1", deps)
+			await handleModsPickSelect(select.interaction, "round-1", 0, deps)
 			expect((await getApplication(pool, "round-1", ALICE))?.picked).toBe(false)
 			expect(text(select.updates[0])).toContain(modsPickAlreadyDone)
 		})
@@ -441,7 +447,7 @@ describe("mod applications, admin side", () => {
 			await addApplicant(pool, ALICE, "1400000000000000101")
 			await addApplicant(pool, BOB, "1400000000000000102")
 			await closeSession(pool, "round-1")
-			await setPicks(pool, "round-1", [ALICE, BOB])
+			await setPicks(pool, "round-1", { among: [ALICE, BOB], picked: [ALICE, BOB] })
 			discord.failGrant.add(ALICE)
 			discord.failDm.add(BOB)
 			const { deps, logs } = makeDeps(pool, discord)
@@ -459,7 +465,7 @@ describe("mod applications, admin side", () => {
 			await openRound(pool)
 			await addApplicant(pool, ALICE, "1400000000000000101")
 			await closeSession(pool, "round-1")
-			await setPicks(pool, "round-1", [ALICE])
+			await setPicks(pool, "round-1", { among: [ALICE], picked: [ALICE] })
 			await setGuildField(pool, GUILD, "modsRole", null)
 			const { deps } = makeDeps(pool, discord)
 			const go = component()
@@ -512,6 +518,31 @@ describe("mod applications, admin side", () => {
 	})
 
 	describe("cross-field interactions", () => {
+		it("regression: the second menu page picks its own applicants without clearing the first", async () => {
+			await openRound(pool)
+			const ids = Array.from(
+				{ length: 30 },
+				(_, i) => `1500000000000000${String(i).padStart(3, "0")}`
+			)
+			for (const [i, id] of ids.entries()) {
+				await saveApplication(pool, {
+					sessionId: "round-1",
+					discordId: id,
+					displayName: id,
+					answers: ANSWERS,
+					submittedAt: NOW + i,
+				})
+			}
+			await closeSession(pool, "round-1")
+			const { deps } = makeDeps(pool, discord)
+			const first = ids[0] ?? ""
+			const last = ids[29] ?? ""
+			await handleModsPickSelect(component({ values: [first] }).interaction, "round-1", 0, deps)
+			await handleModsPickSelect(component({ values: [last] }).interaction, "round-1", 1, deps)
+			expect((await getApplication(pool, "round-1", first))?.picked).toBe(true)
+			expect((await getApplication(pool, "round-1", last))?.picked).toBe(true)
+		})
+
 		it("refuses outside a server", async () => {
 			const { deps } = makeDeps(pool, discord)
 			const { interaction, replies } = command("open", { guildId: null })

@@ -256,21 +256,30 @@ export async function setApplicationCard(
 	)
 }
 
+const ACCEPTING_VOTES = `EXISTS (SELECT 1 FROM mod_session
+	WHERE id = $1 AND state = 'open' AND closes_at > $4::bigint)`
+
+// Returns null once voting has ended. Every write re-checks, so a vote racing a close never lands.
 export async function toggleSupport(
 	pool: Pool,
 	input: { sessionId: string; applicantId: string; voterId: string; at: number }
-): Promise<{ supported: boolean; support: number }> {
+): Promise<{ supported: boolean; support: number } | null> {
+	const params = [input.sessionId, input.applicantId, input.voterId, input.at]
 	const removed = await pool.query(
 		`DELETE FROM mod_vote WHERE session_id = $1 AND applicant_id = $2 AND voter_id = $3
-		 RETURNING voter_id`,
-		[input.sessionId, input.applicantId, input.voterId]
+		 AND ${ACCEPTING_VOTES} RETURNING voter_id`,
+		params
 	)
 	if (removed.rows.length === 0) {
-		await pool.query(
-			`INSERT INTO mod_vote (session_id, applicant_id, voter_id, cast_at) VALUES ($1, $2, $3, $4)
-			 ON CONFLICT (session_id, applicant_id, voter_id) DO NOTHING`,
-			[input.sessionId, input.applicantId, input.voterId, input.at]
+		const added = await pool.query(
+			`INSERT INTO mod_vote (session_id, applicant_id, voter_id, cast_at)
+			 SELECT $1::text, $2::text, $3::text, $4::bigint WHERE ${ACCEPTING_VOTES}
+			 ON CONFLICT (session_id, applicant_id, voter_id) DO NOTHING RETURNING voter_id`,
+			params
 		)
+		if (added.rows.length === 0 && !(await isAcceptingVotes(pool, input.sessionId, input.at))) {
+			return null
+		}
 	}
 	return {
 		supported: removed.rows.length === 0,
@@ -278,12 +287,30 @@ export async function toggleSupport(
 	}
 }
 
-export async function setPicks(pool: Pool, sessionId: string, discordIds: string[]): Promise<void> {
-	await pool.query("UPDATE mod_application SET picked = FALSE WHERE session_id = $1", [sessionId])
-	for (const discordId of discordIds) {
+async function isAcceptingVotes(pool: Pool, sessionId: string, at: number): Promise<boolean> {
+	const result = await pool.query(
+		"SELECT id FROM mod_session WHERE id = $1 AND state = 'open' AND closes_at > $2",
+		[sessionId, at]
+	)
+	return result.rows.length > 0
+}
+
+// Scoped to the applicants one menu page lists, and refused unless voting is closed but not wrapped up.
+export async function setPicks(
+	pool: Pool,
+	sessionId: string,
+	input: { among: string[]; picked: string[] }
+): Promise<boolean> {
+	const closed = await pool.query("SELECT id FROM mod_session WHERE id = $1 AND state = 'closed'", [
+		sessionId,
+	])
+	if (closed.rows.length === 0) return false
+	for (const discordId of input.among) {
 		await pool.query(
-			"UPDATE mod_application SET picked = TRUE WHERE session_id = $1 AND discord_id = $2",
-			[sessionId, discordId]
+			`UPDATE mod_application SET picked = $3 WHERE session_id = $1 AND discord_id = $2
+			 AND EXISTS (SELECT 1 FROM mod_session WHERE id = $1 AND state = 'closed')`,
+			[sessionId, discordId, input.picked.includes(discordId)]
 		)
 	}
+	return true
 }

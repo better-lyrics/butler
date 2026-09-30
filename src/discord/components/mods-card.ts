@@ -18,6 +18,7 @@ import {
 	modsPickOptionDescription,
 	modsPickPlaceholder,
 	modsPickReviewButtonLabel,
+	modsPickUnlisted,
 	modsQuestionExperience,
 	modsQuestionExtra,
 	modsQuestionHours,
@@ -33,7 +34,7 @@ import {
 	modsWinnersLine,
 } from "@/copy/strings"
 import type { ModApplication } from "@/db/mod-sessions"
-import { type ApplicantTally, rankApplicants, supportBar } from "@/discord/mods/ballot"
+import { type ApplicantTally, pickPages, rankApplicants, supportBar } from "@/discord/mods/ballot"
 import { encodeCustomId } from "@/interactions/custom-id"
 import {
 	ActionRowBuilder,
@@ -98,14 +99,16 @@ export function buildModsBoardCard(opts: {
 	return card(container)
 }
 
+// Past this many lines the rest folds into the last one, so quote markers never outgrow the card.
+const MAX_QUOTED_LINES = 12
+
 function quote(answer: string, max: number): string {
-	return truncate(
-		answer
-			.split("\n")
-			.map((line) => `> ${line}`)
-			.join("\n"),
-		max + 2
-	)
+	const lines = truncate(answer, max).split("\n")
+	const kept = [
+		...lines.slice(0, MAX_QUOTED_LINES - 1),
+		lines.slice(MAX_QUOTED_LINES - 1).join(" "),
+	].filter((line, i) => i < lines.length)
+	return kept.map((line) => `> ${line}`).join("\n")
 }
 
 export function buildModsApplicationCard(opts: {
@@ -148,33 +151,36 @@ export function buildModsPickCard(opts: {
 	sessionId: string
 	applications: readonly ModApplication[]
 }): CardPayload {
-	const byId = new Map(opts.applications.map((a) => [a.discordId, a]))
-	const ranked = rankApplicants(opts.applications).slice(0, MAX_LISTED)
+	const pages = pickPages(opts.applications)
+	const listed = pages.reduce((sum, page) => sum + page.length, 0)
 
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(text(modsPickHeading))
 		.addSeparatorComponents(divider())
-		.addTextDisplayComponents(text(ranked.length > 0 ? modsPickHelp : modsPickNoApplicants))
+		.addTextDisplayComponents(text(listed > 0 ? modsPickHelp : modsPickNoApplicants))
 
-	if (ranked.length > 0) {
-		const options = ranked.map((a) =>
+	pages.forEach((page, index) => {
+		const options = page.map((a) =>
 			new StringSelectMenuOptionBuilder()
-				.setLabel(truncate(byId.get(a.discordId)?.displayName ?? a.discordId, MAX_SELECT_LABEL))
+				.setLabel(truncate(a.displayName, MAX_SELECT_LABEL))
 				.setDescription(modsPickOptionDescription(a.rank, a.support))
 				.setValue(a.discordId)
-				.setDefault(byId.get(a.discordId)?.picked ?? false)
+				.setDefault(a.picked)
 		)
 		container.addActionRowComponents(
 			new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
 				new StringSelectMenuBuilder()
-					.setCustomId(encodeCustomId("mods.pick.select", [opts.sessionId]))
+					.setCustomId(encodeCustomId("mods.pick.select", [opts.sessionId, String(index)]))
 					.setPlaceholder(modsPickPlaceholder)
 					.setMinValues(0)
 					.setMaxValues(options.length)
 					.addOptions(options)
 			)
 		)
+	})
+	if (opts.applications.length > listed) {
+		container.addTextDisplayComponents(text(modsPickUnlisted(opts.applications.length - listed)))
 	}
 
 	container.addActionRowComponents(

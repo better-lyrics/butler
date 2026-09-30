@@ -1441,9 +1441,12 @@ discord.on(Events.InteractionCreate, (interaction: Interaction) => {
 				linkPageUrl: config.linkPageUrl,
 			}).catch((err) => console.error("seal pick handler failed", err))
 		} else if (route?.handler === "mods.pick.select") {
-			handleModsPickSelect(interaction, route.args[0] ?? "", modsDeps).catch((err) =>
-				console.error("mods pick select handler failed", err)
-			)
+			handleModsPickSelect(
+				interaction,
+				route.args[0] ?? "",
+				Number(route.args[1] ?? 0),
+				modsDeps
+			).catch((err) => console.error("mods pick select handler failed", err))
 		} else if (route?.handler === "seal.unpick") {
 			handleSealUnpick(interaction, lyricsId, {
 				resolveKeyId,

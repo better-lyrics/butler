@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isVotingOpen, rankApplicants, supportBar } from "./ballot"
+import { isVotingOpen, pickPages, rankApplicants, supportBar } from "./ballot"
 
 const ALICE = "284091471239512064"
 const BOB = "719388223508070471"
@@ -155,6 +155,77 @@ describe("isVotingOpen", () => {
 
 		it("is shut for a finalized session", () => {
 			expect(isVotingOpen({ state: "finalized", closesAt }, closesAt - 1)).toBe(false)
+		})
+	})
+})
+
+describe("pickPages", () => {
+	function tallies(n: number) {
+		return Array.from({ length: n }, (_, i) => ({
+			discordId: `1300000000000000${String(i).padStart(3, "0")}`,
+			support: n - i,
+			submittedAt: i,
+		}))
+	}
+
+	it("splits ranked applicants into pages of 25", () => {
+		const pages = pickPages(tallies(30))
+		expect(pages.map((p) => p.length)).toEqual([25, 5])
+		expect(pages[0]?.[0]?.discordId).toBe("1300000000000000000")
+	})
+
+	describe("edge cases", () => {
+		it("has no pages for no applicants", () => {
+			expect(pickPages([])).toEqual([])
+		})
+
+		it("fills exactly one page at 25", () => {
+			expect(pickPages(tallies(25)).map((p) => p.length)).toEqual([25])
+		})
+
+		it("stops at four pages", () => {
+			expect(pickPages(tallies(120)).map((p) => p.length)).toEqual([25, 25, 25, 25])
+		})
+	})
+
+	describe("invariants", () => {
+		it("never puts one applicant on two pages", () => {
+			const ids = pickPages(tallies(80))
+				.flat()
+				.map((a) => a.discordId)
+			expect(new Set(ids).size).toBe(ids.length)
+		})
+
+		it("keeps rank order across pages", () => {
+			const supports = pickPages(tallies(60))
+				.flat()
+				.map((a) => a.support)
+			expect(supports).toEqual([...supports].sort((a, b) => b - a))
+		})
+	})
+})
+
+describe("cross-field interactions", () => {
+	it("ranks by support while bars scale to the leader's count", () => {
+		const ranked = rankApplicants([
+			{ discordId: ALICE, support: 5, submittedAt: 2 },
+			{ discordId: BOB, support: 10, submittedAt: 1 },
+		])
+		const top = ranked[0]?.support ?? 0
+		expect(ranked.map((r) => [r.discordId, r.rank, supportBar(r.support, top)])).toEqual([
+			[BOB, 1, "▰▰▰▰▰▰▰▰▰▰"],
+			[ALICE, 2, "▰▰▰▰▰▱▱▱▱▱"],
+		])
+	})
+
+	it("carries extra fields through ranking and paging", () => {
+		const [page] = pickPages([{ discordId: ALICE, support: 1, submittedAt: 1, picked: true }])
+		expect(page?.[0]).toEqual({
+			discordId: ALICE,
+			support: 1,
+			submittedAt: 1,
+			picked: true,
+			rank: 1,
 		})
 	})
 })

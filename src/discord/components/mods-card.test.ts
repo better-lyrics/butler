@@ -48,6 +48,20 @@ function application(discordId: string, support: number, over: Partial<ModApplic
 	} satisfies ModApplication
 }
 
+function textLength(card: { components: { toJSON(): unknown }[] }): number {
+	let total = 0
+	const walk = (node: unknown) => {
+		if (Array.isArray(node)) return node.forEach(walk)
+		if (node && typeof node === "object") {
+			const n = node as { type?: number; content?: string; components?: unknown }
+			if (n.type === 10 && n.content) total += n.content.length
+			walk(n.components)
+		}
+	}
+	walk(card.components.map((c) => c.toJSON()))
+	return total
+}
+
 function json(card: unknown): string {
 	return JSON.stringify(card)
 }
@@ -81,18 +95,22 @@ interface SelectJson {
 	options: { value: string; label: string; default?: boolean; description?: string }[]
 }
 
-function select(card: { components: { toJSON(): unknown }[] }): SelectJson | null {
-	let found: SelectJson | null = null
+function selects(card: { components: { toJSON(): unknown }[] }): SelectJson[] {
+	const found: SelectJson[] = []
 	const walk = (node: unknown) => {
 		if (Array.isArray(node)) return node.forEach(walk)
 		if (node && typeof node === "object") {
 			const n = node as SelectJson & { components?: unknown }
-			if (n.type === 3) found = n
+			if (n.type === 3) found.push(n)
 			walk(n.components)
 		}
 	}
 	walk(card.components.map((c) => c.toJSON()))
 	return found
+}
+
+function select(card: { components: { toJSON(): unknown }[] }): SelectJson | null {
+	return selects(card)[0] ?? null
 }
 
 describe("buildModsBoardCard", () => {
@@ -262,6 +280,36 @@ describe("buildModsApplicationCard", () => {
 			)
 			expect(text).toContain("> line one\\n> line two")
 		})
+
+		it("regression: a capped answer full of line breaks keeps every character", () => {
+			const why = Array.from({ length: 100 }, (_, i) => `l${String(i).padStart(5, "0")}`).join("\n")
+			expect(why.length).toBeLessThanOrEqual(800)
+			const text = json(
+				buildModsApplicationCard({
+					application: application(ALICE, 0, { answers: { ...ANSWERS, why } }),
+					open: true,
+				})
+			)
+			expect(text).toContain("l00000")
+			expect(text).toContain("l00099")
+			expect(text).not.toContain("…")
+		})
+
+		it("regression: every answer at its cap and full of line breaks still fits 4000 characters", () => {
+			const lines = (n: number) => "x\n".repeat(n).slice(0, n * 2 - 1)
+			const full: ModAnswers = {
+				why: lines(400),
+				hours: lines(50),
+				experience: lines(400),
+				scenario: lines(400),
+				extra: lines(200),
+			}
+			const card = buildModsApplicationCard({
+				application: application(ALICE, 0, { answers: full }),
+				open: true,
+			})
+			expect(textLength(card)).toBeLessThanOrEqual(4000)
+		})
 	})
 })
 
@@ -277,7 +325,7 @@ describe("buildModsPickCard", () => {
 				],
 			})
 			const menu = select(card)
-			expect(menu?.custom_id).toBe(`mods.pick.select:${SESSION}`)
+			expect(menu?.custom_id).toBe(`mods.pick.select:${SESSION}:0`)
 			expect(menu?.options.map((o) => o.value)).toEqual([BOB, CARA, ALICE])
 			expect(menu?.options.map((o) => o.default ?? false)).toEqual([true, false, false])
 			expect(menu?.options[0]?.description).toBe("#1 with 5 supporters")
@@ -308,13 +356,27 @@ describe("buildModsPickCard", () => {
 			expect(buttons(card)).toHaveLength(1)
 		})
 
-		it("caps the menu at Discord's 25 options", () => {
+		it("regression: splits more than 25 applicants across menus so everyone can be picked", () => {
 			const applications = Array.from({ length: 30 }, (_, i) =>
 				application(`13000000000000000${String(i).padStart(2, "0")}`, i)
 			)
-			const menu = select(buildModsPickCard({ sessionId: SESSION, applications }))
-			expect(menu?.options).toHaveLength(25)
-			expect(menu?.max_values).toBe(25)
+			const menus = selects(buildModsPickCard({ sessionId: SESSION, applications }))
+			expect(menus.map((m) => m.custom_id)).toEqual([
+				`mods.pick.select:${SESSION}:0`,
+				`mods.pick.select:${SESSION}:1`,
+			])
+			expect(menus.map((m) => m.options.length)).toEqual([25, 5])
+			expect(menus.map((m) => m.max_values)).toEqual([25, 5])
+			expect(new Set(menus.flatMap((m) => m.options.map((o) => o.value))).size).toBe(30)
+		})
+
+		it("shows up to four menus and says how many more are not listed", () => {
+			const applications = Array.from({ length: 120 }, (_, i) =>
+				application(`1300000000000000${String(i).padStart(3, "0")}`, i)
+			)
+			const card = buildModsPickCard({ sessionId: SESSION, applications })
+			expect(selects(card)).toHaveLength(4)
+			expect(json(card)).toContain("20 more")
 		})
 
 		it("clips a long display name to Discord's 100 character label cap", () => {
@@ -385,5 +447,28 @@ describe("buildModsNoticeCard", () => {
 
 	it("never pings even when the notice mentions someone", () => {
 		expect(buildModsNoticeCard(`Couldn't DM <@${ALICE}>.`).allowedMentions).toEqual({ parse: [] })
+	})
+})
+
+describe("error paths", () => {
+	it("renders an application whose answers are empty without crashing", () => {
+		const blank = { why: "", hours: "", experience: "", scenario: "", extra: "" }
+		const card = buildModsApplicationCard({
+			application: application(ALICE, 0, { answers: blank }),
+			open: true,
+		})
+		expect(json(card)).not.toContain("Anything else we should know?")
+		expect(buttons(card)).toHaveLength(1)
+	})
+
+	it("draws a full bar for a lone applicant after voting closes", () => {
+		const text = json(
+			buildModsBoardCard({
+				open: false,
+				closesAt: CLOSES_AT,
+				applicants: [{ discordId: ALICE, support: 3, submittedAt: 1 }],
+			})
+		)
+		expect(text).toContain("▰▰▰▰▰▰▰▰▰▰  3")
 	})
 })

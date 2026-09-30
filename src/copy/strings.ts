@@ -1058,8 +1058,11 @@ export function modsFinalSupport(support: number): string {
 
 export const modsApplyClosed = "Mod applications aren't open right now."
 
-export const modsApplyIneligible =
-	"Mod applications are open to Active Members and up. Stick around and you'll get there."
+export function modsApplyIneligible(minRoleId: string | null): string {
+	return minRoleId
+		? `Mod applications are open to <@&${minRoleId}> and up. Stick around and you'll get there.`
+		: "Mod applications aren't set up yet. Let an admin know."
+}
 
 export const modsApplyPosted = "Your application is up. Good luck."
 
@@ -1070,7 +1073,11 @@ export const modsApplyNotPosted =
 
 export const modsVoteClosed = "Voting has ended for this round."
 
-export const modsVoteIneligible = "Voting is open to Active Members and up."
+export function modsVoteIneligible(minRoleId: string | null): string {
+	return minRoleId
+		? `Voting is open to <@&${minRoleId}> and up.`
+		: "Voting isn't set up yet. Let an admin know."
+}
 
 export const modsVoteSelf = "You can't vote for your own application."
 
@@ -1112,6 +1119,10 @@ export const modsPickNoApplicants =
 	"Nobody applied this round. Confirm to close it out so you can start a new one."
 
 export const modsPickPlaceholder = "Choose the new mods"
+
+export function modsPickUnlisted(count: number): string {
+	return `${count} more ${count === 1 ? "applicant isn't" : "applicants aren't"} listed. Only the top 100 fit here.`
+}
 
 export function modsPickOptionDescription(rank: number, support: number): string {
 	return `#${rank} with ${support} ${support === 1 ? "supporter" : "supporters"}`

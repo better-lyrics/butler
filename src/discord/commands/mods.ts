@@ -32,7 +32,7 @@ import {
 	buildModsWinnersCard,
 } from "@/discord/components/mods-card"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
-import { isVotingOpen } from "@/discord/mods/ballot"
+import { isVotingOpen, pickPages } from "@/discord/mods/ballot"
 import { type ModsDeps, closeRound } from "@/discord/mods/round"
 import { MessageFlags, PermissionFlagsBits, SlashCommandBuilder } from "discord.js"
 
@@ -67,7 +67,7 @@ export interface ModsCommandInteraction extends Permissioned {
 	user: { id: string }
 	options: {
 		getSubcommand(): string
-		getInteger(name: string, required?: boolean): number | null
+		getInteger(name: string, required: true): number
 	}
 	reply(payload: unknown): Promise<unknown>
 	deferReply(payload: { flags: number }): Promise<unknown>
@@ -119,7 +119,7 @@ async function openRound(interaction: ModsCommandInteraction, deps: ModsDeps): P
 	}
 
 	const now = deps.now()
-	const days = interaction.options.getInteger("days", true) ?? 1
+	const days = interaction.options.getInteger("days", true)
 	const session = await openSession(deps.pool, {
 		id: deps.newId(),
 		guildId: deps.guildId,
@@ -195,10 +195,17 @@ async function pickCard(deps: ModsDeps, sessionId: string) {
 export async function handleModsPickSelect(
 	interaction: ModsPickInteraction,
 	sessionId: string,
+	page: number,
 	deps: ModsDeps
 ): Promise<void> {
 	if (!(await closedRound(interaction, sessionId, deps))) return
-	await setPicks(deps.pool, sessionId, interaction.values ?? [])
+	const pages = pickPages(await listApplications(deps.pool, sessionId))
+	const among = (pages[page] ?? []).map((a) => a.discordId)
+	const saved = await setPicks(deps.pool, sessionId, { among, picked: interaction.values ?? [] })
+	if (!saved) {
+		await interaction.update(buildModsNoticeCard(modsPickAlreadyDone))
+		return
+	}
 	await interaction.update(await pickCard(deps, sessionId))
 }
 

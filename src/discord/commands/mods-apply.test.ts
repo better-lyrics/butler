@@ -269,7 +269,17 @@ describe("mod applications, member side", () => {
 			const { interaction, modals, replies } = commandInteraction(ALICE)
 			await handleModsApply(interaction, deps)
 			expect(modals).toEqual([])
-			expect(content(replies[0])).toBe(modsApplyIneligible)
+			expect(content(replies[0])).toBe(modsApplyIneligible(ACTIVE_MEMBER_ROLE))
+		})
+
+		it("names the configured role, not a hardcoded one, when turning a member away", async () => {
+			await openRound(pool)
+			discord.eligible.delete(ALICE)
+			const { deps } = makeDeps(pool, discord)
+			const { interaction, replies } = commandInteraction(ALICE)
+			await handleModsApply(interaction, deps)
+			expect(content(replies[0])).toContain(`<@&${ACTIVE_MEMBER_ROLE}>`)
+			expect(content(replies[0])).not.toContain("Active Member")
 		})
 
 		it("turns everyone away when the minimum role is not configured", async () => {
@@ -278,7 +288,7 @@ describe("mod applications, member side", () => {
 			const { deps } = makeDeps(pool, discord)
 			const { interaction, replies } = commandInteraction(ALICE)
 			await handleModsApply(interaction, deps)
-			expect(content(replies[0])).toBe(modsApplyIneligible)
+			expect(content(replies[0])).toBe(modsApplyIneligible(null))
 		})
 
 		it("regression: a form submitted after voting closed is refused and not saved", async () => {
@@ -375,7 +385,7 @@ describe("mod applications, member side", () => {
 			const { deps } = makeDeps(pool, discord)
 			const vote = supportInteraction(CARA)
 			await handleModsSupport(vote.interaction, "round-1", ALICE, deps)
-			expect(content(vote.edits[0])).toBe(modsVoteIneligible)
+			expect(content(vote.edits[0])).toBe(modsVoteIneligible(ACTIVE_MEMBER_ROLE))
 			expect((await getApplication(pool, "round-1", ALICE))?.support).toBe(0)
 		})
 
@@ -418,6 +428,26 @@ describe("mod applications, member side", () => {
 			for (const message of [...discord.posted, ...discord.edits]) {
 				expect(text(message.card)).not.toContain(BOB)
 			}
+		})
+	})
+
+	describe("cross-field interactions", () => {
+		it("a vote on one application leaves every other count alone", async () => {
+			await openRound(pool)
+			for (const id of [ALICE, BOB]) {
+				await saveApplication(pool, {
+					sessionId: "round-1",
+					discordId: id,
+					displayName: id,
+					answers: ANSWERS,
+					submittedAt: NOW,
+				})
+			}
+			const { deps, refreshed } = makeDeps(pool, discord)
+			await handleModsSupport(supportInteraction(CARA).interaction, "round-1", ALICE, deps)
+			expect((await getApplication(pool, "round-1", ALICE))?.support).toBe(1)
+			expect((await getApplication(pool, "round-1", BOB))?.support).toBe(0)
+			expect(refreshed.cards).toEqual([`round-1:${ALICE}`])
 		})
 	})
 })

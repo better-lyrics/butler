@@ -6,11 +6,13 @@ export interface ApplicantTally {
 	submittedAt: number
 }
 
-export interface RankedApplicant extends ApplicantTally {
-	rank: number
-}
+export type Ranked<T extends ApplicantTally> = T & { rank: number }
 
 const BAR_WIDTH = 10
+
+export const PICK_PAGE_SIZE = 25
+
+export const MAX_PICK_PAGES = 4
 
 function compareTallies(a: ApplicantTally, b: ApplicantTally): number {
 	if (a.support !== b.support) return b.support - a.support
@@ -18,7 +20,7 @@ function compareTallies(a: ApplicantTally, b: ApplicantTally): number {
 	return a.discordId < b.discordId ? -1 : a.discordId > b.discordId ? 1 : 0
 }
 
-export function rankApplicants(tallies: readonly ApplicantTally[]): RankedApplicant[] {
+export function rankApplicants<T extends ApplicantTally>(tallies: readonly T[]): Ranked<T>[] {
 	const sorted = [...tallies].sort(compareTallies)
 	return sorted.map((tally) => {
 		const firstWithSameSupport = sorted.findIndex((t) => t.support === tally.support)
@@ -37,4 +39,14 @@ export function isVotingOpen(
 	now: number
 ): boolean {
 	return session.state === "open" && now < session.closesAt
+}
+
+// Discord caps a select menu at 25 options, so the pick list spreads over several menus.
+export function pickPages<T extends ApplicantTally>(tallies: readonly T[]): Ranked<T>[][] {
+	const ranked = rankApplicants(tallies)
+	const pages: Ranked<T>[][] = []
+	for (let i = 0; i < ranked.length && pages.length < MAX_PICK_PAGES; i += PICK_PAGE_SIZE) {
+		pages.push(ranked.slice(i, i + PICK_PAGE_SIZE))
+	}
+	return pages
 }

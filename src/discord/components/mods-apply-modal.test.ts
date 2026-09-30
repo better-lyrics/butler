@@ -150,3 +150,20 @@ describe("readModsAnswers", () => {
 		})
 	})
 })
+
+describe("error paths", () => {
+	it("reads a submit missing every field as empty answers and no extra", () => {
+		expect(readModsAnswers(fields({}))).toEqual({
+			why: "",
+			hours: "",
+			experience: "",
+			scenario: "",
+			extra: null,
+		})
+	})
+
+	it("regression: prefills nothing for a blank old answer instead of sending an empty value", () => {
+		const values = inputs(buildModsApplyModal(SUBMIT_ID, { ...ANSWERS, hours: "" }))
+		expect(values[1]?.value).toBeUndefined()
+	})
+})

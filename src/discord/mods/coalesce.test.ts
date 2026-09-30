@@ -124,3 +124,44 @@ describe("createCoalescer", () => {
 		})
 	})
 })
+
+describe("createCoalescer edge cases", () => {
+	it("a request made while a run is in flight schedules exactly one more run", async () => {
+		const clock = manualClock()
+		let release: () => void = () => {}
+		let calls = 0
+		const request = createCoalescer(
+			5000,
+			() => {
+				calls++
+				return new Promise<void>((resolve) => {
+					release = resolve
+				})
+			},
+			clock.schedule
+		)
+		request("s1")
+		clock.flush()
+		request("s1")
+		request("s1")
+		expect(clock.size()).toBe(1)
+		release()
+		clock.flush()
+		expect(calls).toBe(2)
+	})
+
+	it("treats an empty key like any other key", () => {
+		const clock = manualClock()
+		const runs: string[] = []
+		const request = createCoalescer(
+			0,
+			async (key: string) => {
+				runs.push(key)
+			},
+			clock.schedule
+		)
+		request("")
+		clock.flush()
+		expect(runs).toEqual([""])
+	})
+})

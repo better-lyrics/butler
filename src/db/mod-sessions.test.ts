@@ -170,7 +170,7 @@ describe("mod sessions store", () => {
 
 		it("keeps unicode answers intact", async () => {
 			await open(pool)
-			const answers = { ...ANSWERS, why: "日本語のサーバーも手伝えます 🎵", extra: "ça va" }
+			const answers = { ...ANSWERS, why: "日本語のサーバーも手伝えます 𝄞", extra: "ça va" }
 			await saveApplication(pool, {
 				sessionId: "s1",
 				discordId: ALICE,
@@ -192,8 +192,9 @@ describe("mod sessions store", () => {
 		it("clears every pick when given an empty list", async () => {
 			await open(pool)
 			await apply(pool, ALICE, 1)
-			await setPicks(pool, "s1", [ALICE])
-			await setPicks(pool, "s1", [])
+			await closeSession(pool, "s1")
+			await setPicks(pool, "s1", { among: [ALICE], picked: [ALICE] })
+			await setPicks(pool, "s1", { among: [ALICE], picked: [] })
 			expect((await getApplication(pool, "s1", ALICE))?.picked).toBe(false)
 		})
 	})
@@ -283,6 +284,43 @@ describe("mod sessions store", () => {
 			expect(await listExpiredSessions(pool, CLOSES_AT + 1)).toEqual([])
 		})
 
+		it("regression: refuses to change picks unless voting is closed and not yet wrapped up", async () => {
+			await open(pool)
+			await apply(pool, ALICE, 1)
+			expect(await setPicks(pool, "s1", { among: [ALICE], picked: [ALICE] })).toBe(false)
+			await closeSession(pool, "s1")
+			await finalizeSession(pool, "s1")
+			expect(await setPicks(pool, "s1", { among: [ALICE], picked: [ALICE] })).toBe(false)
+			expect((await getApplication(pool, "s1", ALICE))?.picked).toBe(false)
+		})
+
+		it("regression: a vote cannot land after the round closes", async () => {
+			await open(pool)
+			await apply(pool, ALICE, 1)
+			await closeSession(pool, "s1")
+			const result = await toggleSupport(pool, {
+				sessionId: "s1",
+				applicantId: ALICE,
+				voterId: BOB,
+				at: OPENED_AT + 1,
+			})
+			expect(result).toBeNull()
+			expect((await getApplication(pool, "s1", ALICE))?.support).toBe(0)
+		})
+
+		it("regression: a vote cannot land after the close time even before the round is closed", async () => {
+			await open(pool)
+			await apply(pool, ALICE, 1)
+			const result = await toggleSupport(pool, {
+				sessionId: "s1",
+				applicantId: ALICE,
+				voterId: BOB,
+				at: CLOSES_AT,
+			})
+			expect(result).toBeNull()
+			expect((await getApplication(pool, "s1", ALICE))?.support).toBe(0)
+		})
+
 		it("returns null for an unknown session", async () => {
 			expect(await getSession(pool, "missing")).toBeNull()
 		})
@@ -296,12 +334,12 @@ describe("mod sessions store", () => {
 
 		it("scopes votes and applications to their session", async () => {
 			await open(pool, "s1")
+			await apply(pool, ALICE, 1, "s1")
+			await toggleSupport(pool, { sessionId: "s1", applicantId: ALICE, voterId: BOB, at: 1 })
 			await closeSession(pool, "s1")
 			await finalizeSession(pool, "s1")
 			await open(pool, "s2")
-			await apply(pool, ALICE, 1, "s1")
 			await apply(pool, ALICE, 2, "s2")
-			await toggleSupport(pool, { sessionId: "s1", applicantId: ALICE, voterId: BOB, at: 1 })
 			expect((await getApplication(pool, "s1", ALICE))?.support).toBe(1)
 			expect((await getApplication(pool, "s2", ALICE))?.support).toBe(0)
 		})
@@ -311,10 +349,33 @@ describe("mod sessions store", () => {
 			await apply(pool, ALICE, 1)
 			await apply(pool, BOB, 2)
 			await apply(pool, CARA, 3)
-			await setPicks(pool, "s1", [ALICE, CARA])
-			await setPicks(pool, "s1", [BOB])
+			await closeSession(pool, "s1")
+			const everyone = [ALICE, BOB, CARA]
+			await setPicks(pool, "s1", { among: everyone, picked: [ALICE, CARA] })
+			await setPicks(pool, "s1", { among: everyone, picked: [BOB] })
 			const picked = (await listApplications(pool, "s1")).filter((a) => a.picked)
 			expect(picked.map((a) => a.discordId)).toEqual([BOB])
+		})
+
+		it("only touches the applicants one menu page lists", async () => {
+			await open(pool)
+			await apply(pool, ALICE, 1)
+			await apply(pool, BOB, 2)
+			await apply(pool, CARA, 3)
+			await closeSession(pool, "s1")
+			await setPicks(pool, "s1", { among: [ALICE, BOB], picked: [ALICE] })
+			await setPicks(pool, "s1", { among: [CARA], picked: [CARA] })
+			const picked = (await listApplications(pool, "s1")).filter((a) => a.picked)
+			expect(picked.map((a) => a.discordId)).toEqual([ALICE, CARA])
+		})
+
+		it("ignores a pick outside the page it came from", async () => {
+			await open(pool)
+			await apply(pool, ALICE, 1)
+			await apply(pool, BOB, 2)
+			await closeSession(pool, "s1")
+			await setPicks(pool, "s1", { among: [ALICE], picked: [ALICE, BOB] })
+			expect((await getApplication(pool, "s1", BOB))?.picked).toBe(false)
 		})
 	})
 })

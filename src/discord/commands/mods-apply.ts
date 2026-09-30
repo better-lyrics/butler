@@ -53,9 +53,13 @@ export interface ModsSupportInteraction {
 	editReply(payload: unknown): Promise<unknown>
 }
 
-async function isEligible(deps: ModsDeps, discordId: string): Promise<boolean> {
+async function eligibility(
+	deps: ModsDeps,
+	discordId: string
+): Promise<{ eligible: boolean; minRoleId: string | null }> {
 	const { minRoleId } = await getModsConfig(deps.pool, deps.guildId)
-	return minRoleId !== null && (await deps.discord.meetsMinRole(discordId, minRoleId))
+	const eligible = minRoleId !== null && (await deps.discord.meetsMinRole(discordId, minRoleId))
+	return { eligible, minRoleId }
 }
 
 export async function handleModsApply(
@@ -71,8 +75,9 @@ export async function handleModsApply(
 		await interaction.reply(ephemeralText(modsApplyClosed))
 		return
 	}
-	if (!(await isEligible(deps, interaction.user.id))) {
-		await interaction.reply(ephemeralText(modsApplyIneligible))
+	const gate = await eligibility(deps, interaction.user.id)
+	if (!gate.eligible) {
+		await interaction.reply(ephemeralText(modsApplyIneligible(gate.minRoleId)))
 		return
 	}
 	const existing = await getApplication(deps.pool, session.id, interaction.user.id)
@@ -145,21 +150,26 @@ export async function handleModsSupport(
 		await interaction.editReply({ content: modsVoteSelf })
 		return
 	}
-	if (!(await isEligible(deps, voterId))) {
-		await interaction.editReply({ content: modsVoteIneligible })
+	const gate = await eligibility(deps, voterId)
+	if (!gate.eligible) {
+		await interaction.editReply({ content: modsVoteIneligible(gate.minRoleId) })
 		return
 	}
 	if (!(await getApplication(deps.pool, sessionId, applicantId))) {
 		await interaction.editReply({ content: modsVoteGone })
 		return
 	}
-	const { supported } = await toggleSupport(deps.pool, {
+	const vote = await toggleSupport(deps.pool, {
 		sessionId,
 		applicantId,
 		voterId,
 		at: deps.now(),
 	})
+	if (!vote) {
+		await interaction.editReply({ content: modsVoteClosed })
+		return
+	}
 	deps.refresh.card(sessionId, applicantId)
 	deps.refresh.board(sessionId)
-	await interaction.editReply({ content: supported ? modsVoteAdded : modsVoteRemoved })
+	await interaction.editReply({ content: vote.supported ? modsVoteAdded : modsVoteRemoved })
 }
