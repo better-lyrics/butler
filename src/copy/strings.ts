@@ -1003,7 +1003,7 @@ export function configModsMinRoleSet(mention: string): string {
 }
 
 export const helpModsApplyLine =
-	"`/mods-apply` sends in your mod application while a round is open. Run it again to edit your answers. To vote, hit **Support** on the applications you back. Nobody sees who you voted for."
+	"`/mods-apply` sends in your mod application while a round is open. Your answers are public: they get posted for everyone to read and vote on. Run it again to edit your answers. To vote, hit **Support** on the applications you back. Nobody sees who you voted for."
 
 export const helpModsSetupLine =
 	"Before your first mod round, set `/config mods-channel` (where the board and applications post), `/config mods-role` (the role new mods get), and `/config mods-min-role` (the lowest role that can apply and vote). My role has to sit above the mod role so I can hand it out."
@@ -1016,7 +1016,7 @@ export const modsBoardHeading = "**Mod applications are open**"
 export const modsBoardClosedHeading = "**Mod applications are closed**"
 
 export function modsBoardIntro(closesAt: Date): string {
-	return `Want to help run the server? Use \`/mods-apply\` to throw your name in. If you can apply, you can vote too: hit **Support** on anyone you'd back. Votes guide the admins, but they make the final call. Voting ends ${time(closesAt, TimestampStyles.RelativeTime)}.`
+	return `Want to help run the server? Use \`/mods-apply\` to throw your name in. Your answers get posted here, and everyone can read them. If you can apply, you can vote too: hit **Support** on anyone you'd back. Votes guide the admins, but they make the final call. Voting ends ${time(closesAt, TimestampStyles.RelativeTime)}.`
 }
 
 export const modsBoardClosedIntro = "Voting's over. The admins are picking the new mods now."
@@ -1053,7 +1053,10 @@ export const modsScenarioPrompt =
 
 export const modsQuestionExtra = "Anything else we should know?"
 
-export const modsModalTitle = "Mod application"
+export const modsModalTitle = "Mod application (answers are public)"
+
+export const modsPublicNotice =
+	"Heads up: your answers get posted in the server for everyone to read."
 
 export function modsSupportButtonLabel(support: number): string {
 	return `Support · ${support}`
@@ -1071,7 +1074,7 @@ export function modsApplyIneligible(minRoleId: string | null): string {
 		: "Mod applications aren't set up yet. Let an admin know."
 }
 
-export const modsApplyPosted = "Your application is up. Good luck."
+export const modsApplyPosted = "Your application is up for everyone to read and vote on. Good luck."
 
 export const modsApplyUpdated = "Your application is updated."
 

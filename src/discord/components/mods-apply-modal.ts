@@ -1,5 +1,6 @@
 import {
 	modsModalTitle,
+	modsPublicNotice,
 	modsQuestionExperience,
 	modsQuestionExtra,
 	modsQuestionHours,
@@ -11,7 +12,14 @@ import type { ModAnswers } from "@/db/mod-sessions"
 import { ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js"
 
 const QUESTIONS = [
-	{ id: "why", label: modsQuestionWhy, style: TextInputStyle.Paragraph, max: 800, required: true },
+	{
+		id: "why",
+		label: modsQuestionWhy,
+		style: TextInputStyle.Paragraph,
+		max: 800,
+		required: true,
+		placeholder: modsPublicNotice,
+	},
 	{ id: "hours", label: modsQuestionHours, style: TextInputStyle.Short, max: 100, required: true },
 	{
 		id: "experience",

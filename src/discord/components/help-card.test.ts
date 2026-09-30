@@ -85,6 +85,7 @@ describe("buildHelpCard", () => {
 			const blob = textBlob(buildHelpCard({ isAdmin: false }))
 			expect(blob).toContain("/mods-apply")
 			expect(blob).toContain("Support")
+			expect(blob).toContain("public")
 		})
 	})
 

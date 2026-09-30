@@ -1,5 +1,6 @@
 import {
 	modsModalTitle,
+	modsPublicNotice,
 	modsQuestionExtra,
 	modsQuestionHours,
 	modsQuestionScenario,
@@ -52,6 +53,13 @@ describe("buildModsApplyModal", () => {
 				modsQuestionScenario,
 				modsQuestionExtra,
 			])
+		})
+
+		it("warns in the title and the first question that answers are public", () => {
+			const modal = buildModsApplyModal(SUBMIT_ID, null)
+			const json = modal.toJSON() as unknown as { title: string }
+			expect(json.title).toContain("public")
+			expect(inputs(modal)[0]?.placeholder).toBe(modsPublicNotice)
 		})
 
 		it("puts the scenario in the placeholder", () => {

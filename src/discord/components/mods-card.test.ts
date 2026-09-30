@@ -138,6 +138,11 @@ describe("buildModsBoardCard", () => {
 			expect(text.indexOf(BOB)).toBeLessThan(text.indexOf(ALICE))
 		})
 
+		it("tells members their application is posted publicly", () => {
+			const text = json(buildModsBoardCard({ open: true, closesAt: CLOSES_AT, applicants: [] }))
+			expect(text).toContain("everyone can read")
+		})
+
 		it("shows when voting ends while open", () => {
 			const text = json(buildModsBoardCard({ open: true, closesAt: CLOSES_AT, applicants: [] }))
 			expect(text).toContain(`<t:${CLOSES_AT / 1000}:R>`)
