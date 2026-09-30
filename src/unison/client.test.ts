@@ -1,7 +1,7 @@
 import type { BotRequestBody } from "@/requests/payload"
 import { beforeEach, describe, expect, it } from "vitest"
 import { pendingRevision } from "./__fixtures__/pending-revision"
-import { createUnisonClient } from "./client"
+import { createUnisonClient, parseRejectionId } from "./client"
 
 interface RecordedRequest {
 	url: string
@@ -1173,7 +1173,9 @@ describe("createUnisonClient rejectLyric", () => {
 	const KEY_ID = "a".repeat(64)
 
 	it("posts keyId and note with bearer auth and encodes the lyrics id", async () => {
-		const { fn, calls } = makeFetch(new Response(null, { status: 200 }))
+		const { fn, calls } = makeFetch(
+			Response.json({ success: true, data: { rejectionId: 318 } }, { status: 200 })
+		)
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
 		const result = await client.rejectLyric("4210", KEY_ID, "wrong sync throughout")
@@ -1185,7 +1187,7 @@ describe("createUnisonClient rejectLyric", () => {
 			keyId: KEY_ID,
 			note: "wrong sync throughout",
 		})
-		expect(result).toEqual({ status: "rejected" })
+		expect(result).toEqual({ status: "rejected", rejectionId: 318 })
 	})
 
 	it("omits note from the body when none is given", async () => {
@@ -1195,6 +1197,39 @@ describe("createUnisonClient rejectLyric", () => {
 		await client.rejectLyric("77", KEY_ID)
 
 		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+	})
+
+	describe("edge cases", () => {
+		it("reports a null rejectionId when the success body is empty", async () => {
+			const { fn } = makeFetch(new Response(null, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.rejectLyric("1", KEY_ID)).toEqual({
+				status: "rejected",
+				rejectionId: null,
+			})
+		})
+
+		it("reports a null rejectionId when the server omits it", async () => {
+			const { fn } = makeFetch(Response.json({ success: true, data: {} }, { status: 200 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.rejectLyric("1", KEY_ID)).toEqual({
+				status: "rejected",
+				rejectionId: null,
+			})
+		})
+
+		for (const malformed of [0, -4, 1.5, "abc", null, true]) {
+			it(`reports a null rejectionId for a malformed id ${JSON.stringify(malformed)}`, async () => {
+				const { fn } = makeFetch(
+					Response.json({ success: true, data: { rejectionId: malformed } }, { status: 200 })
+				)
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.rejectLyric("1", KEY_ID)).toEqual({
+					status: "rejected",
+					rejectionId: null,
+				})
+			})
+		}
 	})
 
 	describe("error paths", () => {
@@ -1233,36 +1268,97 @@ describe("createUnisonClient rejectLyric", () => {
 describe("createUnisonClient unrejectLyric", () => {
 	const KEY_ID = "b".repeat(64)
 
-	it("deletes with keyId body and bearer auth", async () => {
+	it("deletes with keyId and the named rejectionId and bearer auth", async () => {
 		const { fn, calls } = makeFetch(new Response(null, { status: 200 }))
 		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
-		const result = await client.unrejectLyric("4210", KEY_ID)
+		const result = await client.unrejectLyric("4210", KEY_ID, 318)
 
 		expect(calls[0]?.url).toBe("https://unison.test/api/lyrics/4210/reject/bot")
 		expect(calls[0]?.method).toBe("DELETE")
 		expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
-		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, rejectionId: 318 })
 		expect(result).toEqual({ status: "unrejected" })
+	})
+
+	it("omits rejectionId from the body when the card never learned it", async () => {
+		const { fn, calls } = makeFetch(new Response(null, { status: 200 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		await client.unrejectLyric("4210", KEY_ID, null)
+
+		expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID })
 	})
 
 	describe("error paths", () => {
 		it("maps NOT_COMMITTEE to not_council", async () => {
 			const { fn } = makeFetch(errorResponse(403, "NOT_COMMITTEE"))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-			expect(await client.unrejectLyric("1", KEY_ID)).toEqual({ status: "not_council" })
+			expect(await client.unrejectLyric("1", KEY_ID, 318)).toEqual({ status: "not_council" })
 		})
 
 		it("maps NOT_FOUND to not_found", async () => {
 			const { fn } = makeFetch(errorResponse(404, "NOT_FOUND"))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-			expect(await client.unrejectLyric("1", KEY_ID)).toEqual({ status: "not_found" })
+			expect(await client.unrejectLyric("1", KEY_ID, 318)).toEqual({ status: "not_found" })
 		})
 
 		it("maps an unknown error code to a generic error", async () => {
 			const { fn } = makeFetch(errorResponse(500, "NOPE"))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-			expect(await client.unrejectLyric("1", KEY_ID)).toEqual({ status: "error", code: 500 })
+			expect(await client.unrejectLyric("1", KEY_ID, 318)).toEqual({ status: "error", code: 500 })
+		})
+	})
+})
+
+describe("parseRejectionId", () => {
+	describe("happy paths", () => {
+		it("accepts a positive integer", () => {
+			expect(parseRejectionId(318)).toBe(318)
+		})
+
+		it("accepts a digit string, as a custom id arg or a BIGINT column yields", () => {
+			expect(parseRejectionId("318")).toBe(318)
+		})
+	})
+
+	describe("edge cases", () => {
+		it("accepts the smallest valid id", () => {
+			expect(parseRejectionId(1)).toBe(1)
+		})
+
+		it("accepts the largest safe integer", () => {
+			expect(parseRejectionId(String(Number.MAX_SAFE_INTEGER))).toBe(Number.MAX_SAFE_INTEGER)
+		})
+
+		it("rejects zero and the empty arg a legacy custom id decodes to", () => {
+			expect(parseRejectionId(0)).toBeNull()
+			expect(parseRejectionId("")).toBeNull()
+			expect(parseRejectionId("0")).toBeNull()
+		})
+	})
+
+	describe("error paths", () => {
+		for (const bad of [
+			-1,
+			1.5,
+			Number.NaN,
+			"-1",
+			"1.5",
+			" 318",
+			"3e2",
+			"abc",
+			null,
+			undefined,
+			{},
+		]) {
+			it(`rejects ${typeof bad} ${String(bad)}`, () => {
+				expect(parseRejectionId(bad)).toBeNull()
+			})
+		}
+
+		it("rejects an id past the safe integer range", () => {
+			expect(parseRejectionId("9007199254740993")).toBeNull()
 		})
 	})
 })

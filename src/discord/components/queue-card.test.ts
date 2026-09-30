@@ -138,7 +138,7 @@ describe("buildQueueCard", () => {
 
 describe("board cards suppress mentions", () => {
 	it("regression: a rejected card renders its note but pings nobody", () => {
-		const card = buildQueueRejectedCard(entry(), "777", "@everyone drop everything")
+		const card = buildQueueRejectedCard(entry(), "777", "@everyone drop everything", 318)
 		expect(textBlob(card)).toContain(queueRejectNoteLine("@everyone drop everything"))
 		expect(card.allowedMentions).toEqual({ parse: [] })
 	})
@@ -189,22 +189,55 @@ describe("buildQueueSealedCard", () => {
 })
 
 describe("buildQueueRejectedCard", () => {
+	const undoId = (card: ReturnType<typeof buildQueueRejectedCard>) =>
+		buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)?.custom_id
+
 	it("shows a rejected-by line, the reason note, and an undo-reject button", () => {
-		const card = buildQueueRejectedCard(entry(), "777", "line-synced only")
+		const card = buildQueueRejectedCard(entry(), "777", "line-synced only", 318)
 		const blob = textBlob(card)
 		expect(blob).toContain(queueRejectedBy("777"))
 		expect(blob).toContain(queueRejectNoteLine("line-synced only"))
-		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)?.custom_id).toBe(
-			"queue.reject.undo:4210"
-		)
+		expect(undoId(card)).toBe("queue.reject.undo:4210:318")
 	})
 
 	it("omits the reason line when there is no note", () => {
-		expect(textBlob(buildQueueRejectedCard(entry(), "777", null))).not.toContain("Reason:")
+		expect(textBlob(buildQueueRejectedCard(entry(), "777", null, 318))).not.toContain("Reason:")
 	})
 
 	it("falls back to a generic rejected line when no actor is known", () => {
-		expect(textBlob(buildQueueRejectedCard(entry(), null, null))).toContain(queueRejectedGeneric)
+		expect(textBlob(buildQueueRejectedCard(entry(), null, null, 318))).toContain(
+			queueRejectedGeneric
+		)
+	})
+
+	describe("edge cases", () => {
+		it("keeps the legacy undo id when the rejection id is unknown", () => {
+			expect(undoId(buildQueueRejectedCard(entry(), "777", null, null))).toBe(
+				"queue.reject.undo:4210"
+			)
+		})
+
+		it("fits the largest ids inside the 100-char custom id limit", () => {
+			const id = undoId(
+				buildQueueRejectedCard(
+					entry({ id: Number.MAX_SAFE_INTEGER }),
+					"777",
+					null,
+					Number.MAX_SAFE_INTEGER
+				)
+			)
+			expect(id).toBe(`queue.reject.undo:${Number.MAX_SAFE_INTEGER}:${Number.MAX_SAFE_INTEGER}`)
+			expect(id?.length).toBeLessThanOrEqual(100)
+		})
+	})
+
+	describe("regressions", () => {
+		it("regression: undo names the rejection this card created", () => {
+			const [, lyricsId, rejectionId] = (
+				undoId(buildQueueRejectedCard(entry(), "777", "bad sync", 318)) ?? ""
+			).split(":")
+			expect([lyricsId, rejectionId]).toEqual(["4210", "318"])
+		})
 	})
 })
 
@@ -282,6 +315,26 @@ describe("buildBoardCard", () => {
 		})
 		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)).toBeDefined()
 		expect(textBlob(card)).toContain(queueRejectNoteLine("capitalization"))
+	})
+
+	it("keeps the stored rejection id on a re-rendered rejected card", () => {
+		const card = buildBoardCard({
+			state: "rejected",
+			entry: entry(),
+			actorId: "777",
+			note: null,
+			rejectionId: 318,
+		})
+		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)?.custom_id).toBe(
+			"queue.reject.undo:4210:318"
+		)
+	})
+
+	it("re-renders a row stored before rejection ids with the legacy undo id", () => {
+		const card = buildBoardCard({ state: "rejected", entry: entry(), actorId: "777", note: null })
+		expect(buttons(card).find((b) => b.label === queueUndoRejectButtonLabel)?.custom_id).toBe(
+			"queue.reject.undo:4210"
+		)
 	})
 })
 

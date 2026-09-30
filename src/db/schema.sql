@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS avatar_suggestion (
 );
 ALTER TABLE review_board_card ADD COLUMN IF NOT EXISTS bookmark JSONB;
 ALTER TABLE revision_board_card ADD COLUMN IF NOT EXISTS bookmark JSONB;
+ALTER TABLE review_board_card ADD COLUMN IF NOT EXISTS rejection_id BIGINT;
 CREATE TABLE IF NOT EXISTS council_role_member (
   guild_id   TEXT NOT NULL,
   key_id     TEXT NOT NULL,

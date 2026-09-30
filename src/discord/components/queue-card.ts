@@ -97,7 +97,7 @@ interface DecidedInput {
 function decidedCard(
 	input: DecidedInput,
 	line: string,
-	undo: { action: string; label: string }
+	undo: { action: string; label: string; args?: string[] }
 ): CardPayload {
 	const id = String(input.entry.id)
 	const container = new ContainerBuilder()
@@ -118,7 +118,7 @@ function decidedCard(
 				.setLabel(queueVerifyButtonLabel),
 			new ButtonBuilder()
 				.setStyle(ButtonStyle.Secondary)
-				.setCustomId(encodeCustomId(undo.action, [id]))
+				.setCustomId(encodeCustomId(undo.action, [id, ...(undo.args ?? [])]))
 				.setLabel(undo.label)
 		)
 	)
@@ -137,12 +137,14 @@ export function buildQueueSealedCard(entry: QueueEntry, actorId: string | null):
 export function buildQueueRejectedCard(
 	entry: QueueEntry,
 	actorId: string | null,
-	note: string | null
+	note: string | null,
+	rejectionId: number | null
 ): CardPayload {
 	const line = actorId ? queueRejectedBy(actorId) : queueRejectedGeneric
 	return decidedCard({ entry, actorId, note }, line, {
 		action: "queue.reject.undo",
 		label: queueUndoRejectButtonLabel,
+		args: rejectionId === null ? [] : [String(rejectionId)],
 	})
 }
 
@@ -151,10 +153,12 @@ export function buildBoardCard(card: {
 	entry: QueueEntry
 	actorId: string | null
 	note: string | null
+	rejectionId?: number | null
 	bookmark?: CouncilBookmark | null
 }): CardPayload {
 	if (card.state === "sealed") return buildQueueSealedCard(card.entry, card.actorId)
-	if (card.state === "rejected") return buildQueueRejectedCard(card.entry, card.actorId, card.note)
+	if (card.state === "rejected")
+		return buildQueueRejectedCard(card.entry, card.actorId, card.note, card.rejectionId ?? null)
 	return buildQueueCard(card.entry, card.bookmark ?? null)
 }
 

@@ -5,6 +5,7 @@ import {
 	queueError,
 	queueNotCouncil,
 	queueRejectBlockedBySeal,
+	queueRejectNoLongerActive,
 	queueRejectNoteLine,
 	queueRejectUndone,
 	queueRejectedBy,
@@ -25,6 +26,7 @@ import {
 	sealSelf,
 	sealTargetCouncil,
 } from "@/copy/strings"
+import { routeInteraction } from "@/discord/interactions/router"
 import type {
 	QueueEntry,
 	QuotaResult,
@@ -407,7 +409,7 @@ function rejectDeps(
 	storedEntry: QueueEntry | null = entry()
 ) {
 	const calls: Array<[string, string, string | undefined]> = []
-	const rejectedCalls: Array<[string, string, string | null]> = []
+	const rejectedCalls: Array<[string, string, string | null, number | null]> = []
 	return {
 		calls,
 		rejectedCalls,
@@ -418,8 +420,13 @@ function rejectDeps(
 				return result
 			},
 			getEntry: async () => storedEntry,
-			markRejected: async (lyricsId: string, actorId: string, note: string | null) => {
-				rejectedCalls.push([lyricsId, actorId, note])
+			markRejected: async (
+				lyricsId: string,
+				actorId: string,
+				note: string | null,
+				rejectionId: number | null
+			) => {
+				rejectedCalls.push([lyricsId, actorId, note, rejectionId])
 			},
 			linkPageUrl: "https://unison.test/link",
 		},
@@ -448,22 +455,32 @@ function modalSubmit(note: string) {
 describe("handleQueueRejectSubmit", () => {
 	it("rejects, flips the card to rejected with the note, and persists the decision", async () => {
 		const { int, updates } = modalSubmit("  wrong sync throughout  ")
-		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected" })
+		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected", rejectionId: 318 })
 		await handleQueueRejectSubmit(int, "4210", deps)
 		expect(calls).toEqual([["4210", KEY_ID, "wrong sync throughout"]])
-		expect(rejectedCalls).toEqual([["4210", "disc-1", "wrong sync throughout"]])
+		expect(rejectedCalls).toEqual([["4210", "disc-1", "wrong sync throughout", 318]])
 		const blob = payloadText(updates[0])
 		expect(blob).toContain(queueRejectedBy("disc-1"))
 		expect(blob).toContain(queueRejectNoteLine("wrong sync throughout"))
-		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject.undo:4210")
+		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain(
+			"queue.reject.undo:4210:318"
+		)
 	})
 
 	it("omits the note when the field is blank", async () => {
 		const { int } = modalSubmit("   ")
-		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected" })
+		const { deps, calls, rejectedCalls } = rejectDeps({ status: "rejected", rejectionId: 318 })
 		await handleQueueRejectSubmit(int, "4210", deps)
 		expect(calls).toEqual([["4210", KEY_ID, undefined]])
-		expect(rejectedCalls).toEqual([["4210", "disc-1", null]])
+		expect(rejectedCalls).toEqual([["4210", "disc-1", null, 318]])
+	})
+
+	it("renders the legacy undo id and stores no id when the server names none", async () => {
+		const { int, updates } = modalSubmit("note")
+		const { deps, rejectedCalls } = rejectDeps({ status: "rejected", rejectionId: null })
+		await handleQueueRejectSubmit(int, "4210", deps)
+		expect(rejectedCalls).toEqual([["4210", "disc-1", "note", null]])
+		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject.undo:4210")
 	})
 
 	it("falls back to a plain notice when the card entry is gone", async () => {
@@ -471,7 +488,7 @@ describe("handleQueueRejectSubmit", () => {
 		await handleQueueRejectSubmit(
 			int,
 			"4210",
-			rejectDeps({ status: "rejected" }, KEY_ID, null).deps
+			rejectDeps({ status: "rejected", rejectionId: 318 }, KEY_ID, null).deps
 		)
 		expect(payloadText(updates[0])).toBe(queueRejectedBy("disc-1"))
 	})
@@ -497,7 +514,7 @@ describe("handleQueueRejectSubmit", () => {
 
 	it("shows the connect card and never rejects when unlinked", async () => {
 		const { int, replies } = modalSubmit("note")
-		const { deps, calls } = rejectDeps({ status: "rejected" }, null)
+		const { deps, calls } = rejectDeps({ status: "rejected", rejectionId: 318 }, null)
 		await handleQueueRejectSubmit(int, "4210", deps)
 		expect(calls).toEqual([])
 		expect(payloadText(replies[0])).toContain(connectHeading)
@@ -506,11 +523,16 @@ describe("handleQueueRejectSubmit", () => {
 
 function rejectUndoDeps(result: UnrejectResult, storedEntry: QueueEntry | null = entry()) {
 	const pendingCalls: string[] = []
+	const unrejectCalls: Array<[string, string, number | null]> = []
 	return {
 		pendingCalls,
+		unrejectCalls,
 		deps: {
 			resolveKeyId: async () => KEY_ID,
-			unrejectLyric: async () => result,
+			unrejectLyric: async (lyricsId: string, keyId: string, rejectionId: number | null) => {
+				unrejectCalls.push([lyricsId, keyId, rejectionId])
+				return result
+			},
 			getEntry: async () => storedEntry,
 			markPending: async (lyricsId: string) => {
 				pendingCalls.push(lyricsId)
@@ -523,29 +545,74 @@ function rejectUndoDeps(result: UnrejectResult, storedEntry: QueueEntry | null =
 describe("handleQueueRejectUndo", () => {
 	it("restores the actionable card and marks the row pending on success", async () => {
 		const { int, updates } = boardInteraction()
-		const { deps, pendingCalls } = rejectUndoDeps({ status: "unrejected" })
-		await handleQueueRejectUndo(int, "4210", deps)
+		const { deps, pendingCalls, unrejectCalls } = rejectUndoDeps({ status: "unrejected" })
+		await handleQueueRejectUndo(int, "4210", "318", deps)
+		expect(unrejectCalls).toEqual([["4210", KEY_ID, 318]])
 		expect(pendingCalls).toEqual(["4210"])
 		expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject:4210")
 	})
 
 	it("falls back to a plain notice when the entry is gone", async () => {
 		const { int, updates } = boardInteraction()
-		await handleQueueRejectUndo(int, "4210", rejectUndoDeps({ status: "unrejected" }, null).deps)
+		await handleQueueRejectUndo(
+			int,
+			"4210",
+			"318",
+			rejectUndoDeps({ status: "unrejected" }, null).deps
+		)
 		expect(payloadText(updates[0])).toBe(queueRejectUndone)
+	})
+
+	describe("edge cases", () => {
+		it("sends no rejection id for a legacy card whose custom id carries none", async () => {
+			const { int, updates } = boardInteraction()
+			const { deps, unrejectCalls } = rejectUndoDeps({ status: "unrejected" })
+			await handleQueueRejectUndo(int, "4210", "", deps)
+			expect(unrejectCalls).toEqual([["4210", KEY_ID, null]])
+			expect(payloadButtons(updates[0]).map((b) => b.custom_id)).toContain("queue.reject:4210")
+		})
+
+		for (const garbage of ["abc", "0", "-3", "1.5"]) {
+			it(`treats a malformed rejection id arg ${garbage} as unknown`, async () => {
+				const { int } = boardInteraction()
+				const { deps, unrejectCalls } = rejectUndoDeps({ status: "unrejected" })
+				await handleQueueRejectUndo(int, "4210", garbage, deps)
+				expect(unrejectCalls).toEqual([["4210", KEY_ID, null]])
+			})
+		}
+	})
+
+	describe("regressions", () => {
+		it("regression: undo names the rejection this card created", async () => {
+			const reject = modalSubmit("bad sync")
+			await handleQueueRejectSubmit(
+				reject.int,
+				"4210",
+				rejectDeps({ status: "rejected", rejectionId: 318 }).deps
+			)
+			const undoId = payloadButtons(reject.updates[0])
+				.map((b) => b.custom_id)
+				.find((id) => id?.startsWith("queue.reject.undo:"))
+			const route = routeInteraction(undoId ?? "")
+
+			const undo = boardInteraction()
+			const { deps, unrejectCalls } = rejectUndoDeps({ status: "unrejected" })
+			await handleQueueRejectUndo(undo.int, route?.args[0] ?? "", route?.args[1] ?? "", deps)
+			expect(unrejectCalls).toEqual([["4210", KEY_ID, 318]])
+		})
 	})
 
 	describe("error paths reply ephemerally", () => {
 		const cases: Array<[UnrejectResult, string]> = [
 			[{ status: "not_council" }, queueNotCouncil],
-			[{ status: "not_found" }, sealNotFound],
+			[{ status: "not_found" }, queueRejectNoLongerActive],
 			[{ status: "error", code: 500 }, queueError],
 		]
 
 		for (const [result, copy] of cases) {
 			it(`maps ${result.status} to its message`, async () => {
 				const { int, updates, replies } = boardInteraction()
-				await handleQueueRejectUndo(int, "4210", rejectUndoDeps(result).deps)
+				await handleQueueRejectUndo(int, "4210", "318", rejectUndoDeps(result).deps)
 				expect(payloadText(replies[0])).toBe(copy)
 				expect(updates).toHaveLength(0)
 			})
@@ -568,13 +635,18 @@ describe("invariants", () => {
 		expect(JSON.stringify(sealUndo.updates)).not.toContain(KEY_ID)
 
 		const reject = modalSubmit("note")
-		await handleQueueRejectSubmit(reject.int, "4210", rejectDeps({ status: "rejected" }).deps)
+		await handleQueueRejectSubmit(
+			reject.int,
+			"4210",
+			rejectDeps({ status: "rejected", rejectionId: 318 }).deps
+		)
 		expect(JSON.stringify(reject.updates)).not.toContain(KEY_ID)
 
 		const rejectUndo = boardInteraction()
 		await handleQueueRejectUndo(
 			rejectUndo.int,
 			"4210",
+			"318",
 			rejectUndoDeps({ status: "unrejected" }).deps
 		)
 		expect(JSON.stringify(rejectUndo.updates)).not.toContain(KEY_ID)

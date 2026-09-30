@@ -4,6 +4,7 @@ import {
 	queueNotCouncil,
 	queueRejectBlockedBySeal,
 	queueRejectModalTitle,
+	queueRejectNoLongerActive,
 	queueRejectUndone,
 	queueRejectedBy,
 	queueResendEmpty,
@@ -33,13 +34,14 @@ import {
 import { buildRejectNoteModal, readRejectNote } from "@/discord/components/reject-note-modal"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import { encodeCustomId } from "@/interactions/custom-id"
-import type {
-	QueueEntry,
-	QuotaResult,
-	RejectResult,
-	SealResult,
-	UnrejectResult,
-	UnsealResult,
+import {
+	type QueueEntry,
+	type QuotaResult,
+	type RejectResult,
+	type SealResult,
+	type UnrejectResult,
+	type UnsealResult,
+	parseRejectionId,
 } from "@/unison/client"
 import { MessageFlags, type ModalBuilder, SlashCommandBuilder } from "discord.js"
 
@@ -114,13 +116,22 @@ export interface QueueRejectDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	rejectLyric(lyricsId: string, keyId: string, note?: string): Promise<RejectResult>
 	getEntry(lyricsId: string): Promise<QueueEntry | null>
-	markRejected(lyricsId: string, actorId: string, note: string | null): Promise<void>
+	markRejected(
+		lyricsId: string,
+		actorId: string,
+		note: string | null,
+		rejectionId: number | null
+	): Promise<void>
 	linkPageUrl: string
 }
 
 export interface QueueRejectUndoDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
-	unrejectLyric(lyricsId: string, keyId: string): Promise<UnrejectResult>
+	unrejectLyric(
+		lyricsId: string,
+		keyId: string,
+		rejectionId: number | null
+	): Promise<UnrejectResult>
 	getEntry(lyricsId: string): Promise<QueueEntry | null>
 	markPending(lyricsId: string): Promise<void>
 	linkPageUrl: string
@@ -293,10 +304,10 @@ export async function handleQueueRejectSubmit(
 	switch (result.status) {
 		case "rejected": {
 			const entry = await deps.getEntry(lyricsId)
-			await deps.markRejected(lyricsId, interaction.user.id, note)
+			await deps.markRejected(lyricsId, interaction.user.id, note, result.rejectionId)
 			await interaction.update(
 				entry
-					? buildQueueRejectedCard(entry, interaction.user.id, note)
+					? buildQueueRejectedCard(entry, interaction.user.id, note, result.rejectionId)
 					: buildQueueResultCard(queueRejectedBy(interaction.user.id))
 			)
 			return
@@ -322,6 +333,7 @@ export async function handleQueueRejectSubmit(
 export async function handleQueueRejectUndo(
 	interaction: QueueBoardInteraction,
 	lyricsId: string,
+	rejectionIdArg: string,
 	deps: QueueRejectUndoDeps
 ): Promise<void> {
 	if (!lyricsId) {
@@ -333,7 +345,7 @@ export async function handleQueueRejectUndo(
 		await interaction.reply(ephemeralCard(buildConnectCard({ linkPageUrl: deps.linkPageUrl })))
 		return
 	}
-	const result = await deps.unrejectLyric(lyricsId, keyId)
+	const result = await deps.unrejectLyric(lyricsId, keyId, parseRejectionId(rejectionIdArg))
 	switch (result.status) {
 		case "unrejected": {
 			const entry = await deps.getEntry(lyricsId)
@@ -347,7 +359,7 @@ export async function handleQueueRejectUndo(
 			await interaction.reply(ephemeralText(queueNotCouncil))
 			return
 		case "not_found":
-			await interaction.reply(ephemeralText(sealNotFound))
+			await interaction.reply(ephemeralText(queueRejectNoLongerActive))
 			return
 		default:
 			await interaction.reply(ephemeralText(queueError))

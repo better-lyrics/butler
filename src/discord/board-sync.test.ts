@@ -26,6 +26,7 @@ function card(overrides: Partial<BoardCard> = {}): BoardCard {
 		state: "pending",
 		actorId: null,
 		note: null,
+		rejectionId: null,
 		entry: entry(4210),
 		bookmark: null,
 		...overrides,
@@ -179,18 +180,32 @@ describe("carryForwardStates", () => {
 
 			const carried = carryForwardStates(previous, [entry(4210)])
 
-			expect(carried).toEqual([{ entry: entry(4210), state: "sealed", actorId: "777", note: null }])
+			expect(carried).toEqual([
+				{ entry: entry(4210), state: "sealed", actorId: "777", note: null, rejectionId: null },
+			])
 		})
 
-		it("carries a rejected decision forward with its actor and note", () => {
+		it("carries a rejected decision forward with its actor, note, and rejection id", () => {
 			const previous = [
-				card({ lyricId: "4210", state: "rejected", actorId: "777", note: "bad sync" }),
+				card({
+					lyricId: "4210",
+					state: "rejected",
+					actorId: "777",
+					note: "bad sync",
+					rejectionId: 318,
+				}),
 			]
 
 			const carried = carryForwardStates(previous, [entry(4210)])
 
 			expect(carried).toEqual([
-				{ entry: entry(4210), state: "rejected", actorId: "777", note: "bad sync" },
+				{
+					entry: entry(4210),
+					state: "rejected",
+					actorId: "777",
+					note: "bad sync",
+					rejectionId: 318,
+				},
 			])
 		})
 	})
@@ -199,7 +214,9 @@ describe("carryForwardStates", () => {
 		it("marks a brand-new entry pending with no actor or note", () => {
 			const carried = carryForwardStates([], [entry(99)])
 
-			expect(carried).toEqual([{ entry: entry(99), state: "pending", actorId: null, note: null }])
+			expect(carried).toEqual([
+				{ entry: entry(99), state: "pending", actorId: null, note: null, rejectionId: null },
+			])
 		})
 
 		it("returns nothing when there are no entries", () => {
