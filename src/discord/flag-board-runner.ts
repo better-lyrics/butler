@@ -24,7 +24,7 @@ export interface FlagBoardRunnerDeps {
 	): Promise<{ channelId: string; messageId: string } | null>
 }
 
-export interface FlagBoardRunner {
+interface FlagBoardRunner {
 	sync(): Promise<void>
 	refresh(caseId: string, tally: FlagTally): Promise<void>
 	resolve(caseId: string, outcome: FlagVerdict, tally: FlagTally): Promise<void>

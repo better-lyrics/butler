@@ -2,9 +2,9 @@ import { parseJsonb } from "@/db/jsonb"
 import type { FlagCard } from "@/unison/client"
 import type { Pool } from "pg"
 
-export type FlagBoardState = "pending" | "removed" | "kept"
+type FlagBoardState = "pending" | "removed" | "kept"
 
-export interface FlagDecisionRecord {
+interface FlagDecisionRecord {
 	state: Exclude<FlagBoardState, "pending">
 	card: FlagCard | null
 }

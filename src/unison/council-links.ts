@@ -1,7 +1,7 @@
 import { COUNCIL_DASHBOARD_URL } from "@/config"
 import type { BookmarkItemType } from "./client"
 
-export type CouncilItemType = BookmarkItemType | "flags"
+type CouncilItemType = BookmarkItemType | "flags"
 
 const SECTIONS: Record<CouncilItemType, string> = {
 	seal: "queue",

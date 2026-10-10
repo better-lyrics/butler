@@ -16,7 +16,7 @@ import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import type { FlagTally, FlagVoteResult } from "@/unison/client"
 import type { QueueReplyInteraction } from "./queue"
 
-export interface FlagConfirmInteraction {
+interface FlagConfirmInteraction {
 	user: { id: string }
 	deferUpdate(): Promise<unknown>
 	editReply(payload: unknown): Promise<unknown>
@@ -24,7 +24,7 @@ export interface FlagConfirmInteraction {
 
 export type FlagVoteFailure = Exclude<FlagVoteResult, FlagTally>
 
-export interface FlagVoteDeps {
+interface FlagVoteDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	voteFlag(caseId: number, keyId: string, remove: boolean): Promise<FlagVoteResult>
 	refreshBoardCard(caseId: string, tally: FlagTally): Promise<void>

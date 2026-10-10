@@ -1,5 +1,12 @@
 import { TIER_ORDER } from "@/config"
-import type { FlagReason, PendingReason, QuotaBasis, QuotaRule, TtmlFlag } from "@/unison/client"
+import {
+	FLAG_REASONS,
+	type FlagReason,
+	type PendingReason,
+	type QuotaBasis,
+	type QuotaRule,
+	type TtmlFlag,
+} from "@/unison/client"
 import { TimestampStyles, escapeMarkdown, time, userMention } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -720,7 +727,7 @@ export const flagRemoved =
 
 export const flagKept = "Kept by the council. The lyric is visible again."
 
-export const flagResolved = "No longer open. It was decided or withdrawn outside this card."
+export const flagResolved = "No longer open. It was decided outside this card."
 
 export const flagAlreadyDecided = "The council already decided this flag."
 
@@ -735,12 +742,16 @@ export function flagVoteCounted(removals: number, needed: number): string {
 	return `Vote counted (${removals}/${needed}).`
 }
 
+function escapeFlagText(value: string): string {
+	return escapeMarkdown(value, { maskedLink: true })
+}
+
 export function flagHeading(song: string, artist: string): string {
-	return `**${song}** by ${artist}`
+	return `**${escapeFlagText(song)}** by ${escapeFlagText(artist)}`
 }
 
 export function flagSubmitterLine(name: string): string {
-	return `Submitted by ${name}`
+	return `Submitted by ${escapeFlagText(name)}`
 }
 
 const FLAG_REASON_LABELS: Record<FlagReason, string> = {
@@ -750,7 +761,7 @@ const FLAG_REASON_LABELS: Record<FlagReason, string> = {
 }
 
 export function flagReasonsLine(reports: { reason: FlagReason }[]): string | null {
-	const parts = (Object.keys(FLAG_REASON_LABELS) as FlagReason[]).flatMap((reason) => {
+	const parts = FLAG_REASONS.flatMap((reason) => {
 		const count = reports.filter((r) => r.reason === reason).length
 		return count === 0 ? [] : [`**${FLAG_REASON_LABELS[reason]}** (${count})`]
 	})
@@ -758,7 +769,7 @@ export function flagReasonsLine(reports: { reason: FlagReason }[]): string | nul
 }
 
 export function flagDetailLine(detail: string): string {
-	return `> ${escapeMarkdown(detail.replace(/\s+/g, " ").trim())}`
+	return `> ${escapeFlagText(detail.replace(/\s+/g, " ").trim())}`
 }
 
 export function flagTally(removals: number, needed: number, keeps: number): string {

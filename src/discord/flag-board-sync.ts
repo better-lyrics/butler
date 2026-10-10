@@ -2,7 +2,7 @@ import type { FlagBoardRow } from "@/db/flag-board"
 import type { FlagCard } from "@/unison/client"
 import type { FlagOutcome } from "./components/flag-card"
 
-export interface FlagBoardPlan {
+interface FlagBoardPlan {
 	toPost: FlagCard[]
 	toUpdate: { row: FlagBoardRow; card: FlagCard }[]
 	toResolve: { row: FlagBoardRow; card: FlagCard | null }[]

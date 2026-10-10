@@ -391,11 +391,13 @@ export type RevisionDecisionResult =
 	| { status: "stale" }
 	| { status: "error"; code: number }
 
-export type FlagReason = "spam" | "wrong_song" | "offensive"
+export const FLAG_REASONS = ["spam", "wrong_song", "offensive"] as const
 
-export type FlagStatus = "open" | "removed" | "kept"
+export type FlagReason = (typeof FLAG_REASONS)[number]
 
-export interface FlagReport {
+type FlagStatus = "open" | "removed" | "kept"
+
+interface FlagReport {
 	reason: FlagReason
 	details: string | null
 	createdAt: number
@@ -778,11 +780,10 @@ function parsePendingRevision(value: unknown): PendingRevisionCard | null {
 	}
 }
 
-const FLAG_REASONS: FlagReason[] = ["spam", "wrong_song", "offensive"]
 const FLAG_STATUSES: FlagStatus[] = ["open", "removed", "kept"]
 
 function isFlagReason(value: unknown): value is FlagReason {
-	return typeof value === "string" && (FLAG_REASONS as string[]).includes(value)
+	return typeof value === "string" && (FLAG_REASONS as readonly string[]).includes(value)
 }
 
 function isFlagStatus(value: unknown): value is FlagStatus {

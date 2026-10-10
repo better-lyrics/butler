@@ -14,6 +14,7 @@ import {
 	flagDetailLine,
 	flagHeading,
 	flagReasonsLine,
+	flagResolved,
 	flagSubmitterLine,
 	flagTally,
 	flagVoteCounted,
@@ -695,6 +696,18 @@ describe("flag copy", () => {
 	})
 
 	describe("invariants", () => {
+		it("says a resolved card was decided elsewhere, never withdrawn", () => {
+			expect(flagResolved).toBe("No longer open. It was decided outside this card.")
+		})
+
+		it("escapes markdown in the song and artist", () => {
+			expect(flagHeading("*Song* [x](y)", "A*B")).toBe("**\\*Song\\* \\[x](y)** by A\\*B")
+		})
+
+		it("escapes markdown in the submitter name", () => {
+			expect(flagSubmitterLine("*name* [x](y)")).toBe("Submitted by \\*name\\* \\[x](y)")
+		})
+
 		it("escapes markdown in user-written details", () => {
 			expect(flagDetailLine("**bold** _x_")).toBe("> \\*\\*bold\\*\\* \\_x\\_")
 		})
