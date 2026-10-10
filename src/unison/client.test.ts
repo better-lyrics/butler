@@ -1,5 +1,6 @@
 import type { BotRequestBody } from "@/requests/payload"
 import { beforeEach, describe, expect, it } from "vitest"
+import { flagCase } from "./__fixtures__/flag"
 import { pendingRevision } from "./__fixtures__/pending-revision"
 import { createUnisonClient, parseRejectionId } from "./client"
 
@@ -1863,6 +1864,236 @@ describe("createUnisonClient approveRevision and rejectRevision", () => {
 					KEY_ID
 				)
 			).toEqual({ status: "stale" })
+		})
+	})
+})
+
+describe("createUnisonClient getFlags", () => {
+	const flagsResponse = (data: unknown) => Response.json({ success: true, data }, { status: 200 })
+
+	describe("happy paths", () => {
+		it("issues an authed GET to the flags route and returns needed plus cases in order", async () => {
+			const rows = [
+				flagCase(),
+				flagCase({ id: 78, status: "removed", decidedAt: 1_790_000_500, removals: 3 }),
+			]
+			const { fn, calls } = makeFetch(flagsResponse({ needed: 3, cases: rows }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.getFlags()
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/committee/flags/bot")
+			expect(calls[0]?.method).toBe("GET")
+			expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+			expect(result).toEqual({ status: "ok", needed: 3, cards: rows })
+		})
+	})
+
+	describe("edge cases", () => {
+		it("returns an empty list without error", async () => {
+			const { fn } = makeFetch(flagsResponse({ needed: 3, cases: [] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "ok", needed: 3, cards: [] })
+		})
+
+		it("keeps a null submitter and null report details", async () => {
+			const row = flagCase({
+				submitterName: null,
+				reports: [{ reason: "offensive", details: null, createdAt: 1 }],
+			})
+			const { fn } = makeFetch(flagsResponse({ needed: 2, cases: [row] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "ok", needed: 2, cards: [row] })
+		})
+
+		it("drops reports with an unknown reason and keeps the rest", async () => {
+			const row = {
+				...flagCase(),
+				reports: [
+					{ reason: "boring", details: null, createdAt: 1 },
+					{ reason: "spam", details: "x", createdAt: 2 },
+				],
+			}
+			const { fn } = makeFetch(flagsResponse({ needed: 3, cases: [row] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toMatchObject({
+				status: "ok",
+				cards: [{ reports: [{ reason: "spam", details: "x", createdAt: 2 }] }],
+			})
+		})
+
+		it("defaults missing tallies to zero and a missing reports list to empty", async () => {
+			const row = { ...flagCase(), removals: undefined, keeps: "two", reports: undefined }
+			const { fn } = makeFetch(flagsResponse({ needed: 3, cases: [row] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toMatchObject({
+				status: "ok",
+				cards: [{ removals: 0, keeps: 0, reports: [] }],
+			})
+		})
+	})
+
+	describe("error paths", () => {
+		it("maps 401 AUTH_REQUIRED to an error result", async () => {
+			const { fn } = makeFetch(errorResponse(401, "AUTH_REQUIRED"))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "error", code: 401 })
+		})
+
+		it("maps a 404 (route not deployed yet) to an error result", async () => {
+			const { fn } = makeFetch(new Response("not found", { status: 404 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "error", code: 404 })
+		})
+
+		it("maps a body without a cases array to an error result", async () => {
+			const { fn } = makeFetch(flagsResponse({ needed: 3 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "error", code: 200 })
+		})
+
+		it("maps a body without a numeric needed to an error result", async () => {
+			const { fn } = makeFetch(flagsResponse({ needed: "3", cases: [] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "error", code: 200 })
+		})
+
+		it("skips a row whose ids are not integers and keeps the rest", async () => {
+			const bad = { ...flagCase(), id: "77" }
+			const badLyric = { ...flagCase({ id: 79 }), lyricsId: 1.5 }
+			const good = flagCase({ id: 78 })
+			const { fn } = makeFetch(flagsResponse({ needed: 3, cases: [bad, badLyric, good] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "ok", needed: 3, cards: [good] })
+		})
+
+		it("skips a row with an unknown status", async () => {
+			const bad = { ...flagCase(), status: "pending" }
+			const { fn } = makeFetch(flagsResponse({ needed: 3, cases: [bad] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.getFlags()).toEqual({ status: "ok", needed: 3, cards: [] })
+		})
+	})
+
+	describe("invariants", () => {
+		it("sends no body on the list call", async () => {
+			const { fn, calls } = makeFetch(flagsResponse({ needed: 3, cases: [] }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			await client.getFlags()
+			expect(calls[0]?.body).toBeNull()
+		})
+	})
+})
+
+describe("createUnisonClient voteFlag", () => {
+	const KEY_ID = "c".repeat(64)
+	const voted = (data: unknown) => Response.json({ success: true, data }, { status: 200 })
+
+	describe("happy paths", () => {
+		it("posts keyId and remove to the vote route with bearer auth", async () => {
+			const { fn, calls } = makeFetch(voted({ status: "open", removals: 2 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+			const result = await client.voteFlag(77, KEY_ID, true)
+
+			expect(calls[0]?.url).toBe("https://unison.test/api/committee/flags/77/vote/bot")
+			expect(calls[0]?.method).toBe("POST")
+			expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
+			expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, remove: true })
+			expect(result).toEqual({ status: "open", removals: 2 })
+		})
+
+		it("sends the note when given", async () => {
+			const { fn, calls } = makeFetch(voted({ status: "kept" }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			const result = await client.voteFlag(77, KEY_ID, false, "looks fine")
+			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+				keyId: KEY_ID,
+				remove: false,
+				note: "looks fine",
+			})
+			expect(result).toEqual({ status: "kept" })
+		})
+
+		it("maps a removed status", async () => {
+			const { fn } = makeFetch(voted({ status: "removed", removals: 3 }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.voteFlag(77, KEY_ID, true)).toEqual({ status: "removed" })
+		})
+	})
+
+	describe("edge cases", () => {
+		it("omits a null or empty note", async () => {
+			const first = makeFetch(voted({ status: "open", removals: 0 }))
+			await createUnisonClient({ baseUrl, botSecret, fetch: first.fn }).voteFlag(
+				1,
+				KEY_ID,
+				false,
+				null
+			)
+			const second = makeFetch(voted({ status: "open", removals: 0 }))
+			await createUnisonClient({ baseUrl, botSecret, fetch: second.fn }).voteFlag(
+				1,
+				KEY_ID,
+				false,
+				""
+			)
+			expect(JSON.parse(first.calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, remove: false })
+			expect(JSON.parse(second.calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, remove: false })
+		})
+
+		it("defaults a missing removals count on an open result to zero", async () => {
+			const { fn } = makeFetch(voted({ status: "open" }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.voteFlag(77, KEY_ID, false)).toEqual({ status: "open", removals: 0 })
+		})
+	})
+
+	describe("error paths", () => {
+		const cases: Array<[Response, unknown]> = [
+			[errorResponse(403, "NOT_COMMITTEE"), { status: "not_council" }],
+			[errorResponse(404, "NOT_FOUND"), { status: "not_found" }],
+			[errorResponse(409, "ALREADY_DECIDED"), { status: "already_decided" }],
+			[errorResponse(409, "FLAG_CONFLICT"), { status: "conflict" }],
+			[errorResponse(401, "AUTH_REQUIRED"), { status: "error", code: 401 }],
+			[errorResponse(400, "INVALID_BODY"), { status: "error", code: 400 }],
+			[new Response("boom", { status: 500 }), { status: "error", code: 500 }],
+		]
+
+		for (const [response, expected] of cases) {
+			it(`maps ${response.status} ${JSON.stringify(expected)}`, async () => {
+				const { fn } = makeFetch(response.clone())
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.voteFlag(1, KEY_ID, true)).toEqual(expected)
+			})
+		}
+
+		it("maps a 200 with an unknown status to an error result", async () => {
+			const { fn } = makeFetch(voted({ status: "pending" }))
+			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+			expect(await client.voteFlag(1, KEY_ID, true)).toEqual({ status: "error", code: 200 })
+		})
+	})
+
+	describe("invariants", () => {
+		it("tells the two 409s apart by code, not status", async () => {
+			const already = makeFetch(errorResponse(409, "ALREADY_DECIDED"))
+			const conflict = makeFetch(errorResponse(409, "FLAG_CONFLICT"))
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: already.fn }).voteFlag(
+					1,
+					KEY_ID,
+					true
+				)
+			).toEqual({ status: "already_decided" })
+			expect(
+				await createUnisonClient({ baseUrl, botSecret, fetch: conflict.fn }).voteFlag(
+					1,
+					KEY_ID,
+					true
+				)
+			).toEqual({ status: "conflict" })
 		})
 	})
 })
