@@ -731,8 +731,8 @@ export const flagConflict =
 
 export const flagError = "Something went wrong recording that vote. Try again in a moment."
 
-export function flagVoteCounted(removals: number, needed: number | null): string {
-	return needed === null ? "Vote counted." : `Vote counted (${removals}/${needed}).`
+export function flagVoteCounted(removals: number, needed: number): string {
+	return `Vote counted (${removals}/${needed}).`
 }
 
 export function flagHeading(song: string, artist: string): string {

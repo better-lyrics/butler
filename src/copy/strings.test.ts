@@ -689,10 +689,6 @@ describe("flag copy", () => {
 			expect(flagDetailLine("first\n\n  second")).toBe("> first second")
 		})
 
-		it("confirms a counted vote without progress when the quorum is unknown", () => {
-			expect(flagVoteCounted(2, null)).toBe("Vote counted.")
-		})
-
 		it("shows a zero tally", () => {
 			expect(flagTally(0, 3, 0)).toBe("Remove 0/3 · Keep 0")
 		})

@@ -1988,10 +1988,11 @@ describe("createUnisonClient getFlags", () => {
 describe("createUnisonClient voteFlag", () => {
 	const KEY_ID = "c".repeat(64)
 	const voted = (data: unknown) => Response.json({ success: true, data }, { status: 200 })
+	const tally = { removals: 2, keeps: 1, needed: 3 }
 
 	describe("happy paths", () => {
-		it("posts keyId and remove to the vote route with bearer auth", async () => {
-			const { fn, calls } = makeFetch(voted({ status: "open", removals: 2 }))
+		it("posts keyId and remove to the vote route and returns the open tally", async () => {
+			const { fn, calls } = makeFetch(voted({ status: "open", ...tally }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 
 			const result = await client.voteFlag(77, KEY_ID, true)
@@ -2001,11 +2002,11 @@ describe("createUnisonClient voteFlag", () => {
 			expect(calls[0]?.headers.get("Authorization")).toBe("Bearer super-secret")
 			expect(calls[0]?.headers.get("Content-Type")).toBe("application/json")
 			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, remove: true })
-			expect(result).toEqual({ status: "open", removals: 2 })
+			expect(result).toEqual({ status: "open", ...tally })
 		})
 
-		it("sends the note when given", async () => {
-			const { fn, calls } = makeFetch(voted({ status: "kept" }))
+		it("sends the note when given and returns the kept tally", async () => {
+			const { fn, calls } = makeFetch(voted({ status: "kept", removals: 0, keeps: 1, needed: 3 }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 			const result = await client.voteFlag(77, KEY_ID, false, "looks fine")
 			expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
@@ -2013,26 +2014,31 @@ describe("createUnisonClient voteFlag", () => {
 				remove: false,
 				note: "looks fine",
 			})
-			expect(result).toEqual({ status: "kept" })
+			expect(result).toEqual({ status: "kept", removals: 0, keeps: 1, needed: 3 })
 		})
 
-		it("maps a removed status", async () => {
-			const { fn } = makeFetch(voted({ status: "removed", removals: 3 }))
+		it("returns the removed tally", async () => {
+			const { fn } = makeFetch(voted({ status: "removed", removals: 3, keeps: 0, needed: 3 }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-			expect(await client.voteFlag(77, KEY_ID, true)).toEqual({ status: "removed" })
+			expect(await client.voteFlag(77, KEY_ID, true)).toEqual({
+				status: "removed",
+				removals: 3,
+				keeps: 0,
+				needed: 3,
+			})
 		})
 	})
 
 	describe("edge cases", () => {
 		it("omits a null or empty note", async () => {
-			const first = makeFetch(voted({ status: "open", removals: 0 }))
+			const first = makeFetch(voted({ status: "open", ...tally }))
 			await createUnisonClient({ baseUrl, botSecret, fetch: first.fn }).voteFlag(
 				1,
 				KEY_ID,
 				false,
 				null
 			)
-			const second = makeFetch(voted({ status: "open", removals: 0 }))
+			const second = makeFetch(voted({ status: "open", ...tally }))
 			await createUnisonClient({ baseUrl, botSecret, fetch: second.fn }).voteFlag(
 				1,
 				KEY_ID,
@@ -2043,10 +2049,11 @@ describe("createUnisonClient voteFlag", () => {
 			expect(JSON.parse(second.calls[0]?.body ?? "{}")).toEqual({ keyId: KEY_ID, remove: false })
 		})
 
-		it("defaults a missing removals count on an open result to zero", async () => {
-			const { fn } = makeFetch(voted({ status: "open" }))
+		it("keeps zero counts", async () => {
+			const zero = { status: "open", removals: 0, keeps: 0, needed: 0 }
+			const { fn } = makeFetch(voted(zero))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
-			expect(await client.voteFlag(77, KEY_ID, false)).toEqual({ status: "open", removals: 0 })
+			expect(await client.voteFlag(77, KEY_ID, false)).toEqual(zero)
 		})
 	})
 
@@ -2070,10 +2077,28 @@ describe("createUnisonClient voteFlag", () => {
 		}
 
 		it("maps a 200 with an unknown status to an error result", async () => {
-			const { fn } = makeFetch(voted({ status: "pending" }))
+			const { fn } = makeFetch(voted({ status: "pending", ...tally }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
 			expect(await client.voteFlag(1, KEY_ID, true)).toEqual({ status: "error", code: 200 })
 		})
+
+		const badTallies: Array<[string, unknown]> = [
+			["missing removals", { status: "open", keeps: 1, needed: 3 }],
+			["missing keeps", { status: "removed", removals: 3, needed: 3 }],
+			["missing needed", { status: "kept", removals: 0, keeps: 3 }],
+			["string removals", { status: "open", removals: "2", keeps: 1, needed: 3 }],
+			["fractional keeps", { status: "open", removals: 2, keeps: 1.5, needed: 3 }],
+			["negative needed", { status: "open", removals: 2, keeps: 1, needed: -1 }],
+			["null data", null],
+		]
+
+		for (const [label, data] of badTallies) {
+			it(`maps a 200 with ${label} to an error result`, async () => {
+				const { fn } = makeFetch(voted(data))
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.voteFlag(1, KEY_ID, true)).toEqual({ status: "error", code: 200 })
+			})
+		}
 	})
 
 	describe("invariants", () => {

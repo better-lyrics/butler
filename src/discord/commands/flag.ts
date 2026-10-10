@@ -13,21 +13,23 @@ import { buildConnectCard } from "@/discord/components/connect-card"
 import { type FlagOutcome, buildFlagVoteConfirmCard } from "@/discord/components/flag-card"
 import { buildQueueResultCard } from "@/discord/components/queue-card"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
-import type { FlagVoteResult } from "@/unison/client"
+import type { FlagTally, FlagVoteResult } from "@/unison/client"
 import type { QueueReplyInteraction, QueueUpdateInteraction } from "./queue"
 
-export type FlagVoteFailure = Exclude<
-	FlagVoteResult,
-	{ status: "open" } | { status: "removed" } | { status: "kept" }
->
+export type FlagVoteFailure = Exclude<FlagVoteResult, FlagTally>
 
 export type FlagVerdict = Exclude<FlagOutcome, { kind: "resolved" }>
 
 export interface FlagVoteDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	voteFlag(caseId: number, keyId: string, remove: boolean): Promise<FlagVoteResult>
-	refreshBoardCard(caseId: string): Promise<{ needed: number } | null>
-	resolveBoardCard(caseId: string, outcome: FlagVerdict, actorId: string): Promise<void>
+	refreshBoardCard(caseId: string, tally: FlagTally): Promise<void>
+	resolveBoardCard(
+		caseId: string,
+		outcome: FlagVerdict,
+		actorId: string,
+		tally: FlagTally
+	): Promise<void>
 	linkPageUrl: string
 }
 
@@ -44,6 +46,10 @@ export function flagVoteErrorCopy(result: FlagVoteFailure): string {
 		default:
 			return flagError
 	}
+}
+
+function tallyOf({ removals, keeps, needed }: FlagTally): FlagTally {
+	return { removals, keeps, needed }
 }
 
 function parseCaseId(caseId: string): number | null {
@@ -88,19 +94,23 @@ export async function handleFlagVoteConfirm(
 	}
 	const result = await deps.voteFlag(id, keyId, choice === "1")
 	switch (result.status) {
-		case "open": {
-			const board = await deps.refreshBoardCard(caseId)
+		case "open":
 			await interaction.update(
-				buildQueueResultCard(flagVoteCounted(result.removals, board?.needed ?? null))
+				buildQueueResultCard(flagVoteCounted(result.removals, result.needed))
 			)
+			await deps.refreshBoardCard(caseId, tallyOf(result))
 			return
-		}
 		case "removed":
 		case "kept":
 			await interaction.update(
 				buildQueueResultCard(result.status === "removed" ? flagRemoved : flagKept)
 			)
-			await deps.resolveBoardCard(caseId, { kind: result.status }, interaction.user.id)
+			await deps.resolveBoardCard(
+				caseId,
+				{ kind: result.status },
+				interaction.user.id,
+				tallyOf(result)
+			)
 			return
 		default:
 			await interaction.update(buildQueueResultCard(flagVoteErrorCopy(result)))

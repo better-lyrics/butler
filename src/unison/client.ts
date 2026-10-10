@@ -420,10 +420,14 @@ export type FlagsResult =
 	| { status: "ok"; needed: number; cards: FlagCard[] }
 	| { status: "error"; code: number }
 
+export interface FlagTally {
+	removals: number
+	keeps: number
+	needed: number
+}
+
 export type FlagVoteResult =
-	| { status: "open"; removals: number }
-	| { status: "removed" }
-	| { status: "kept" }
+	| ({ status: FlagStatus } & FlagTally)
 	| { status: "not_council" }
 	| { status: "not_found" }
 	| { status: "already_decided" }
@@ -794,6 +798,19 @@ function parseFlagReport(value: unknown): FlagReport | null {
 		details: typeof row.details === "string" ? row.details : null,
 		createdAt: finiteOrNull(row.createdAt) ?? 0,
 	}
+}
+
+function isCount(value: unknown): value is number {
+	return Number.isInteger(value) && (value as number) >= 0
+}
+
+function parseFlagVote(value: unknown): ({ status: FlagStatus } & FlagTally) | null {
+	if (!value || typeof value !== "object") return null
+	const { status, removals, keeps, needed } = value as Record<string, unknown>
+	if (!isFlagStatus(status) || !isCount(removals) || !isCount(keeps) || !isCount(needed)) {
+		return null
+	}
+	return { status, removals, keeps, needed }
 }
 
 function parseFlag(value: unknown): FlagCard | null {
@@ -1283,19 +1300,8 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				}
 			)
 			if (res.ok) {
-				const json = (await res.json().catch(() => null)) as {
-					data?: { status?: unknown; removals?: unknown }
-				} | null
-				switch (json?.data?.status) {
-					case "open":
-						return { status: "open", removals: finiteOrNull(json.data.removals) ?? 0 }
-					case "removed":
-						return { status: "removed" }
-					case "kept":
-						return { status: "kept" }
-					default:
-						return { status: "error", code: res.status }
-				}
+				const json = (await res.json().catch(() => null)) as { data?: unknown } | null
+				return parseFlagVote(json?.data) ?? { status: "error", code: res.status }
 			}
 			switch (await errorCode(res)) {
 				case "NOT_COMMITTEE":

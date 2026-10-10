@@ -187,6 +187,7 @@ import { type CouncilRoleMember, planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
 	type DiscordProfile,
+	type FlagTally,
 	type PendingRevisionCard,
 	type QueueEntry,
 	createUnisonClient,
@@ -1068,36 +1069,35 @@ async function syncFlagBoard(): Promise<void> {
 	}
 }
 
-async function refreshFlagBoardCard(caseId: string): Promise<{ needed: number } | null> {
-	const result = await unison.getFlags()
-	if (result.status !== "ok") return null
-	const card = result.cards.find((c) => String(c.id) === caseId)
+async function refreshFlagBoardCard(caseId: string, tally: FlagTally): Promise<void> {
 	const row = await getFlagBoardRow(pool, config.guildId, caseId)
-	if (card?.status === "open" && row?.state === "pending") {
-		const payload = flagCardEdit(buildFlagCard(card, result.needed))
-		if (await editBoardMessage(row.channelId, row.messageId, payload)) {
-			await updateFlagCard(pool, config.guildId, caseId, card)
-		}
+	if (row?.state !== "pending") return
+	const card = { ...row.card, removals: tally.removals, keeps: tally.keeps }
+	const payload = flagCardEdit(buildFlagCard(card, tally.needed))
+	if (await editBoardMessage(row.channelId, row.messageId, payload)) {
+		await updateFlagCard(pool, config.guildId, caseId, card)
 	}
-	return { needed: result.needed }
 }
 
 async function resolveFlagBoardCard(
 	caseId: string,
 	outcome: FlagVerdict,
-	actorId: string
+	actorId: string,
+	tally: FlagTally
 ): Promise<void> {
 	const row = await getFlagBoardRow(pool, config.guildId, caseId)
 	if (!row) return
-	const result = await unison.getFlags()
-	const fresh =
-		result.status === "ok" ? (result.cards.find((c) => String(c.id) === caseId) ?? null) : null
-	await markFlagDecided(pool, config.guildId, caseId, { state: outcome.kind, actorId, card: fresh })
-	const needed = result.status === "ok" ? result.needed : 0
+	const card = {
+		...row.card,
+		status: outcome.kind,
+		removals: tally.removals,
+		keeps: tally.keeps,
+	}
+	await markFlagDecided(pool, config.guildId, caseId, { state: outcome.kind, actorId, card })
 	await editBoardMessage(
 		row.channelId,
 		row.messageId,
-		flagCardEdit(buildFlagCard(fresh ?? row.card, needed, outcome))
+		flagCardEdit(buildFlagCard(card, tally.needed, outcome))
 	)
 }
 
