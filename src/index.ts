@@ -35,14 +35,6 @@ import {
 } from "@/db/council-roles"
 import { getPostedApplicantIds, planApplicantPosts, recordApplicantPost } from "@/db/exam-board"
 import {
-	forgetFlagRow,
-	getFlagBoardRow,
-	listFlagBoard,
-	markFlagDecided,
-	recordFlagPost,
-	updateFlagCard,
-} from "@/db/flag-board"
-import {
 	type GuildConfig,
 	getExamMinRoleId,
 	getGuildConfig,
@@ -102,7 +94,6 @@ import {
 } from "@/discord/commands/council-welcome-preview"
 import { type DigestResult, digestCommand, handleDigest } from "@/discord/commands/digest"
 import {
-	type FlagVerdict,
 	handleFlagVote,
 	handleFlagVoteCancel,
 	handleFlagVoteConfirm,
@@ -161,7 +152,6 @@ import {
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildApplicantCard, buildCouncilWelcomeCard } from "@/discord/components/exam-card"
-import { buildFlagCard } from "@/discord/components/flag-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import {
 	buildBoardCard,
@@ -170,7 +160,7 @@ import {
 } from "@/discord/components/queue-card"
 import { buildRevisionCard, revisionCardEdit } from "@/discord/components/revision-card"
 import { meetsMinRole } from "@/discord/eligibility"
-import { flagOutcomeOf, planFlagBoard } from "@/discord/flag-board-sync"
+import { createFlagBoardRunner } from "@/discord/flag-board-runner"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { isGoneFromGuild, unlessGoneFromGuild } from "@/discord/gone-from-guild"
 import { routeInteraction } from "@/discord/interactions/router"
@@ -187,7 +177,6 @@ import { type CouncilRoleMember, planCouncilRoles } from "@/roles/council-roles"
 import { type SyncResult, runSync } from "@/roles/sync"
 import {
 	type DiscordProfile,
-	type FlagTally,
 	type PendingRevisionCard,
 	type QueueEntry,
 	createUnisonClient,
@@ -214,6 +203,27 @@ await applySchema(pool)
 const unison = createUnisonClient({
 	baseUrl: config.unison.baseUrl,
 	botSecret: config.unison.botSecret,
+})
+
+const flagBoard = createFlagBoardRunner({
+	pool,
+	guildId: config.guildId,
+	unison,
+	async councilChannelId() {
+		const gc = await getGuildConfig(pool, config.guildId)
+		return gc?.enabled && gc.reviewChannelId ? gc.reviewChannelId : null
+	},
+	editBoardMessage: (channelId, messageId, payload) =>
+		editBoardMessage(channelId, messageId, payload),
+	async postToChannel(channelId, payload) {
+		const channel = await discord.channels.fetch(channelId).catch(() => null)
+		if (!channel?.isTextBased() || !channel.isSendable()) return null
+		const message = await channel.send(payload).catch((err) => {
+			console.error("flag board post failed", err)
+			return null
+		})
+		return message ? { channelId: channel.id, messageId: message.id } : null
+	},
 })
 
 const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
@@ -529,8 +539,8 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 			await handleFlagVoteConfirm(interaction, route.args[0] ?? "", route.args[1] ?? "", {
 				resolveKeyId,
 				voteFlag: (caseId, keyId, remove) => unison.voteFlag(caseId, keyId, remove),
-				refreshBoardCard: refreshFlagBoardCard,
-				resolveBoardCard: resolveFlagBoardCard,
+				refreshBoardCard: flagBoard.refresh,
+				resolveBoardCard: flagBoard.resolve,
 				linkPageUrl: config.linkPageUrl,
 			})
 			return
@@ -834,7 +844,7 @@ async function runAll(): Promise<void> {
 	}
 	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
 	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
-	await syncFlagBoard().catch((err) => console.error("flag board sync failed", err))
+	await flagBoard.sync().catch((err) => console.error("flag board sync failed", err))
 	await syncCouncilBookmarks().catch((err) => console.error("council bookmark sync failed", err))
 	await reconcileCouncilRoles().catch((err) => console.error("council role sync failed", err))
 	await closeExpiredRounds(modsDeps).catch((err) => console.error("mods round close failed", err))
@@ -1019,77 +1029,6 @@ async function syncRevisionBoard(): Promise<void> {
 			card,
 		})
 	}
-}
-
-async function syncFlagBoard(): Promise<void> {
-	const gc = await getGuildConfig(pool, config.guildId)
-	if (!gc?.reviewChannelId || !gc.enabled) return
-	const result = await unison.getFlags()
-	if (result.status !== "ok") return
-	const plan = planFlagBoard(await listFlagBoard(pool, config.guildId), result.cards)
-	for (const { row, card } of plan.toUpdate) {
-		const payload = buildFlagCard(card, result.needed)
-		if (await editBoardMessage(row.channelId, row.messageId, payload)) {
-			await updateFlagCard(pool, config.guildId, row.caseId, card)
-		}
-	}
-	for (const { row, card } of plan.toResolve) {
-		const outcome = flagOutcomeOf(card)
-		if (outcome.kind !== "resolved") {
-			await markFlagDecided(pool, config.guildId, row.caseId, { state: outcome.kind, card })
-		}
-		await editBoardMessage(
-			row.channelId,
-			row.messageId,
-			buildFlagCard(card ?? row.card, result.needed, outcome)
-		)
-	}
-	for (const row of plan.toForget) {
-		await forgetFlagRow(pool, config.guildId, row.caseId)
-	}
-	if (plan.toPost.length === 0) return
-	const channel = await discord.channels.fetch(gc.reviewChannelId).catch(() => null)
-	if (!channel?.isTextBased() || !channel.isSendable()) return
-	for (const card of plan.toPost) {
-		const message = await channel.send(buildFlagCard(card, result.needed)).catch((err) => {
-			console.error("flag board post failed", err)
-			return null
-		})
-		if (!message) continue
-		await recordFlagPost(pool, config.guildId, {
-			caseId: String(card.id),
-			messageId: message.id,
-			channelId: channel.id,
-			card,
-		})
-	}
-}
-
-async function refreshFlagBoardCard(caseId: string, tally: FlagTally): Promise<void> {
-	const row = await getFlagBoardRow(pool, config.guildId, caseId)
-	if (row?.state !== "pending") return
-	const card = { ...row.card, removals: tally.removals, keeps: tally.keeps }
-	const payload = buildFlagCard(card, tally.needed)
-	if (await editBoardMessage(row.channelId, row.messageId, payload)) {
-		await updateFlagCard(pool, config.guildId, caseId, card)
-	}
-}
-
-async function resolveFlagBoardCard(
-	caseId: string,
-	outcome: FlagVerdict,
-	tally: FlagTally
-): Promise<void> {
-	const row = await getFlagBoardRow(pool, config.guildId, caseId)
-	if (!row) return
-	const card = {
-		...row.card,
-		status: outcome.kind,
-		removals: tally.removals,
-		keeps: tally.keeps,
-	}
-	await markFlagDecided(pool, config.guildId, caseId, { state: outcome.kind, card })
-	await editBoardMessage(row.channelId, row.messageId, buildFlagCard(card, tally.needed, outcome))
 }
 
 async function deleteBoardMessages(

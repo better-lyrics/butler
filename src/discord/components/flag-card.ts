@@ -47,6 +47,8 @@ const NO_MENTIONS: MessageMentionOptions = { parse: [] }
 
 export type FlagOutcome = { kind: "removed" } | { kind: "kept" } | { kind: "resolved" }
 
+export type FlagVerdict = Exclude<FlagOutcome, { kind: "resolved" }>
+
 const OUTCOME_LINES: Record<FlagOutcome["kind"], string> = {
 	removed: flagRemoved,
 	kept: flagKept,

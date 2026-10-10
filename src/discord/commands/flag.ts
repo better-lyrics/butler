@@ -10,7 +10,7 @@ import {
 	queueNotCouncil,
 } from "@/copy/strings"
 import { buildConnectCard } from "@/discord/components/connect-card"
-import { type FlagOutcome, buildFlagVoteConfirmCard } from "@/discord/components/flag-card"
+import { type FlagVerdict, buildFlagVoteConfirmCard } from "@/discord/components/flag-card"
 import { buildQueueResultCard } from "@/discord/components/queue-card"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import type { FlagTally, FlagVoteResult } from "@/unison/client"
@@ -23,8 +23,6 @@ export interface FlagConfirmInteraction {
 }
 
 export type FlagVoteFailure = Exclude<FlagVoteResult, FlagTally>
-
-export type FlagVerdict = Exclude<FlagOutcome, { kind: "resolved" }>
 
 export interface FlagVoteDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
