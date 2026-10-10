@@ -10,7 +10,6 @@ function row(caseId: number, overrides: Partial<FlagBoardRow> = {}): FlagBoardRo
 		messageId: `msg-${caseId}`,
 		channelId: "chan-1",
 		state: "pending",
-		actorId: null,
 		card: flagCase({ id: caseId }),
 		...overrides,
 	}
@@ -64,7 +63,7 @@ describe("planFlagBoard", () => {
 		})
 
 		it("forgets a decided row whose case is gone without resolving it again", () => {
-			const decided = row(77, { state: "removed", actorId: "777" })
+			const decided = row(77, { state: "removed" })
 			expect(planFlagBoard([decided], [])).toEqual({ ...empty, toForget: [decided] })
 		})
 	})
@@ -81,7 +80,7 @@ describe("planFlagBoard", () => {
 		})
 
 		it("leaves a row decided in Discord alone while the server still lists it", () => {
-			const decided = row(77, { state: "removed", actorId: "777" })
+			const decided = row(77, { state: "removed" })
 			expect(planFlagBoard([decided], [open(77, { status: "removed", removals: 9 })])).toEqual(
 				empty
 			)
@@ -99,9 +98,18 @@ describe("planFlagBoard", () => {
 			expect(planFlagBoard([row(77)], [closed, closed]).toResolve).toHaveLength(1)
 		})
 
-		it("ignores a change outside the tallies", () => {
-			const card = open(77, { song: "Renamed", reports: [] })
+		it("ignores a change outside the tallies and the report count", () => {
+			const card = open(77, { song: "Renamed" })
 			expect(planFlagBoard([row(77)], [card])).toEqual(empty)
+		})
+
+		it("updates a tracked pending row when a new report arrives", () => {
+			const reports = [
+				...flagCase().reports,
+				{ reason: "offensive" as const, details: "new", createdAt: 3 },
+			]
+			const card = open(77, { reports })
+			expect(planFlagBoard([row(77)], [card]).toUpdate).toEqual([{ row: row(77), card }])
 		})
 	})
 

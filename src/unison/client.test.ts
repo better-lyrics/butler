@@ -1952,6 +1952,14 @@ describe("createUnisonClient getFlags", () => {
 			expect(await client.getFlags()).toEqual({ status: "error", code: 200 })
 		})
 
+		for (const needed of [-1, 1.5, Number.NaN, null]) {
+			it(`maps a needed of ${String(needed)} to an error result`, async () => {
+				const { fn } = makeFetch(flagsResponse({ needed, cases: [] }))
+				const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+				expect(await client.getFlags()).toEqual({ status: "error", code: 200 })
+			})
+		}
+
 		it("maps a body without a numeric needed to an error result", async () => {
 			const { fn } = makeFetch(flagsResponse({ needed: "3", cases: [] }))
 			const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })

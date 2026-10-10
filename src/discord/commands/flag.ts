@@ -14,7 +14,13 @@ import { type FlagOutcome, buildFlagVoteConfirmCard } from "@/discord/components
 import { buildQueueResultCard } from "@/discord/components/queue-card"
 import { ephemeralCard, ephemeralText } from "@/discord/migrate/reply"
 import type { FlagTally, FlagVoteResult } from "@/unison/client"
-import type { QueueReplyInteraction, QueueUpdateInteraction } from "./queue"
+import type { QueueReplyInteraction } from "./queue"
+
+export interface FlagConfirmInteraction {
+	user: { id: string }
+	deferUpdate(): Promise<unknown>
+	editReply(payload: unknown): Promise<unknown>
+}
 
 export type FlagVoteFailure = Exclude<FlagVoteResult, FlagTally>
 
@@ -24,12 +30,7 @@ export interface FlagVoteDeps {
 	resolveKeyId(discordId: string): Promise<string | null>
 	voteFlag(caseId: number, keyId: string, remove: boolean): Promise<FlagVoteResult>
 	refreshBoardCard(caseId: string, tally: FlagTally): Promise<void>
-	resolveBoardCard(
-		caseId: string,
-		outcome: FlagVerdict,
-		actorId: string,
-		tally: FlagTally
-	): Promise<void>
+	resolveBoardCard(caseId: string, outcome: FlagVerdict, tally: FlagTally): Promise<void>
 	linkPageUrl: string
 }
 
@@ -77,42 +78,36 @@ export async function handleFlagVoteCancel(interaction: {
 }
 
 export async function handleFlagVoteConfirm(
-	interaction: QueueUpdateInteraction,
+	interaction: FlagConfirmInteraction,
 	caseId: string,
 	choice: string,
 	deps: FlagVoteDeps
 ): Promise<void> {
+	await interaction.deferUpdate()
+	const answer = (payload: unknown) =>
+		interaction.editReply(payload).catch((err) => console.error("flag vote reply failed", err))
 	const id = parseCaseId(caseId)
 	if (id === null || (choice !== "1" && choice !== "0")) {
-		await interaction.update(buildQueueResultCard(flagError))
+		await answer(buildQueueResultCard(flagError))
 		return
 	}
 	const keyId = await deps.resolveKeyId(interaction.user.id)
 	if (!keyId) {
-		await interaction.update(buildConnectCard({ linkPageUrl: deps.linkPageUrl }))
+		await answer(buildConnectCard({ linkPageUrl: deps.linkPageUrl }))
 		return
 	}
 	const result = await deps.voteFlag(id, keyId, choice === "1")
 	switch (result.status) {
 		case "open":
-			await interaction.update(
-				buildQueueResultCard(flagVoteCounted(result.removals, result.needed))
-			)
+			await answer(buildQueueResultCard(flagVoteCounted(result.removals, result.needed)))
 			await deps.refreshBoardCard(caseId, tallyOf(result))
 			return
 		case "removed":
 		case "kept":
-			await interaction.update(
-				buildQueueResultCard(result.status === "removed" ? flagRemoved : flagKept)
-			)
-			await deps.resolveBoardCard(
-				caseId,
-				{ kind: result.status },
-				interaction.user.id,
-				tallyOf(result)
-			)
+			await answer(buildQueueResultCard(result.status === "removed" ? flagRemoved : flagKept))
+			await deps.resolveBoardCard(caseId, { kind: result.status }, tallyOf(result))
 			return
 		default:
-			await interaction.update(buildQueueResultCard(flagVoteErrorCopy(result)))
+			await answer(buildQueueResultCard(flagVoteErrorCopy(result)))
 	}
 }

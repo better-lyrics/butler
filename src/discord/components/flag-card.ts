@@ -125,7 +125,3 @@ export function buildFlagVoteConfirmCard(caseId: string, remove: boolean): CardP
 		cancelId: encodeCustomId("flag.vote.cancel", []),
 	})
 }
-
-export function flagCardEdit<T extends CardPayload>(payload: T): T & { attachments: never[] } {
-	return { ...payload, attachments: [] }
-}

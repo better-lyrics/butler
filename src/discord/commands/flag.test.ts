@@ -93,9 +93,29 @@ function updateInteraction(log: string[] = [], userId = "disc-1") {
 	}
 }
 
+function confirmInteraction(opts: { log?: string[]; userId?: string; replyFails?: boolean } = {}) {
+	const edits: unknown[] = []
+	const log = opts.log ?? []
+	return {
+		int: {
+			user: { id: opts.userId ?? "disc-1" },
+			deferUpdate: async () => {
+				log.push("defer")
+			},
+			editReply: async (p: unknown) => {
+				log.push("reply")
+				if (opts.replyFails) throw new Error("Unknown interaction")
+				edits.push(p)
+			},
+		},
+		edits,
+		log,
+	}
+}
+
 function voteDeps(result: FlagVoteResult, opts: { keyId?: string | null; log?: string[] } = {}) {
 	const calls: Array<[number, string, boolean]> = []
-	const resolved: Array<[string, FlagOutcome, string, FlagTally]> = []
+	const resolved: Array<[string, FlagOutcome, FlagTally]> = []
 	const refreshed: Array<[string, FlagTally]> = []
 	const keyId = opts.keyId === undefined ? KEY_ID : opts.keyId
 	return {
@@ -105,6 +125,7 @@ function voteDeps(result: FlagVoteResult, opts: { keyId?: string | null; log?: s
 		deps: {
 			resolveKeyId: async () => keyId,
 			voteFlag: async (caseId: number, key: string, remove: boolean) => {
+				opts.log?.push("vote")
 				calls.push([caseId, key, remove])
 				return result
 			},
@@ -112,14 +133,9 @@ function voteDeps(result: FlagVoteResult, opts: { keyId?: string | null; log?: s
 				opts.log?.push("refresh")
 				refreshed.push([caseId, tally])
 			},
-			resolveBoardCard: async (
-				caseId: string,
-				outcome: FlagOutcome,
-				actorId: string,
-				tally: FlagTally
-			) => {
+			resolveBoardCard: async (caseId: string, outcome: FlagOutcome, tally: FlagTally) => {
 				opts.log?.push("resolve")
-				resolved.push([caseId, outcome, actorId, tally])
+				resolved.push([caseId, outcome, tally])
 			},
 			linkPageUrl: "https://unison.test/link",
 		},
@@ -195,17 +211,17 @@ describe("handleFlagVoteCancel", () => {
 describe("handleFlagVoteConfirm", () => {
 	describe("happy paths", () => {
 		it("casts a remove vote, shows the returned progress and redraws the board", async () => {
-			const { int, updates } = updateInteraction()
+			const { int, edits } = confirmInteraction()
 			const { deps, calls, refreshed, resolved } = voteDeps(OPEN)
 			await handleFlagVoteConfirm(int, "77", "1", deps)
 			expect(calls).toEqual([[77, KEY_ID, true]])
-			expect(payloadText(updates[0])).toBe(flagVoteCounted(2, 3))
+			expect(payloadText(edits[0])).toBe(flagVoteCounted(2, 3))
 			expect(refreshed).toEqual([["77", tallyOf(OPEN)]])
 			expect(resolved).toEqual([])
 		})
 
 		it("casts a keep vote", async () => {
-			const { int } = updateInteraction()
+			const { int } = confirmInteraction()
 			const { deps, calls } = voteDeps(OPEN)
 			await handleFlagVoteConfirm(int, "77", "0", deps)
 			expect(calls).toEqual([[77, KEY_ID, false]])
@@ -213,48 +229,48 @@ describe("handleFlagVoteConfirm", () => {
 
 		it("shows the removed outcome and resolves the board card with the returned tally", async () => {
 			const log: string[] = []
-			const { int, updates } = updateInteraction(log, "disc-9")
+			const { int, edits } = confirmInteraction({ log })
 			const { deps, resolved, refreshed } = voteDeps(REMOVED, { log })
 			await handleFlagVoteConfirm(int, "77", "1", deps)
-			expect(payloadText(updates[0])).toBe(flagRemoved)
-			expect(resolved).toEqual([["77", { kind: "removed" }, "disc-9", tallyOf(REMOVED)]])
+			expect(payloadText(edits[0])).toBe(flagRemoved)
+			expect(resolved).toEqual([["77", { kind: "removed" }, tallyOf(REMOVED)]])
 			expect(refreshed).toEqual([])
-			expect(log).toEqual(["update", "resolve"])
+			expect(log).toEqual(["defer", "vote", "reply", "resolve"])
 		})
 
 		it("shows the kept outcome and resolves the board card", async () => {
-			const { int, updates } = updateInteraction()
+			const { int, edits } = confirmInteraction()
 			const { deps, resolved } = voteDeps(KEPT)
 			await handleFlagVoteConfirm(int, "77", "0", deps)
-			expect(payloadText(updates[0])).toBe(flagKept)
-			expect(resolved).toEqual([["77", { kind: "kept" }, "disc-1", tallyOf(KEPT)]])
+			expect(payloadText(edits[0])).toBe(flagKept)
+			expect(resolved).toEqual([["77", { kind: "kept" }, tallyOf(KEPT)]])
 		})
 	})
 
 	describe("edge cases", () => {
 		it("shows a zero quorum as returned", async () => {
-			const { int, updates } = updateInteraction()
+			const { int, edits } = confirmInteraction()
 			const { deps } = voteDeps({ status: "open", removals: 0, keeps: 0, needed: 0 })
 			await handleFlagVoteConfirm(int, "77", "1", deps)
-			expect(payloadText(updates[0])).toBe(flagVoteCounted(0, 0))
+			expect(payloadText(edits[0])).toBe(flagVoteCounted(0, 0))
 		})
 
 		it("shows the connect card when the voter has no linked key", async () => {
-			const { int, updates } = updateInteraction()
+			const { int, edits } = confirmInteraction()
 			const { deps, calls } = voteDeps(OPEN, { keyId: null })
 			await handleFlagVoteConfirm(int, "77", "1", deps)
 			expect(calls).toEqual([])
-			expect(payloadText(updates[0])).toContain(connectHeading)
+			expect(payloadText(edits[0])).toContain(connectHeading)
 		})
 	})
 
 	describe("error paths", () => {
 		for (const [result, copy] of FAILURES) {
 			it(`shows ${result.status} copy and leaves the board alone`, async () => {
-				const { int, updates } = updateInteraction()
+				const { int, edits } = confirmInteraction()
 				const { deps, resolved, refreshed } = voteDeps(result)
 				await handleFlagVoteConfirm(int, "77", "1", deps)
-				expect(payloadText(updates[0])).toBe(copy)
+				expect(payloadText(edits[0])).toBe(copy)
 				expect(resolved).toEqual([])
 				expect(refreshed).toEqual([])
 			})
@@ -267,29 +283,43 @@ describe("handleFlagVoteConfirm", () => {
 			["77", "2"],
 		]) {
 			it(`rejects case ${JSON.stringify(caseId)} choice ${JSON.stringify(choice)} without voting`, async () => {
-				const { int, updates } = updateInteraction()
+				const { int, edits } = confirmInteraction()
 				const { deps, calls } = voteDeps(OPEN)
 				await handleFlagVoteConfirm(int, caseId ?? "", choice ?? "", deps)
 				expect(calls).toEqual([])
-				expect(payloadText(updates[0])).toBe(flagError)
+				expect(payloadText(edits[0])).toBe(flagError)
 			})
 		}
+
+		it("still resolves the board card when the voter reply fails", async () => {
+			const { int } = confirmInteraction({ replyFails: true })
+			const { deps, resolved } = voteDeps(REMOVED)
+			await expect(handleFlagVoteConfirm(int, "77", "1", deps)).resolves.toBeUndefined()
+			expect(resolved).toEqual([["77", { kind: "removed" }, tallyOf(REMOVED)]])
+		})
+
+		it("still redraws the board card when the voter reply fails", async () => {
+			const { int } = confirmInteraction({ replyFails: true })
+			const { deps, refreshed } = voteDeps(OPEN)
+			await expect(handleFlagVoteConfirm(int, "77", "1", deps)).resolves.toBeUndefined()
+			expect(refreshed).toEqual([["77", tallyOf(OPEN)]])
+		})
 	})
 
 	describe("invariants", () => {
-		it("answers the voter before redrawing the board on an open vote", async () => {
+		it("defers before any lookup, then answers the voter before redrawing the board", async () => {
 			const log: string[] = []
-			const { int } = updateInteraction(log)
+			const { int } = confirmInteraction({ log })
 			const { deps } = voteDeps(OPEN, { log })
 			await handleFlagVoteConfirm(int, "77", "1", deps)
-			expect(log).toEqual(["update", "refresh"])
+			expect(log).toEqual(["defer", "vote", "reply", "refresh"])
 		})
 
 		it("never pings anyone from the ephemeral result", async () => {
-			const { int, updates } = updateInteraction()
+			const { int, edits } = confirmInteraction()
 			const { deps } = voteDeps(REMOVED)
 			await handleFlagVoteConfirm(int, "77", "1", deps)
-			expect(payloadText(updates[0])).not.toContain("<@")
+			expect(payloadText(edits[0])).not.toContain("<@")
 		})
 	})
 })

@@ -161,7 +161,7 @@ import {
 import { buildBadgeAwardCard } from "@/discord/components/badge-award-card"
 import { buildConnectCard } from "@/discord/components/connect-card"
 import { buildApplicantCard, buildCouncilWelcomeCard } from "@/discord/components/exam-card"
-import { buildFlagCard, flagCardEdit } from "@/discord/components/flag-card"
+import { buildFlagCard } from "@/discord/components/flag-card"
 import { buildPromotionCard } from "@/discord/components/promotion-card"
 import {
 	buildBoardCard,
@@ -1028,7 +1028,7 @@ async function syncFlagBoard(): Promise<void> {
 	if (result.status !== "ok") return
 	const plan = planFlagBoard(await listFlagBoard(pool, config.guildId), result.cards)
 	for (const { row, card } of plan.toUpdate) {
-		const payload = flagCardEdit(buildFlagCard(card, result.needed))
+		const payload = buildFlagCard(card, result.needed)
 		if (await editBoardMessage(row.channelId, row.messageId, payload)) {
 			await updateFlagCard(pool, config.guildId, row.caseId, card)
 		}
@@ -1036,16 +1036,12 @@ async function syncFlagBoard(): Promise<void> {
 	for (const { row, card } of plan.toResolve) {
 		const outcome = flagOutcomeOf(card)
 		if (outcome.kind !== "resolved") {
-			await markFlagDecided(pool, config.guildId, row.caseId, {
-				state: outcome.kind,
-				actorId: null,
-				card,
-			})
+			await markFlagDecided(pool, config.guildId, row.caseId, { state: outcome.kind, card })
 		}
 		await editBoardMessage(
 			row.channelId,
 			row.messageId,
-			flagCardEdit(buildFlagCard(card ?? row.card, result.needed, outcome))
+			buildFlagCard(card ?? row.card, result.needed, outcome)
 		)
 	}
 	for (const row of plan.toForget) {
@@ -1073,7 +1069,7 @@ async function refreshFlagBoardCard(caseId: string, tally: FlagTally): Promise<v
 	const row = await getFlagBoardRow(pool, config.guildId, caseId)
 	if (row?.state !== "pending") return
 	const card = { ...row.card, removals: tally.removals, keeps: tally.keeps }
-	const payload = flagCardEdit(buildFlagCard(card, tally.needed))
+	const payload = buildFlagCard(card, tally.needed)
 	if (await editBoardMessage(row.channelId, row.messageId, payload)) {
 		await updateFlagCard(pool, config.guildId, caseId, card)
 	}
@@ -1082,7 +1078,6 @@ async function refreshFlagBoardCard(caseId: string, tally: FlagTally): Promise<v
 async function resolveFlagBoardCard(
 	caseId: string,
 	outcome: FlagVerdict,
-	actorId: string,
 	tally: FlagTally
 ): Promise<void> {
 	const row = await getFlagBoardRow(pool, config.guildId, caseId)
@@ -1093,12 +1088,8 @@ async function resolveFlagBoardCard(
 		removals: tally.removals,
 		keeps: tally.keeps,
 	}
-	await markFlagDecided(pool, config.guildId, caseId, { state: outcome.kind, actorId, card })
-	await editBoardMessage(
-		row.channelId,
-		row.messageId,
-		flagCardEdit(buildFlagCard(card, tally.needed, outcome))
-	)
+	await markFlagDecided(pool, config.guildId, caseId, { state: outcome.kind, card })
+	await editBoardMessage(row.channelId, row.messageId, buildFlagCard(card, tally.needed, outcome))
 }
 
 async function deleteBoardMessages(

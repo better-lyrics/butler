@@ -147,7 +147,6 @@ CREATE TABLE IF NOT EXISTS flag_board_card (
   message_id TEXT NOT NULL,
   channel_id TEXT NOT NULL,
   state      TEXT NOT NULL DEFAULT 'pending',
-  actor_id   TEXT,
   card       JSONB NOT NULL,
   PRIMARY KEY (guild_id, case_id)
 );

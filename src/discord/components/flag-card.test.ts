@@ -28,7 +28,6 @@ import {
 	FLAG_MAX_DETAILS,
 	buildFlagCard,
 	buildFlagVoteConfirmCard,
-	flagCardEdit,
 } from "./flag-card"
 
 interface ComponentNode {
@@ -238,14 +237,5 @@ describe("buildFlagVoteConfirmCard", () => {
 			})
 			expect(routeInteraction(btns[1]?.custom_id ?? "")?.handler).toBe("flag.vote.cancel")
 		})
-	})
-})
-
-describe("flagCardEdit", () => {
-	it("clears attachments on edit and keeps the payload", () => {
-		const payload = buildFlagCard(flagCase(), 3)
-		const edit = flagCardEdit(payload)
-		expect(edit.attachments).toEqual([])
-		expect(edit.components).toBe(payload.components)
 	})
 })

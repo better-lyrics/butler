@@ -1283,7 +1283,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				data?: { needed?: unknown; cases?: unknown }
 			} | null
 			const data = json?.data
-			if (!data || !Array.isArray(data.cases) || typeof data.needed !== "number") {
+			if (!data || !Array.isArray(data.cases) || !isCount(data.needed)) {
 				return { status: "error", code: res.status }
 			}
 			const cards = data.cases.map(parseFlag).filter((card): card is FlagCard => card !== null)

@@ -6,7 +6,6 @@ export type FlagBoardState = "pending" | "removed" | "kept"
 
 export interface FlagDecisionRecord {
 	state: Exclude<FlagBoardState, "pending">
-	actorId: string | null
 	card: FlagCard | null
 }
 
@@ -15,7 +14,6 @@ export interface FlagBoardRow {
 	messageId: string
 	channelId: string
 	state: FlagBoardState
-	actorId: string | null
 	card: FlagCard
 }
 
@@ -24,11 +22,10 @@ interface FlagBoardDbRow {
 	message_id: string
 	channel_id: string
 	state: string
-	actor_id: string | null
 	card: unknown
 }
 
-const SELECT_COLUMNS = "case_id, message_id, channel_id, state, actor_id, card"
+const SELECT_COLUMNS = "case_id, message_id, channel_id, state, card"
 
 function mapRow(row: FlagBoardDbRow): FlagBoardRow {
 	return {
@@ -36,7 +33,6 @@ function mapRow(row: FlagBoardDbRow): FlagBoardRow {
 		messageId: row.message_id,
 		channelId: row.channel_id,
 		state: row.state as FlagBoardState,
-		actorId: row.actor_id,
 		card: parseJsonb<FlagCard>(row.card),
 	}
 }
@@ -80,12 +76,13 @@ export async function updateFlagCard(
 	guildId: string,
 	caseId: string,
 	card: FlagCard
-): Promise<void> {
-	await pool.query(
+): Promise<boolean> {
+	const result = await pool.query(
 		`UPDATE flag_board_card SET card = $3
 		 WHERE guild_id = $1 AND case_id = $2 AND state = 'pending'`,
 		[guildId, caseId, JSON.stringify(card)]
 	)
+	return (result.rowCount ?? 0) > 0
 }
 
 export async function markFlagDecided(
@@ -95,15 +92,9 @@ export async function markFlagDecided(
 	decision: FlagDecisionRecord
 ): Promise<void> {
 	await pool.query(
-		`UPDATE flag_board_card SET state = $3, actor_id = $4, card = COALESCE($5::jsonb, card)
+		`UPDATE flag_board_card SET state = $3, card = COALESCE($4::jsonb, card)
 		 WHERE guild_id = $1 AND case_id = $2`,
-		[
-			guildId,
-			caseId,
-			decision.state,
-			decision.actorId,
-			decision.card === null ? null : JSON.stringify(decision.card),
-		]
+		[guildId, caseId, decision.state, decision.card === null ? null : JSON.stringify(decision.card)]
 	)
 }
 

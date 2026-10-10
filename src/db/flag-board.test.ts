@@ -44,7 +44,6 @@ describe("flag board store", () => {
 				messageId: "m-77",
 				channelId: "c1",
 				state: "pending",
-				actorId: null,
 				card: flagCase(),
 			})
 		})
@@ -56,22 +55,18 @@ describe("flag board store", () => {
 			expect(ids).toEqual(["77", "78"])
 		})
 
-		it("records a removal with its actor", async () => {
+		it("records a removal", async () => {
 			await recordFlagPost(pool, "g1", post())
-			await markFlagDecided(pool, "g1", "77", { state: "removed", actorId: "777", card: null })
-			expect(await getFlagBoardRow(pool, "g1", "77")).toMatchObject({
-				state: "removed",
-				actorId: "777",
-			})
+			await markFlagDecided(pool, "g1", "77", { state: "removed", card: null })
+			expect(await getFlagBoardRow(pool, "g1", "77")).toMatchObject({ state: "removed" })
 		})
 
 		it("records a keep with the final card", async () => {
 			await recordFlagPost(pool, "g1", post())
 			const final = flagCase({ status: "kept", keeps: 3, decidedAt: 1_790_000_900 })
-			await markFlagDecided(pool, "g1", "77", { state: "kept", actorId: null, card: final })
+			await markFlagDecided(pool, "g1", "77", { state: "kept", card: final })
 			expect(await getFlagBoardRow(pool, "g1", "77")).toMatchObject({
 				state: "kept",
-				actorId: null,
 				card: final,
 			})
 		})
@@ -79,7 +74,7 @@ describe("flag board store", () => {
 		it("stores a newer card for a pending row", async () => {
 			await recordFlagPost(pool, "g1", post())
 			const newer = flagCase({ removals: 2, keeps: 1 })
-			await updateFlagCard(pool, "g1", "77", newer)
+			expect(await updateFlagCard(pool, "g1", "77", newer)).toBe(true)
 			expect((await getFlagBoardRow(pool, "g1", "77"))?.card).toEqual(newer)
 		})
 
@@ -114,7 +109,7 @@ describe("flag board store", () => {
 
 		it("keeps the stored card when a decision carries none", async () => {
 			await recordFlagPost(pool, "g1", post())
-			await markFlagDecided(pool, "g1", "77", { state: "removed", actorId: "777", card: null })
+			await markFlagDecided(pool, "g1", "77", { state: "removed", card: null })
 			expect((await getFlagBoardRow(pool, "g1", "77"))?.card).toEqual(flagCase())
 		})
 	})
@@ -122,13 +117,13 @@ describe("flag board store", () => {
 	describe("error paths", () => {
 		it("treats deciding an untracked case as a no-op", async () => {
 			await expect(
-				markFlagDecided(pool, "g1", "404", { state: "removed", actorId: "777", card: null })
+				markFlagDecided(pool, "g1", "404", { state: "removed", card: null })
 			).resolves.toBeUndefined()
 			expect(await listFlagBoard(pool, "g1")).toEqual([])
 		})
 
 		it("treats updating an untracked case as a no-op", async () => {
-			await expect(updateFlagCard(pool, "g1", "404", flagCase())).resolves.toBeUndefined()
+			expect(await updateFlagCard(pool, "g1", "404", flagCase())).toBe(false)
 			expect(await listFlagBoard(pool, "g1")).toEqual([])
 		})
 
@@ -150,15 +145,15 @@ describe("flag board store", () => {
 
 		it("does not overwrite the card of a decided row", async () => {
 			await recordFlagPost(pool, "g1", post())
-			await markFlagDecided(pool, "g1", "77", { state: "kept", actorId: null, card: null })
-			await updateFlagCard(pool, "g1", "77", flagCase({ keeps: 9 }))
+			await markFlagDecided(pool, "g1", "77", { state: "kept", card: null })
+			expect(await updateFlagCard(pool, "g1", "77", flagCase({ keeps: 9 }))).toBe(false)
 			expect((await getFlagBoardRow(pool, "g1", "77"))?.card).toEqual(flagCase())
 		})
 
 		it("only touches the named case", async () => {
 			await recordFlagPost(pool, "g1", post(77))
 			await recordFlagPost(pool, "g1", post(78))
-			await markFlagDecided(pool, "g1", "77", { state: "removed", actorId: "777", card: null })
+			await markFlagDecided(pool, "g1", "77", { state: "removed", card: null })
 			expect((await getFlagBoardRow(pool, "g1", "78"))?.state).toBe("pending")
 		})
 	})

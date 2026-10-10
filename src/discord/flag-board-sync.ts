@@ -28,7 +28,11 @@ export function planFlagBoard(tracked: FlagBoardRow[], cards: FlagCard[]): FlagB
 		if (row.state !== "pending") continue
 		if (card === null || card.status !== "open") {
 			plan.toResolve.push({ row, card })
-		} else if (card.removals !== row.card.removals || card.keeps !== row.card.keeps) {
+		} else if (
+			card.removals !== row.card.removals ||
+			card.keeps !== row.card.keeps ||
+			card.reports.length !== row.card.reports.length
+		) {
 			plan.toUpdate.push({ row, card })
 		}
 	}
