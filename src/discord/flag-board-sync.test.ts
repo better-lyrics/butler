@@ -2,7 +2,7 @@ import type { FlagBoardRow } from "@/db/flag-board"
 import { flagCase } from "@/unison/__fixtures__/flag"
 import type { FlagCard } from "@/unison/client"
 import { describe, expect, it } from "vitest"
-import { planFlagBoard } from "./flag-board-sync"
+import { flagOutcomeOf, planFlagBoard } from "./flag-board-sync"
 
 function row(caseId: number, overrides: Partial<FlagBoardRow> = {}): FlagBoardRow {
 	return {
@@ -131,6 +131,28 @@ describe("planFlagBoard", () => {
 			const before = JSON.stringify({ tracked, cards })
 			planFlagBoard(tracked, cards)
 			expect(JSON.stringify({ tracked, cards })).toBe(before)
+		})
+	})
+})
+
+describe("flagOutcomeOf", () => {
+	describe("happy paths", () => {
+		it("maps a removed case to the removed outcome", () => {
+			expect(flagOutcomeOf(open(77, { status: "removed" }))).toEqual({ kind: "removed" })
+		})
+
+		it("maps a kept case to the kept outcome", () => {
+			expect(flagOutcomeOf(open(77, { status: "kept" }))).toEqual({ kind: "kept" })
+		})
+	})
+
+	describe("edge cases", () => {
+		it("maps a missing case to resolved", () => {
+			expect(flagOutcomeOf(null)).toEqual({ kind: "resolved" })
+		})
+
+		it("maps a still open case to resolved", () => {
+			expect(flagOutcomeOf(open(77))).toEqual({ kind: "resolved" })
 		})
 	})
 })

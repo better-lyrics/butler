@@ -11,6 +11,12 @@ describe("councilItemUrl", () => {
 		)
 	})
 
+	it("opens a flag case in flags", () => {
+		expect(councilItemUrl("flags", 77)).toBe(
+			"https://unison.betterlyrics.org/council/flags?item=77"
+		)
+	})
+
 	describe("edge cases", () => {
 		it("keeps a zero id", () => {
 			expect(councilItemUrl("seal", 0)).toBe("https://unison.betterlyrics.org/council/queue?item=0")

@@ -1,5 +1,6 @@
 import type { FlagBoardRow } from "@/db/flag-board"
 import type { FlagCard } from "@/unison/client"
+import type { FlagOutcome } from "./components/flag-card"
 
 export interface FlagBoardPlan {
 	toPost: FlagCard[]
@@ -32,4 +33,10 @@ export function planFlagBoard(tracked: FlagBoardRow[], cards: FlagCard[]): FlagB
 		}
 	}
 	return plan
+}
+
+export function flagOutcomeOf(card: FlagCard | null): FlagOutcome {
+	if (card?.status === "removed") return { kind: "removed" }
+	if (card?.status === "kept") return { kind: "kept" }
+	return { kind: "resolved" }
 }

@@ -25,6 +25,23 @@ describe("routeInteraction", () => {
 			}
 		})
 
+		it("routes every flag board control with its case id", () => {
+			for (const action of ["flag.remove", "flag.keep"]) {
+				expect(routeInteraction(encodeCustomId(action, ["77"]))).toEqual({
+					handler: action,
+					args: ["77"],
+				})
+			}
+			expect(routeInteraction(encodeCustomId("flag.vote.confirm", ["77", "1"]))).toEqual({
+				handler: "flag.vote.confirm",
+				args: ["77", "1"],
+			})
+			expect(routeInteraction(encodeCustomId("flag.vote.cancel", []))).toEqual({
+				handler: "flag.vote.cancel",
+				args: [],
+			})
+		})
+
 		it('routes a "revision.approve" button id carrying the lyrics and revision ids', () => {
 			expect(routeInteraction(encodeCustomId("revision.approve", ["4210", "918"]))).toEqual({
 				handler: "revision.approve",

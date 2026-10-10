@@ -1,7 +1,14 @@
 import { COUNCIL_DASHBOARD_URL } from "@/config"
 import type { BookmarkItemType } from "./client"
 
-export function councilItemUrl(itemType: BookmarkItemType, itemId: number): string {
-	const section = itemType === "seal" ? "queue" : "edits"
-	return `${COUNCIL_DASHBOARD_URL}/${section}?item=${itemId}`
+export type CouncilItemType = BookmarkItemType | "flags"
+
+const SECTIONS: Record<CouncilItemType, string> = {
+	seal: "queue",
+	edit: "edits",
+	flags: "flags",
+}
+
+export function councilItemUrl(itemType: CouncilItemType, itemId: number): string {
+	return `${COUNCIL_DASHBOARD_URL}/${SECTIONS[itemType]}?item=${itemId}`
 }
