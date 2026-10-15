@@ -141,3 +141,12 @@ CREATE TABLE IF NOT EXISTS mod_vote (
   cast_at      BIGINT NOT NULL,
   PRIMARY KEY (session_id, applicant_id, voter_id)
 );
+CREATE TABLE IF NOT EXISTS flag_board_card (
+  guild_id   TEXT NOT NULL,
+  case_id    TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  state      TEXT NOT NULL DEFAULT 'pending',
+  card       JSONB NOT NULL,
+  PRIMARY KEY (guild_id, case_id)
+);

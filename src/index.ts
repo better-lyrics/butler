@@ -93,6 +93,11 @@ import {
 	handleCouncilWelcomePreview,
 } from "@/discord/commands/council-welcome-preview"
 import { type DigestResult, digestCommand, handleDigest } from "@/discord/commands/digest"
+import {
+	handleFlagVote,
+	handleFlagVoteCancel,
+	handleFlagVoteConfirm,
+} from "@/discord/commands/flag"
 import { handleHelp, helpCommand } from "@/discord/commands/help"
 import { handleMigrate, migrateCommand } from "@/discord/commands/migrate"
 import {
@@ -155,6 +160,7 @@ import {
 } from "@/discord/components/queue-card"
 import { buildRevisionCard, revisionCardEdit } from "@/discord/components/revision-card"
 import { meetsMinRole } from "@/discord/eligibility"
+import { createFlagBoardRunner } from "@/discord/flag-board-runner"
 import { handleAddToBoard, handleReportMessage } from "@/discord/flows/report"
 import { isGoneFromGuild, unlessGoneFromGuild } from "@/discord/gone-from-guild"
 import { routeInteraction } from "@/discord/interactions/router"
@@ -197,6 +203,27 @@ await applySchema(pool)
 const unison = createUnisonClient({
 	baseUrl: config.unison.baseUrl,
 	botSecret: config.unison.botSecret,
+})
+
+const flagBoard = createFlagBoardRunner({
+	pool,
+	guildId: config.guildId,
+	unison,
+	async councilChannelId() {
+		const gc = await getGuildConfig(pool, config.guildId)
+		return gc?.enabled && gc.reviewChannelId ? gc.reviewChannelId : null
+	},
+	editBoardMessage: (channelId, messageId, payload) =>
+		editBoardMessage(channelId, messageId, payload),
+	async postToChannel(channelId, payload) {
+		const channel = await discord.channels.fetch(channelId).catch(() => null)
+		if (!channel?.isTextBased() || !channel.isSendable()) return null
+		const message = await channel.send(payload).catch((err) => {
+			console.error("flag board post failed", err)
+			return null
+		})
+		return message ? { channelId: channel.id, messageId: message.id } : null
+	},
 })
 
 const migrateCooldown = createCooldown({ windowMs: MIGRATE_COOLDOWN_MS, now: () => Date.now() })
@@ -502,6 +529,24 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 		case "revision.reject":
 			await handleRevisionReject(interaction, route.args[0] ?? "", route.args[1] ?? "")
 			return
+		case "flag.remove":
+			await handleFlagVote(interaction, route.args[0] ?? "", true)
+			return
+		case "flag.keep":
+			await handleFlagVote(interaction, route.args[0] ?? "", false)
+			return
+		case "flag.vote.confirm":
+			await handleFlagVoteConfirm(interaction, route.args[0] ?? "", route.args[1] ?? "", {
+				resolveKeyId,
+				voteFlag: (caseId, keyId, remove) => unison.voteFlag(caseId, keyId, remove),
+				refreshBoardCard: flagBoard.refresh,
+				resolveBoardCard: flagBoard.resolve,
+				linkPageUrl: config.linkPageUrl,
+			})
+			return
+		case "flag.vote.cancel":
+			await handleFlagVoteCancel(interaction)
+			return
 		case "exam.approve":
 			await handleCouncilApplicantApprovePrompt(interaction, {
 				applicantId: route.args[0] ?? "",
@@ -799,6 +844,7 @@ async function runAll(): Promise<void> {
 	}
 	await syncApplicantBoard().catch((err) => console.error("applicant board sync failed", err))
 	await syncRevisionBoard().catch((err) => console.error("revision board sync failed", err))
+	await flagBoard.sync().catch((err) => console.error("flag board sync failed", err))
 	await syncCouncilBookmarks().catch((err) => console.error("council bookmark sync failed", err))
 	await reconcileCouncilRoles().catch((err) => console.error("council role sync failed", err))
 	await closeExpiredRounds(modsDeps).catch((err) => console.error("mods round close failed", err))

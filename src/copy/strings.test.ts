@@ -10,6 +10,14 @@ import {
 	examApplicantMisses,
 	examApplicantScore,
 	examApplicantVerdict,
+	flagClosedTally,
+	flagDetailLine,
+	flagHeading,
+	flagReasonsLine,
+	flagResolved,
+	flagSubmitterLine,
+	flagTally,
+	flagVoteCounted,
 	helpSealLine,
 	migrateExpiresLine,
 	migratePreviewBody,
@@ -629,5 +637,79 @@ describe("councilBookmarkLine", () => {
 
 	it("has a verb-first dashboard button label", () => {
 		expect(councilDashboardButtonLabel).toBe("Open in dashboard")
+	})
+})
+
+describe("flag copy", () => {
+	describe("happy paths", () => {
+		it("heads the card with the song in bold and the artist", () => {
+			expect(flagHeading("Never Gonna Give You Up", "Rick Astley")).toBe(
+				"**Never Gonna Give You Up** by Rick Astley"
+			)
+		})
+
+		it("names the submitter", () => {
+			expect(flagSubmitterLine("mukeenanyafiq")).toBe("Submitted by mukeenanyafiq")
+		})
+
+		it("groups reasons with counts in a fixed order", () => {
+			expect(
+				flagReasonsLine([{ reason: "wrong_song" }, { reason: "spam" }, { reason: "spam" }])
+			).toBe("**Spam** (2) · **Wrong song** (1)")
+		})
+
+		it("quotes a report detail", () => {
+			expect(flagDetailLine("Promo link in every line")).toBe("> Promo link in every line")
+		})
+
+		it("shows the open tally against the quorum", () => {
+			expect(flagTally(1, 3, 2)).toBe("Remove 1/3 · Keep 2")
+		})
+
+		it("shows the closed tally without the quorum", () => {
+			expect(flagClosedTally(3, 1)).toBe("Remove 3 · Keep 1")
+		})
+
+		it("confirms a counted vote with the removal progress", () => {
+			expect(flagVoteCounted(2, 3)).toBe("Vote counted (2/3).")
+		})
+	})
+
+	describe("edge cases", () => {
+		it("labels every reason", () => {
+			expect(
+				flagReasonsLine([{ reason: "offensive" }, { reason: "wrong_song" }, { reason: "spam" }])
+			).toBe("**Spam** (1) · **Wrong song** (1) · **Offensive** (1)")
+		})
+
+		it("returns null when there are no reports", () => {
+			expect(flagReasonsLine([])).toBeNull()
+		})
+
+		it("folds newlines in a detail onto one quoted line", () => {
+			expect(flagDetailLine("first\n\n  second")).toBe("> first second")
+		})
+
+		it("shows a zero tally", () => {
+			expect(flagTally(0, 3, 0)).toBe("Remove 0/3 · Keep 0")
+		})
+	})
+
+	describe("invariants", () => {
+		it("says a resolved card was decided elsewhere, never withdrawn", () => {
+			expect(flagResolved).toBe("No longer open. It was decided outside this card.")
+		})
+
+		it("escapes markdown in the song and artist", () => {
+			expect(flagHeading("*Song* [x](y)", "A*B")).toBe("**\\*Song\\* \\[x](y)** by A\\*B")
+		})
+
+		it("escapes markdown in the submitter name", () => {
+			expect(flagSubmitterLine("*name* [x](y)")).toBe("Submitted by \\*name\\* \\[x](y)")
+		})
+
+		it("escapes markdown in user-written details", () => {
+			expect(flagDetailLine("**bold** _x_")).toBe("> \\*\\*bold\\*\\* \\_x\\_")
+		})
 	})
 })

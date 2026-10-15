@@ -391,6 +391,51 @@ export type RevisionDecisionResult =
 	| { status: "stale" }
 	| { status: "error"; code: number }
 
+export const FLAG_REASONS = ["spam", "wrong_song", "offensive"] as const
+
+export type FlagReason = (typeof FLAG_REASONS)[number]
+
+type FlagStatus = "open" | "removed" | "kept"
+
+interface FlagReport {
+	reason: FlagReason
+	details: string | null
+	createdAt: number
+}
+
+export interface FlagCard {
+	id: number
+	lyricsId: number
+	videoId: string
+	song: string
+	artist: string
+	submitterName: string | null
+	openedAt: number
+	status: FlagStatus
+	decidedAt: number | null
+	reports: FlagReport[]
+	removals: number
+	keeps: number
+}
+
+export type FlagsResult =
+	| { status: "ok"; needed: number; cards: FlagCard[] }
+	| { status: "error"; code: number }
+
+export interface FlagTally {
+	removals: number
+	keeps: number
+	needed: number
+}
+
+export type FlagVoteResult =
+	| ({ status: FlagStatus } & FlagTally)
+	| { status: "not_council" }
+	| { status: "not_found" }
+	| { status: "already_decided" }
+	| { status: "conflict" }
+	| { status: "error"; code: number }
+
 export interface DiscordProfile {
 	discordId: string
 	avatar: string | null
@@ -477,6 +522,13 @@ export interface UnisonClient {
 		keyId: string,
 		note?: string
 	): Promise<RevisionDecisionResult>
+	getFlags(): Promise<FlagsResult>
+	voteFlag(
+		caseId: number,
+		keyId: string,
+		remove: boolean,
+		note?: string | null
+	): Promise<FlagVoteResult>
 	syncDiscordProfiles(profiles: DiscordProfile[]): Promise<DiscordProfilesSyncResult>
 	syncCouncilAdmins(admins: { keyId: string; admin: boolean }[]): Promise<CouncilAdminsSyncResult>
 	createAvatarPreset(input: CreateAvatarPresetInput): Promise<CreateAvatarPresetResult>
@@ -725,6 +777,62 @@ function parsePendingRevision(value: unknown): PendingRevisionCard | null {
 		createdAt: finiteOrNull(row.createdAt) ?? 0,
 		diffPreview: typeof row.diffPreview === "string" ? row.diffPreview : "",
 		diffFull: typeof row.diffFull === "string" ? row.diffFull : "",
+	}
+}
+
+const FLAG_STATUSES: FlagStatus[] = ["open", "removed", "kept"]
+
+function isFlagReason(value: unknown): value is FlagReason {
+	return typeof value === "string" && (FLAG_REASONS as readonly string[]).includes(value)
+}
+
+function isFlagStatus(value: unknown): value is FlagStatus {
+	return typeof value === "string" && (FLAG_STATUSES as string[]).includes(value)
+}
+
+function parseFlagReport(value: unknown): FlagReport | null {
+	if (!value || typeof value !== "object") return null
+	const row = value as Record<string, unknown>
+	if (!isFlagReason(row.reason)) return null
+	return {
+		reason: row.reason,
+		details: typeof row.details === "string" ? row.details : null,
+		createdAt: finiteOrNull(row.createdAt) ?? 0,
+	}
+}
+
+function isCount(value: unknown): value is number {
+	return Number.isInteger(value) && (value as number) >= 0
+}
+
+function parseFlagVote(value: unknown): ({ status: FlagStatus } & FlagTally) | null {
+	if (!value || typeof value !== "object") return null
+	const { status, removals, keeps, needed } = value as Record<string, unknown>
+	if (!isFlagStatus(status) || !isCount(removals) || !isCount(keeps) || !isCount(needed)) {
+		return null
+	}
+	return { status, removals, keeps, needed }
+}
+
+function parseFlag(value: unknown): FlagCard | null {
+	if (!value || typeof value !== "object") return null
+	const row = value as Record<string, unknown>
+	if (!Number.isInteger(row.id) || !Number.isInteger(row.lyricsId)) return null
+	if (!isFlagStatus(row.status)) return null
+	const reports = Array.isArray(row.reports) ? row.reports : []
+	return {
+		id: row.id as number,
+		lyricsId: row.lyricsId as number,
+		videoId: String(row.videoId ?? ""),
+		song: String(row.song ?? ""),
+		artist: String(row.artist ?? ""),
+		submitterName: typeof row.submitterName === "string" ? row.submitterName : null,
+		openedAt: finiteOrNull(row.openedAt) ?? 0,
+		status: row.status,
+		decidedAt: finiteOrNull(row.decidedAt),
+		reports: reports.map(parseFlagReport).filter((r): r is FlagReport => r !== null),
+		removals: finiteOrNull(row.removals) ?? 0,
+		keeps: finiteOrNull(row.keeps) ?? 0,
 	}
 }
 
@@ -1165,6 +1273,49 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 
 		async rejectRevision(lyricsId, revisionId, keyId, note) {
 			return decideRevision(lyricsId, revisionId, "reject", note ? { keyId, note } : { keyId })
+		},
+
+		async getFlags() {
+			const res = await doFetch(`${baseUrl}/committee/flags/bot`, { headers: authHeaders })
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as {
+				data?: { needed?: unknown; cases?: unknown }
+			} | null
+			const data = json?.data
+			if (!data || !Array.isArray(data.cases) || !isCount(data.needed)) {
+				return { status: "error", code: res.status }
+			}
+			const cards = data.cases.map(parseFlag).filter((card): card is FlagCard => card !== null)
+			return { status: "ok", needed: data.needed, cards }
+		},
+
+		async voteFlag(caseId, keyId, remove, note) {
+			const res = await doFetch(
+				`${baseUrl}/committee/flags/${encodeURIComponent(caseId)}/vote/bot`,
+				{
+					method: "POST",
+					headers: { ...authHeaders, "Content-Type": "application/json" },
+					body: JSON.stringify(note ? { keyId, remove, note } : { keyId, remove }),
+				}
+			)
+			if (res.ok) {
+				const json = (await res.json().catch(() => null)) as { data?: unknown } | null
+				return parseFlagVote(json?.data) ?? { status: "error", code: res.status }
+			}
+			switch (await errorCode(res)) {
+				case "NOT_COMMITTEE":
+					return { status: "not_council" }
+				case "NOT_FOUND":
+					return { status: "not_found" }
+				case "ALREADY_DECIDED":
+					return { status: "already_decided" }
+				case "FLAG_CONFLICT":
+					return { status: "conflict" }
+				default:
+					return { status: "error", code: res.status }
+			}
 		},
 
 		async startExam(keyId, discordId) {

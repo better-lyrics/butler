@@ -1,5 +1,12 @@
 import { TIER_ORDER } from "@/config"
-import type { PendingReason, QuotaBasis, QuotaRule, TtmlFlag } from "@/unison/client"
+import {
+	FLAG_REASONS,
+	type FlagReason,
+	type PendingReason,
+	type QuotaBasis,
+	type QuotaRule,
+	type TtmlFlag,
+} from "@/unison/client"
 import { TimestampStyles, escapeMarkdown, time, userMention } from "discord.js"
 
 const TIER_LABELS: Record<string, string> = {
@@ -695,6 +702,82 @@ export function revisionDetails(card: {
 	const parts = [card.artist, `Rev ${card.revNo} would replace live Rev ${card.liveRevNo}`]
 	if (card.author) parts.push(`by ${card.author.displayName}`)
 	return parts.join(" · ")
+}
+
+export const flagKicker = "-# Lyric hidden by community flags, waiting for council"
+
+export const flagRemoveButtonLabel = "Remove"
+
+export const flagKeepButtonLabel = "Keep"
+
+export const flagConfirmRemoveButtonLabel = "Confirm remove"
+
+export const flagConfirmKeepButtonLabel = "Confirm keep"
+
+export const flagConfirmRemoveBody =
+	"Vote to remove this lyric? Once enough council members agree, the lyric is deleted and the submitter is penalised."
+
+export const flagConfirmKeepBody =
+	"Vote to keep this lyric? It becomes visible again and the flag closes."
+
+export const flagVoteCancelled = "Cancelled. No vote was cast."
+
+export const flagRemoved =
+	"Removed by the council. The lyric is deleted and the submitter penalised."
+
+export const flagKept = "Kept by the council. The lyric is visible again."
+
+export const flagResolved = "No longer open. It was decided outside this card."
+
+export const flagAlreadyDecided = "The council already decided this flag."
+
+export const flagNotFound = "That flag no longer exists."
+
+export const flagConflict =
+	"You submitted or reported this lyric, so another council member has to decide."
+
+export const flagError = "Something went wrong recording that vote. Try again in a moment."
+
+export function flagVoteCounted(removals: number, needed: number): string {
+	return `Vote counted (${removals}/${needed}).`
+}
+
+function escapeFlagText(value: string): string {
+	return escapeMarkdown(value, { maskedLink: true })
+}
+
+export function flagHeading(song: string, artist: string): string {
+	return `**${escapeFlagText(song)}** by ${escapeFlagText(artist)}`
+}
+
+export function flagSubmitterLine(name: string): string {
+	return `Submitted by ${escapeFlagText(name)}`
+}
+
+const FLAG_REASON_LABELS: Record<FlagReason, string> = {
+	spam: "Spam",
+	wrong_song: "Wrong song",
+	offensive: "Offensive",
+}
+
+export function flagReasonsLine(reports: { reason: FlagReason }[]): string | null {
+	const parts = FLAG_REASONS.flatMap((reason) => {
+		const count = reports.filter((r) => r.reason === reason).length
+		return count === 0 ? [] : [`**${FLAG_REASON_LABELS[reason]}** (${count})`]
+	})
+	return parts.length === 0 ? null : parts.join(" · ")
+}
+
+export function flagDetailLine(detail: string): string {
+	return `> ${escapeFlagText(detail.replace(/\s+/g, " ").trim())}`
+}
+
+export function flagTally(removals: number, needed: number, keeps: number): string {
+	return `Remove ${removals}/${needed} · Keep ${keeps}`
+}
+
+export function flagClosedTally(removals: number, keeps: number): string {
+	return `Remove ${removals} · Keep ${keeps}`
 }
 
 export const digestNoPermission = "You need the Manage Server permission to run this."

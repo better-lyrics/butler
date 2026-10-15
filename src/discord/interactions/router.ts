@@ -21,6 +21,10 @@ export type HandlerName =
 	| "revision.approve.cancel"
 	| "revision.reject"
 	| "revision.reject.submit"
+	| "flag.remove"
+	| "flag.keep"
+	| "flag.vote.confirm"
+	| "flag.vote.cancel"
 	| "exam.approve"
 	| "exam.reject"
 	| "exam.approve.go"
@@ -58,6 +62,10 @@ const HANDLERS: readonly HandlerName[] = [
 	"revision.approve.cancel",
 	"revision.reject",
 	"revision.reject.submit",
+	"flag.remove",
+	"flag.keep",
+	"flag.vote.confirm",
+	"flag.vote.cancel",
 	"exam.approve",
 	"exam.reject",
 	"exam.approve.go",
