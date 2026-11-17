@@ -79,6 +79,10 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 		await deps.persistHolding(discordId, finalTier)
 	}
 
+	for (const [discordId, tier] of desired) {
+		if (!changed.has(discordId)) await deps.applyMemberRoles(discordId, tier)
+	}
+
 	const promotions: Array<{ discordId: string; entry: LeaderboardEntry; tier: string }> = []
 	for (const promo of diff.promotions) {
 		const entry = entryByDiscord.get(promo.discordId)

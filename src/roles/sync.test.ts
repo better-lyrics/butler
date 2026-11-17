@@ -316,7 +316,7 @@ describe("runSync", () => {
 			const { deps, rec } = buildDeps({ links, holdings })
 			const result = await runSync(deps)
 
-			expect(rec.applied).toEqual([])
+			expect(rec.persisted).toEqual([])
 			expect(rec.announced).toEqual([])
 			expect(result).toEqual({
 				granted: 0,
@@ -325,6 +325,53 @@ describe("runSync", () => {
 				skipped: false,
 				transitions: [],
 			})
+		})
+	})
+
+	describe("reconciling unchanged holders", () => {
+		it("re-applies roles to a member whose holding already matches", async () => {
+			const links = new Map([["k1", "d1"]])
+			const holdings = new Map([["d1", "legendary"]])
+			const { deps, rec } = buildDeps({ links, holdings })
+
+			await runSync(deps)
+
+			expect(rec.applied).toEqual([{ discordId: "d1", tier: "legendary" }])
+			expect(rec.persisted).toEqual([])
+		})
+
+		it("regression: backfills stacked roles for holders who predate stacking", async () => {
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+			])
+			const holdings = new Map([
+				["d1", "elite"],
+				["d2", "master"],
+			])
+			const leaderboard = [makeEntry("k1", 5, "elite"), makeEntry("k2", 3, "master")]
+			const { deps, rec } = buildDeps({ links, holdings, leaderboard })
+
+			const result = await runSync(deps)
+
+			expect(rec.applied).toContainEqual({ discordId: "d1", tier: "elite" })
+			expect(rec.applied).toContainEqual({ discordId: "d2", tier: "master" })
+			expect(result.transitions).toEqual([])
+			expect(rec.announced).toEqual([])
+		})
+
+		it("applies each member exactly once per sync", async () => {
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+			])
+			const holdings = new Map([["d1", "legendary"]])
+			const { deps, rec } = buildDeps({ links, holdings })
+
+			await runSync(deps)
+
+			const ids = rec.applied.map((c) => c.discordId)
+			expect(ids.sort()).toEqual(["d1", "d2"])
 		})
 	})
 
@@ -754,7 +801,7 @@ describe("runSync", () => {
 			const result = await runSync(deps)
 
 			expect(rec.applied).toContainEqual({ discordId: "d1", tier: "legendary" })
-			expect(rec.applied.some((c) => c.discordId === "d3")).toBe(false)
+			expect(rec.persisted.some((c) => c.discordId === "d3")).toBe(false)
 			expect(rec.applied.some((c) => c.discordId === "d4")).toBe(false)
 
 			expect(rec.markedSeeded).toContainEqual({ discordId: "d3", seededAt: NOW })

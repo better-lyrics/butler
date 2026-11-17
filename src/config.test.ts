@@ -7,6 +7,7 @@ import {
 	isReviewDue,
 	loadConfig,
 	shouldConnectToDiscord,
+	tiersHeldBy,
 } from "@/config"
 import { describe, expect, it } from "vitest"
 
@@ -214,5 +215,47 @@ describe("isReviewDue", () => {
 	it("honors a custom interval", () => {
 		expect(isReviewDue(now - 1000, now, 1000)).toBe(true)
 		expect(isReviewDue(now - 999, now, 1000)).toBe(false)
+	})
+})
+
+describe("tiersHeldBy", () => {
+	describe("happy paths", () => {
+		it("stacks a podium tier on elite and lyricist", () => {
+			expect(tiersHeldBy("legendary")).toEqual(["legendary", "elite", "lyricist"])
+			expect(tiersHeldBy("grandmaster")).toEqual(["grandmaster", "elite", "lyricist"])
+			expect(tiersHeldBy("master")).toEqual(["master", "elite", "lyricist"])
+		})
+
+		it("stacks elite on lyricist", () => {
+			expect(tiersHeldBy("elite")).toEqual(["elite", "lyricist"])
+		})
+
+		it("gives lyricist only itself", () => {
+			expect(tiersHeldBy("lyricist")).toEqual(["lyricist"])
+		})
+	})
+
+	describe("invariants", () => {
+		it("never gives a podium holder a second podium tier", () => {
+			const podium = ["master", "grandmaster", "legendary"]
+			for (const tier of TIER_ORDER) {
+				expect(
+					tiersHeldBy(tier).filter((held) => podium.includes(held)).length
+				).toBeLessThanOrEqual(1)
+			}
+		})
+
+		it("always includes the tier itself and lyricist", () => {
+			for (const tier of TIER_ORDER) {
+				expect(tiersHeldBy(tier)).toContain(tier)
+				expect(tiersHeldBy(tier)).toContain("lyricist")
+			}
+		})
+	})
+
+	describe("edge cases", () => {
+		it("passes an unknown tier through on its own", () => {
+			expect(tiersHeldBy("mythic")).toEqual(["mythic"])
+		})
 	})
 })

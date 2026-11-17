@@ -72,6 +72,19 @@ export function shouldConnectToDiscord(env: Record<string, string | undefined>):
 
 export const TIER_ORDER: string[] = ["lyricist", "elite", "master", "grandmaster", "legendary"]
 
+const TIERS_HELD: Record<string, string[]> = {
+	legendary: ["legendary", "elite", "lyricist"],
+	grandmaster: ["grandmaster", "elite", "lyricist"],
+	master: ["master", "elite", "lyricist"],
+	elite: ["elite", "lyricist"],
+	lyricist: ["lyricist"],
+}
+
+// Podium ranks are exclusive positions, so they stack on elite and lyricist but never on each other.
+export function tiersHeldBy(tier: string): string[] {
+	return TIERS_HELD[tier] ?? [tier]
+}
+
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000
 
 export const NOTIFY_INTERVAL_MS = 2 * 60 * 1000
