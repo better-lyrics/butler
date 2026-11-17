@@ -447,6 +447,36 @@ export type DiscordProfilesSyncResult =
 	| { status: "not_deployed" }
 	| { status: "error"; code: number }
 
+export interface DiscordNotification {
+	id: number
+	kind: string
+	discordId: string
+	refStatus: string | null
+	actor: { displayName: string } | null
+	song: { lyricsId: number; videoId: string; song: string; artist: string } | null
+	data: {
+		revNo?: number
+		decidedBy?: "owner" | "council"
+		note?: string | null
+		revisionId: number
+	}
+}
+
+export type DiscordNotificationsResult =
+	| { status: "ok"; items: DiscordNotification[] }
+	| { status: "not_deployed" }
+	| { status: "error"; code: number }
+
+export type NotificationAckResult =
+	| { status: "ok"; acked: number }
+	| { status: "not_deployed" }
+	| { status: "error"; code: number }
+
+export type NotificationDmResult =
+	| { status: "ok"; linked: boolean }
+	| { status: "not_deployed" }
+	| { status: "error"; code: number }
+
 export type CouncilAdminsSyncResult =
 	| { status: "ok"; changed: number }
 	| { status: "not_deployed" }
@@ -532,6 +562,9 @@ export interface UnisonClient {
 	syncDiscordProfiles(profiles: DiscordProfile[]): Promise<DiscordProfilesSyncResult>
 	syncCouncilAdmins(admins: { keyId: string; admin: boolean }[]): Promise<CouncilAdminsSyncResult>
 	createAvatarPreset(input: CreateAvatarPresetInput): Promise<CreateAvatarPresetResult>
+	fetchDiscordNotifications(): Promise<DiscordNotificationsResult>
+	ackDiscordNotifications(ids: number[]): Promise<NotificationAckResult>
+	setNotificationDms(discordId: string, on: boolean): Promise<NotificationDmResult>
 }
 
 interface LeaderboardResponse {
@@ -1427,6 +1460,62 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 				return { status: "error", code: res.status }
 			}
 			return { status: "ok", changed }
+		},
+
+		async fetchDiscordNotifications() {
+			const res = await doFetch(`${baseUrl}/notifications/bot/discord`, { headers: authHeaders })
+			if (res.status === 404) {
+				return { status: "not_deployed" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { items?: unknown } } | null
+			const items = json?.data?.items
+			if (!Array.isArray(items)) {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", items: items as DiscordNotification[] }
+		},
+
+		async ackDiscordNotifications(ids) {
+			const res = await doFetch(`${baseUrl}/notifications/bot/discord/ack`, {
+				method: "POST",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ ids }),
+			})
+			if (res.status === 404) {
+				return { status: "not_deployed" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { acked?: unknown } } | null
+			const acked = json?.data?.acked
+			if (typeof acked !== "number") {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", acked }
+		},
+
+		async setNotificationDms(discordId, on) {
+			const res = await doFetch(`${baseUrl}/notifications/bot/discord/dm`, {
+				method: "PUT",
+				headers: { ...authHeaders, "Content-Type": "application/json" },
+				body: JSON.stringify({ discordId, on }),
+			})
+			if (res.status === 404) {
+				return { status: "not_deployed" }
+			}
+			if (!res.ok) {
+				return { status: "error", code: res.status }
+			}
+			const json = (await res.json().catch(() => null)) as { data?: { linked?: unknown } } | null
+			const linked = json?.data?.linked
+			if (typeof linked !== "boolean") {
+				return { status: "error", code: res.status }
+			}
+			return { status: "ok", linked }
 		},
 
 		async createAvatarPreset(input) {
