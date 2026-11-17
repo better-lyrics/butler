@@ -1316,3 +1316,14 @@ export function suggestionRejectedTitle(decider: string | null, song: string): s
 export function suggestionRejectedNoteLabel(decider: string | null): string {
 	return decider === null ? "Note from the council" : `${decider}'s note`
 }
+
+export const notificationsOn =
+	"Done. Butler will DM you your Unison notifications. Turn them off with /notifications off."
+
+export const notificationsOff =
+	"Butler won't DM you notifications anymore. Turn them back on in your Unison settings."
+
+export const notificationsNotLinked =
+	"Link your Discord on your Unison profile first, then run this again."
+
+export const notificationsError = "Something went wrong. Give it another try in a moment."

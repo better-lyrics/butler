@@ -115,6 +115,7 @@ import {
 	handleModsSupport,
 	modsApplyCommand,
 } from "@/discord/commands/mods-apply"
+import { handleNotifications, notificationsCommand } from "@/discord/commands/notifications"
 import {
 	activateCommand,
 	deactivateCommand,
@@ -1296,7 +1297,7 @@ discord.once(Events.ClientReady, async (client) => {
 			modsApplyCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
-		await client.application.commands.set([])
+		await client.application.commands.set([notificationsCommand.toJSON()])
 	} catch (err) {
 		console.error("failed to register slash commands", err)
 	}
@@ -1327,6 +1328,12 @@ discord.on(Events.MessageCreate, (message) => {
 })
 
 discord.on(Events.InteractionCreate, (interaction: Interaction) => {
+	if (interaction.isChatInputCommand() && interaction.commandName === "notifications") {
+		handleNotifications(interaction, {
+			setNotificationDms: (discordId, on) => unison.setNotificationDms(discordId, on),
+		}).catch((err) => console.error("notifications handler failed", err))
+		return
+	}
 	// butler only acts in its one guild; ignore anything from anywhere else.
 	if (interaction.guildId !== config.guildId) return
 	if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
