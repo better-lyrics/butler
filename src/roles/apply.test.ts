@@ -74,12 +74,26 @@ describe("nextMemberRoles", () => {
 })
 
 describe("sameRoleSet", () => {
-	it("ignores order", () => {
-		expect(sameRoleSet(["a", "b"], ["b", "a"])).toBe(true)
+	describe("happy paths", () => {
+		it("matches identical sets regardless of order", () => {
+			expect(sameRoleSet(["a", "b"], ["b", "a"])).toBe(true)
+		})
 	})
 
-	it("differs when a role is missing", () => {
-		expect(sameRoleSet(["a", "b"], ["a"])).toBe(false)
-		expect(sameRoleSet(["a"], ["a", "b"])).toBe(false)
+	describe("edge cases", () => {
+		it("matches two empty lists", () => {
+			expect(sameRoleSet([], [])).toBe(true)
+		})
+
+		it("ignores duplicate ids", () => {
+			expect(sameRoleSet(["a", "a"], ["a"])).toBe(true)
+		})
+	})
+
+	describe("invariants", () => {
+		it("differs when either side has a role the other lacks", () => {
+			expect(sameRoleSet(["a", "b"], ["a"])).toBe(false)
+			expect(sameRoleSet(["a"], ["a", "b"])).toBe(false)
+		})
 	})
 })

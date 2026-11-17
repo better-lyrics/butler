@@ -95,6 +95,7 @@ interface Overrides {
 	failUserBadges?: Set<string>
 	announceBadgeFails?: boolean
 	announceSummaryFails?: boolean
+	failApply?: Set<string>
 }
 
 function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders } {
@@ -131,6 +132,7 @@ function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders 
 			return new Map(holdings)
 		},
 		async applyMemberRoles(discordId, tier) {
+			if (overrides.failApply?.has(discordId)) throw new Error("Unknown Role")
 			rec.applied.push({ discordId, tier })
 		},
 		async persistHolding(discordId, tier) {
@@ -358,6 +360,20 @@ describe("runSync", () => {
 			expect(rec.applied).toContainEqual({ discordId: "d2", tier: "master" })
 			expect(result.transitions).toEqual([])
 			expect(rec.announced).toEqual([])
+		})
+
+		it("regression: announces promotions before a failed reconcile aborts the sync", async () => {
+			const links = new Map([
+				["k1", "d1"],
+				["k2", "d2"],
+			])
+			const holdings = new Map([["d2", "grandmaster"]])
+			const { deps, rec } = buildDeps({ links, holdings, failApply: new Set(["d2"]) })
+
+			await expect(runSync(deps)).rejects.toThrow("Unknown Role")
+
+			expect(rec.persisted).toContainEqual({ discordId: "d1", tier: "legendary" })
+			expect(rec.announced).toContainEqual({ discordId: "d1", tier: "legendary" })
 		})
 
 		it("applies each member exactly once per sync", async () => {
