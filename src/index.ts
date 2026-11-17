@@ -8,6 +8,7 @@ import {
 	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
 	MODS_REFRESH_MS,
+	NOTIFY_INTERVAL_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
 	isReviewDue,
@@ -170,6 +171,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { createCoalescer } from "@/discord/mods/coalesce"
 import { type ModsDeps, closeExpiredRounds, renderBoard, renderCard } from "@/discord/mods/round"
+import { deliverNotifications } from "@/discord/notification-delivery"
 import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { planCouncilAdmins, readManageAccess } from "@/roles/council-admins"
@@ -835,6 +837,24 @@ async function syncDiscordProfiles(guildId: string, profiles: DiscordProfile[]):
 let syncHandle: ReturnType<typeof setInterval> | null = null
 let reviewHandle: ReturnType<typeof setInterval> | null = null
 let avatarPruneHandle: ReturnType<typeof setInterval> | null = null
+let notifyHandle: ReturnType<typeof setInterval> | null = null
+let notifying = false
+
+async function deliverNotificationsOnce(): Promise<void> {
+	if (notifying) return
+	notifying = true
+	try {
+		await deliverNotifications({
+			unison,
+			send: async (discordId, message) => {
+				const user = await discord.users.fetch(discordId)
+				await user.send(message)
+			},
+		})
+	} finally {
+		notifying = false
+	}
+}
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
@@ -1297,6 +1317,9 @@ discord.once(Events.ClientReady, async (client) => {
 			console.error("avatar suggestion prune failed", err)
 		)
 	}, SYNC_INTERVAL_MS)
+	notifyHandle = setInterval(() => {
+		deliverNotificationsOnce().catch((err) => console.error("notification delivery failed", err))
+	}, NOTIFY_INTERVAL_MS)
 })
 
 discord.on(Events.MessageCreate, (message) => {
@@ -1564,6 +1587,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 		if (syncHandle) clearInterval(syncHandle)
 		if (reviewHandle) clearInterval(reviewHandle)
 		if (avatarPruneHandle) clearInterval(avatarPruneHandle)
+		if (notifyHandle) clearInterval(notifyHandle)
 		await discord.destroy()
 		await pool.end()
 		process.exit(0)

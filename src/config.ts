@@ -74,6 +74,8 @@ export const TIER_ORDER: string[] = ["lyricist", "elite", "master", "grandmaster
 
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000
 
+export const NOTIFY_INTERVAL_MS = 2 * 60 * 1000
+
 export const REVIEW_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 
 export function isReviewDue(
