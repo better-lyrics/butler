@@ -2314,3 +2314,56 @@ describe("createUnisonClient syncCouncilAdmins", () => {
 		})
 	})
 })
+
+describe("createUnisonClient notification DMs", () => {
+	const item = {
+		id: 7,
+		kind: "suggestion_new",
+		group: "lyrics",
+		createdAt: 1_763_000_000,
+		unread: true,
+		refStatus: "pending",
+		actor: { keyId: "key-ren", displayName: "Ren", avatarUrl: null },
+		song: { lyricsId: 42, videoId: "8ylRSepPra4", song: "Paper Moths", artist: "Glass Signal" },
+		data: { revNo: 5, revisionId: 901 },
+		discordId: "123456789012345678",
+	}
+
+	it("GETs the DM queue with bot auth and returns its items", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: { items: [item] } }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		expect(await client.fetchDiscordNotifications()).toEqual({ status: "ok", items: [item] })
+		expect(calls[0]?.url).toBe("https://unison.test/api/notifications/bot/discord")
+		expect(calls[0]?.headers.get("Authorization")).toBe(`Bearer ${botSecret}`)
+	})
+
+	it("reports not_deployed on a 404 so an older Unison is tolerated", async () => {
+		const { fn } = makeFetch(new Response("Not Found", { status: 404 }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+		expect(await client.fetchDiscordNotifications()).toEqual({ status: "not_deployed" })
+	})
+
+	it("POSTs acked ids and returns the acked count", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: { acked: 2 } }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		expect(await client.ackDiscordNotifications([7, 8])).toEqual({ status: "ok", acked: 2 })
+		expect(calls[0]?.url).toBe("https://unison.test/api/notifications/bot/discord/ack")
+		expect(calls[0]?.method).toBe("POST")
+		expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ ids: [7, 8] })
+	})
+
+	it("PUTs the DM switch and returns whether the Discord account is linked", async () => {
+		const { fn, calls } = makeFetch(Response.json({ success: true, data: { linked: false } }))
+		const client = createUnisonClient({ baseUrl, botSecret, fetch: fn })
+
+		expect(await client.setNotificationDms("123456789012345678", true)).toEqual({
+			status: "ok",
+			linked: false,
+		})
+		expect(calls[0]?.url).toBe("https://unison.test/api/notifications/bot/discord/dm")
+		expect(calls[0]?.method).toBe("PUT")
+		expect(JSON.parse(calls[0]?.body ?? "")).toEqual({ discordId: "123456789012345678", on: true })
+	})
+})

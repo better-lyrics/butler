@@ -8,6 +8,7 @@ import {
 	COUNCIL_WELCOME_GIF_URL,
 	MIGRATE_COOLDOWN_MS,
 	MODS_REFRESH_MS,
+	NOTIFY_INTERVAL_MS,
 	SYNC_INTERVAL_MS,
 	TIER_ORDER,
 	isReviewDue,
@@ -114,6 +115,7 @@ import {
 	handleModsSupport,
 	modsApplyCommand,
 } from "@/discord/commands/mods-apply"
+import { handleNotifications, notificationsCommand } from "@/discord/commands/notifications"
 import {
 	activateCommand,
 	deactivateCommand,
@@ -170,6 +172,7 @@ import { createCooldown } from "@/discord/migrate/cooldown"
 import { type ModLogEvent, formatModLogEvent } from "@/discord/mod-log"
 import { createCoalescer } from "@/discord/mods/coalesce"
 import { type ModsDeps, closeExpiredRounds, renderBoard, renderCard } from "@/discord/mods/round"
+import { deliverNotifications } from "@/discord/notification-delivery"
 import { planRevisionBoard, revisionOutcomeOf } from "@/discord/revision-board-sync"
 import { assertRoleHierarchy, createRoleApplier } from "@/roles/apply"
 import { planCouncilAdmins, readManageAccess } from "@/roles/council-admins"
@@ -835,6 +838,24 @@ async function syncDiscordProfiles(guildId: string, profiles: DiscordProfile[]):
 let syncHandle: ReturnType<typeof setInterval> | null = null
 let reviewHandle: ReturnType<typeof setInterval> | null = null
 let avatarPruneHandle: ReturnType<typeof setInterval> | null = null
+let notifyHandle: ReturnType<typeof setInterval> | null = null
+let notifying = false
+
+async function deliverNotificationsOnce(): Promise<void> {
+	if (notifying) return
+	notifying = true
+	try {
+		await deliverNotifications({
+			unison,
+			send: async (discordId, message) => {
+				const user = await discord.users.fetch(discordId)
+				await user.send(message)
+			},
+		})
+	} finally {
+		notifying = false
+	}
+}
 
 async function runAll(): Promise<void> {
 	for (const gc of await listGuildConfigs(pool)) {
@@ -1276,7 +1297,7 @@ discord.once(Events.ClientReady, async (client) => {
 			modsApplyCommand.toJSON(),
 		]
 		await client.application.commands.set(commands, config.guildId)
-		await client.application.commands.set([])
+		await client.application.commands.set([notificationsCommand.toJSON()])
 	} catch (err) {
 		console.error("failed to register slash commands", err)
 	}
@@ -1297,6 +1318,9 @@ discord.once(Events.ClientReady, async (client) => {
 			console.error("avatar suggestion prune failed", err)
 		)
 	}, SYNC_INTERVAL_MS)
+	notifyHandle = setInterval(() => {
+		deliverNotificationsOnce().catch((err) => console.error("notification delivery failed", err))
+	}, NOTIFY_INTERVAL_MS)
 })
 
 discord.on(Events.MessageCreate, (message) => {
@@ -1304,6 +1328,12 @@ discord.on(Events.MessageCreate, (message) => {
 })
 
 discord.on(Events.InteractionCreate, (interaction: Interaction) => {
+	if (interaction.isChatInputCommand() && interaction.commandName === "notifications") {
+		handleNotifications(interaction, {
+			setNotificationDms: (discordId, on) => unison.setNotificationDms(discordId, on),
+		}).catch((err) => console.error("notifications handler failed", err))
+		return
+	}
 	// butler only acts in its one guild; ignore anything from anywhere else.
 	if (interaction.guildId !== config.guildId) return
 	if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
@@ -1564,6 +1594,7 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 		if (syncHandle) clearInterval(syncHandle)
 		if (reviewHandle) clearInterval(reviewHandle)
 		if (avatarPruneHandle) clearInterval(avatarPruneHandle)
+		if (notifyHandle) clearInterval(notifyHandle)
 		await discord.destroy()
 		await pool.end()
 		process.exit(0)
