@@ -17,7 +17,8 @@ export const notificationsCommand = new SlashCommandBuilder()
 export interface NotificationsInteraction {
 	user: { id: string }
 	options: { getSubcommand(): string }
-	reply(payload: unknown): Promise<unknown>
+	deferReply(options: unknown): Promise<unknown>
+	editReply(payload: unknown): Promise<unknown>
 }
 
 export interface NotificationsDeps {
@@ -33,8 +34,12 @@ export async function handleNotifications(
 	interaction: NotificationsInteraction,
 	deps: NotificationsDeps
 ): Promise<void> {
+	await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 	const on = interaction.options.getSubcommand() === "on"
-	const result = await deps.setNotificationDms(interaction.user.id, on)
-	const content = result.status !== "ok" ? notificationsError : replyFor(result.linked, on)
-	await interaction.reply({ content, flags: MessageFlags.Ephemeral })
+	const result = await deps.setNotificationDms(interaction.user.id, on).catch((err) => {
+		console.error("notification dm setting failed", err)
+		return null
+	})
+	const content = result?.status === "ok" ? replyFor(result.linked, on) : notificationsError
+	await interaction.editReply({ content })
 }
