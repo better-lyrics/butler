@@ -742,16 +742,16 @@ export function flagVoteCounted(removals: number, needed: number): string {
 	return `Vote counted (${removals}/${needed}).`
 }
 
-function escapeFlagText(value: string): string {
+function escapeUserText(value: string): string {
 	return escapeMarkdown(value, { maskedLink: true })
 }
 
 export function flagHeading(song: string, artist: string): string {
-	return `**${escapeFlagText(song)}** by ${escapeFlagText(artist)}`
+	return `**${escapeUserText(song)}** by ${escapeUserText(artist)}`
 }
 
 export function flagSubmitterLine(name: string): string {
-	return `Submitted by ${escapeFlagText(name)}`
+	return `Submitted by ${escapeUserText(name)}`
 }
 
 const FLAG_REASON_LABELS: Record<FlagReason, string> = {
@@ -769,7 +769,7 @@ export function flagReasonsLine(reports: { reason: FlagReason }[]): string | nul
 }
 
 export function flagDetailLine(detail: string): string {
-	return `> ${escapeFlagText(detail.replace(/\s+/g, " ").trim())}`
+	return `> ${escapeUserText(detail.replace(/\s+/g, " ").trim())}`
 }
 
 export function flagTally(removals: number, needed: number, keeps: number): string {
@@ -1271,3 +1271,48 @@ export const modsResultNotSelectedHeading = "**About your mod application**"
 
 export const modsResultNotSelectedBody =
 	"Thanks for applying. You weren't picked this time, but every application got read, yours included. Try again next round."
+
+export const notificationOpenSuggestionLabel = "Open suggestion"
+
+export const notificationDmFooter =
+	"-# Turn these off with /notifications off or in your Unison settings."
+
+export function notificationSongLink(song: string, url: string): string {
+	return `[${escapeUserText(song)}](${url})`
+}
+
+export function notificationActor(name: string | null): string {
+	return name === null ? "Someone" : escapeUserText(name)
+}
+
+export function suggestionNewTitle(song: string): string {
+	return `**New suggestion for ${song}**`
+}
+
+export function suggestionNewBody(actor: string): string {
+	return `${actor} suggested an edit. You have 7 days to decide. After that, the council can too.`
+}
+
+export function suggestionDeadlineTitle(actor: string, song: string): string {
+	return `**1 day left to decide on ${actor}'s suggestion for ${song}**`
+}
+
+export const suggestionDeadlineBody = "After that, the council can decide too."
+
+export function suggestionApprovedTitle(song: string): string {
+	return `**Your suggestion for ${song} is live**`
+}
+
+export function suggestionApprovedBody(decider: string | null, revNo: number): string {
+	return `${decider ?? "The council"} approved it. Rev ${revNo} is live.`
+}
+
+export function suggestionRejectedTitle(decider: string | null, song: string): string {
+	return decider === null
+		? `**The council rejected your suggestion for ${song}**`
+		: `**${decider} rejected your suggestion for ${song}**`
+}
+
+export function suggestionRejectedNoteLabel(decider: string | null): string {
+	return decider === null ? "Note from the council" : `${decider}'s note`
+}
