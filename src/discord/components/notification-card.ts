@@ -26,7 +26,9 @@ import {
 import { truncate } from "./truncate"
 
 export const NOTIFICATIONS_PER_MESSAGE = 5
-const MAX_NOTE = 1000
+const MAX_NAME = 100
+const MAX_NOTE = 500
+const MAX_MESSAGE_TEXT = 4000
 
 export interface NotificationMessage {
 	components: (ContainerBuilder | TextDisplayBuilder)[]
@@ -42,10 +44,13 @@ interface Lines {
 	note?: { label: string; text: string }
 }
 
+function actorName(item: DiscordNotification): string | null {
+	return item.actor ? truncate(item.actor.displayName, MAX_NAME) : null
+}
+
 function decider(item: DiscordNotification): string | null {
-	return item.data.decidedBy === "council" || !item.actor
-		? null
-		: notificationActor(item.actor.displayName)
+	const name = item.data.decidedBy === "council" ? null : actorName(item)
+	return name === null ? null : notificationActor(name)
 }
 
 function isWaiting(item: DiscordNotification): boolean {
@@ -56,12 +61,12 @@ function isWaiting(item: DiscordNotification): boolean {
 const LINES: Record<string, (item: DiscordNotification, song: string) => Lines | null> = {
 	suggestion_new: (item, song) => {
 		if (!isWaiting(item)) return null
-		const actor = notificationActor(item.actor?.displayName ?? null)
+		const actor = notificationActor(actorName(item))
 		return { title: suggestionNewTitle(song), body: suggestionNewBody(actor) }
 	},
 	suggestion_deadline: (item, song) => {
 		if (!isWaiting(item)) return null
-		const actor = notificationActor(item.actor?.displayName ?? null)
+		const actor = notificationActor(actorName(item))
 		return { title: suggestionDeadlineTitle(actor, song), body: suggestionDeadlineBody }
 	},
 	suggestion_approved: (item, song) => {
@@ -86,23 +91,28 @@ function songUrl(song: Song, item: DiscordNotification): string {
 	return isWaiting(item) ? `${url}&suggestion=${item.data.revisionId}` : url
 }
 
-function buildContainer(item: DiscordNotification): ContainerBuilder | null {
+interface Card {
+	container: ContainerBuilder
+	textLength: number
+}
+
+function buildCard(item: DiscordNotification): Card | null {
 	const song = item.song
 	if (!song) return null
-	const lines = LINES[item.kind]?.(item, notificationSongLink(song.song, songUrl(song, item)))
+	const lines = LINES[item.kind]?.(
+		item,
+		notificationSongLink(truncate(song.song, MAX_NAME), songUrl(song, item))
+	)
 	if (!lines) return null
 
 	const text = lines.body ? `${lines.title}\n${lines.body}` : lines.title
+	const note = lines.note
+		? `**${lines.note.label}**\n>>> ${truncate(lines.note.text, MAX_NOTE)}`
+		: null
 	const container = new ContainerBuilder()
 		.setAccentColor(PALETTE.betterLyricsRed)
 		.addTextDisplayComponents(new TextDisplayBuilder().setContent(text))
-	if (lines.note) {
-		container.addTextDisplayComponents(
-			new TextDisplayBuilder().setContent(
-				`**${lines.note.label}**\n>>> ${truncate(lines.note.text, MAX_NOTE)}`
-			)
-		)
-	}
+	if (note) container.addTextDisplayComponents(new TextDisplayBuilder().setContent(note))
 	if (isWaiting(item)) {
 		container.addActionRowComponents(
 			new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -113,21 +123,35 @@ function buildContainer(item: DiscordNotification): ContainerBuilder | null {
 			)
 		)
 	}
-	return container
+	return { container, textLength: text.length + (note?.length ?? 0) }
+}
+
+function toMessage(cards: Card[]): NotificationMessage {
+	return {
+		components: [
+			...cards.map((card) => card.container),
+			new TextDisplayBuilder().setContent(notificationDmFooter),
+		],
+		flags: MessageFlags.IsComponentsV2,
+		allowedMentions: { parse: [] },
+	}
 }
 
 export function buildNotificationMessages(items: DiscordNotification[]): NotificationMessage[] {
-	const containers = items.flatMap((item) => buildContainer(item) ?? [])
+	const budget = MAX_MESSAGE_TEXT - notificationDmFooter.length
 	const messages: NotificationMessage[] = []
-	for (let i = 0; i < containers.length; i += NOTIFICATIONS_PER_MESSAGE) {
-		messages.push({
-			components: [
-				...containers.slice(i, i + NOTIFICATIONS_PER_MESSAGE),
-				new TextDisplayBuilder().setContent(notificationDmFooter),
-			],
-			flags: MessageFlags.IsComponentsV2,
-			allowedMentions: { parse: [] },
-		})
+	let batch: Card[] = []
+	let used = 0
+	for (const card of items.flatMap((item) => buildCard(item) ?? [])) {
+		const full = batch.length === NOTIFICATIONS_PER_MESSAGE || used + card.textLength > budget
+		if (batch.length > 0 && full) {
+			messages.push(toMessage(batch))
+			batch = []
+			used = 0
+		}
+		batch.push(card)
+		used += card.textLength
 	}
+	if (batch.length > 0) messages.push(toMessage(batch))
 	return messages
 }
