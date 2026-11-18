@@ -907,7 +907,7 @@ export function createUnisonClient(options: UnisonClientOptions): UnisonClient {
 
 	return {
 		async getLeaderboard() {
-			const res = await doFetch(`${baseUrl}/leaderboard/users`)
+			const res = await doFetch(`${baseUrl}/leaderboard/users/bot`, { headers: authHeaders })
 			if (!res.ok) {
 				throw new Error(`Unison leaderboard fetch failed: ${res.status}`)
 			}
