@@ -145,7 +145,7 @@ import {
 import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/discord/commands/seal"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
-import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
+import { buildAnnounceSummaryCards } from "@/discord/components/announce-summary-card"
 import {
 	type AvatarOutcome,
 	avatarCardEdit,
@@ -763,17 +763,20 @@ async function runSyncForGuild(
 					.catch(() => false)
 			},
 			announceSummary: async (input) => {
-				if (!gc.announceChannelId) return true
+				const total = input.promotions.length + input.badges.length
+				if (!gc.announceChannelId) return total
 				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
-				if (!channel?.isTextBased() || !channel.isSendable()) return true
-				const card = buildAnnounceSummaryCard({
-					promotions: input.promotions,
-					badges: input.badges,
-				})
-				return channel
-					.send(card)
-					.then(() => true)
-					.catch(() => false)
+				if (!channel?.isTextBased() || !channel.isSendable()) return total
+				let delivered = 0
+				for (const message of buildAnnounceSummaryCards(input)) {
+					const sent = await channel
+						.send(message.card)
+						.then(() => true)
+						.catch(() => false)
+					if (!sent) break
+					delivered += message.entries
+				}
+				return delivered
 			},
 			now: () => Date.now(),
 			tierOrder: TIER_ORDER,

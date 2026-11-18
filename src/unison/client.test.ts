@@ -30,7 +30,7 @@ const baseUrl = "https://unison.test/api/"
 const botSecret = "super-secret"
 
 describe("createUnisonClient getLeaderboard", () => {
-	it("issues a GET to the leaderboard users endpoint and parses curators", async () => {
+	it("regression: reads the bot tier list, which reaches past the public top 200", async () => {
 		const curators = [
 			{
 				keyId: "key-1",
@@ -51,8 +51,9 @@ describe("createUnisonClient getLeaderboard", () => {
 		const result = await client.getLeaderboard()
 
 		expect(calls).toHaveLength(1)
-		expect(calls[0]?.url).toBe("https://unison.test/api/leaderboard/users")
+		expect(calls[0]?.url).toBe("https://unison.test/api/leaderboard/users/bot")
 		expect(calls[0]?.method).toBe("GET")
+		expect(calls[0]?.headers.get("authorization")).toBe(`Bearer ${botSecret}`)
 		expect(result).toEqual(curators)
 	})
 

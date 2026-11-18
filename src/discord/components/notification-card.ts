@@ -23,12 +23,12 @@ import {
 	type MessageMentionOptions,
 	TextDisplayBuilder,
 } from "discord.js"
+import { MAX_MESSAGE_TEXT } from "./limits"
 import { truncate } from "./truncate"
 
 export const NOTIFICATIONS_PER_MESSAGE = 5
 const MAX_NAME = 100
 const MAX_NOTE = 500
-const MAX_MESSAGE_TEXT = 4000
 
 export interface NotificationMessage {
 	components: (ContainerBuilder | TextDisplayBuilder)[]

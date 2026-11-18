@@ -95,6 +95,7 @@ interface Overrides {
 	failUserBadges?: Set<string>
 	announceBadgeFails?: boolean
 	announceSummaryFails?: boolean
+	announceSummaryDelivers?: number
 	failApply?: Set<string>
 }
 
@@ -184,9 +185,9 @@ function buildDeps(overrides: Overrides = {}): { deps: SyncDeps; rec: Recorders 
 			return true
 		},
 		async announceSummary(input) {
-			if (overrides.announceSummaryFails) return false
+			if (overrides.announceSummaryFails) return 0
 			rec.summaries.push(input)
-			return true
+			return overrides.announceSummaryDelivers ?? input.promotions.length + input.badges.length
 		},
 		now() {
 			return NOW
@@ -679,6 +680,38 @@ describe("runSync", () => {
 				tier: null,
 				awardedAt: NOW,
 			})
+		})
+	})
+
+	describe("partially sent summaries", () => {
+		it("regression: records the badges a posted message announced when a later message fails", async () => {
+			const nightOwl = makeBadgeDef(
+				"night-owl",
+				"medal",
+				"Night Owl",
+				"Fixed lyrics after midnight."
+			)
+			const firstFix = makeBadgeDef("first-fix", "medal", "First Fix", "Landed a first correction.")
+			const { deps, rec } = buildDeps({
+				links: new Map([
+					["k1", "d1"],
+					["k2", "d2"],
+				]),
+				holdings: new Map([["d2", "grandmaster"]]),
+				leaderboard: [makeEntry("k1", 1, "legendary"), makeEntry("k2", 2, "grandmaster")],
+				catalogue: makeCatalogue([nightOwl, firstFix]),
+				userBadges: new Map([
+					["k2", [makeUserBadge("night-owl", true), makeUserBadge("first-fix", true)]],
+				]),
+				seeded: new Set(["d2"]),
+				batchThreshold: 1,
+				announceSummaryDelivers: 2,
+			})
+
+			await runSync(deps)
+
+			const recorded = rec.recordedBadges.map((r) => r.badgeKey)
+			expect(recorded).toEqual(["night-owl"])
 		})
 	})
 
