@@ -763,17 +763,20 @@ async function runSyncForGuild(
 					.catch(() => false)
 			},
 			announceSummary: async (input) => {
-				if (!gc.announceChannelId) return true
+				const total = input.promotions.length + input.badges.length
+				if (!gc.announceChannelId) return total
 				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
-				if (!channel?.isTextBased() || !channel.isSendable()) return true
-				for (const card of buildAnnounceSummaryCards(input)) {
+				if (!channel?.isTextBased() || !channel.isSendable()) return total
+				let delivered = 0
+				for (const message of buildAnnounceSummaryCards(input)) {
 					const sent = await channel
-						.send(card)
+						.send(message.card)
 						.then(() => true)
 						.catch(() => false)
-					if (!sent) return false
+					if (!sent) break
+					delivered += message.entries
 				}
-				return true
+				return delivered
 			},
 			now: () => Date.now(),
 			tierOrder: TIER_ORDER,

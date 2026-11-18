@@ -34,7 +34,14 @@ function toPayload(sections: Section[]): CardPayload {
 	return { components: [container], flags: MessageFlags.IsComponentsV2 }
 }
 
-export function buildAnnounceSummaryCards(opts: AnnounceSummaryCardOptions): CardPayload[] {
+export interface AnnounceSummaryMessage {
+	card: CardPayload
+	entries: number
+}
+
+export function buildAnnounceSummaryCards(
+	opts: AnnounceSummaryCardOptions
+): AnnounceSummaryMessage[] {
 	const sections: Section[] = [
 		{
 			label: announceSummaryPromotionsLabel,
@@ -69,5 +76,8 @@ export function buildAnnounceSummaryCards(opts: AnnounceSummaryCardOptions): Car
 		}
 	}
 	if (current.length > 0) messages.push(current)
-	return messages.map(toPayload)
+	return messages.map((sections) => ({
+		card: toPayload(sections),
+		entries: sections.reduce((sum, section) => sum + section.lines.length, 0),
+	}))
 }

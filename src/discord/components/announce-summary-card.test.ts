@@ -69,9 +69,9 @@ function entryLines(container: ContainerBuilder): string[] {
 }
 
 function single(opts: Parameters<typeof buildAnnounceSummaryCards>[0]) {
-	const [payload, ...rest] = buildAnnounceSummaryCards(opts)
-	if (!payload || rest.length > 0) throw new Error("expected exactly one summary message")
-	return payload
+	const [message, ...rest] = buildAnnounceSummaryCards(opts)
+	if (!message || rest.length > 0) throw new Error("expected exactly one summary message")
+	return message.card
 }
 
 const promotions = [
@@ -155,11 +155,11 @@ describe("announce summary card", () => {
 			displayName: `curator_${i}`,
 			badgeName: "Sharp Ear",
 		}))
-		const payloads = buildAnnounceSummaryCards({ promotions: manyPromotions, badges: manyBadges })
-		const containers = payloads.map((p) => p.components[0] as ContainerBuilder)
+		const messages = buildAnnounceSummaryCards({ promotions: manyPromotions, badges: manyBadges })
+		const containers = messages.map((m) => m.card.components[0] as ContainerBuilder)
 
 		it("regression: splits into several messages, each within the message text limit", () => {
-			expect(payloads.length).toBeGreaterThan(1)
+			expect(messages.length).toBeGreaterThan(1)
 			for (const container of containers) {
 				const length = texts(container).reduce((sum, t) => sum + t.content.length, 0)
 				expect(length).toBeLessThanOrEqual(MAX_MESSAGE_TEXT)
@@ -171,6 +171,9 @@ describe("announce summary card", () => {
 				...manyBadges.map((b) => announceSummaryBadgeLine(b)),
 			]
 			expect(containers.flatMap(entryLines)).toEqual(expected)
+		})
+		it("reports how many entries each message carries", () => {
+			expect(messages.map((m) => m.entries)).toEqual(containers.map((c) => entryLines(c).length))
 		})
 		it("labels each section again in the message it continues into", () => {
 			for (const container of containers) {

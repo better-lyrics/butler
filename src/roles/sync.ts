@@ -27,10 +27,11 @@ export interface SyncDeps {
 		badgeName: string
 		badgeDescription: string
 	}): Promise<boolean>
+	/** Returns how many entries were posted, counting promotions first, then badges, in order. */
 	announceSummary(input: {
 		promotions: Array<{ displayName: string; tier: string }>
 		badges: Array<{ displayName: string; badgeName: string }>
-	}): Promise<boolean>
+	}): Promise<number>
 	now(): number
 	tierOrder: string[]
 	batchThreshold: number
@@ -155,12 +156,12 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
 	const total = promotions.length + awards.length
 	if (total > deps.batchThreshold) {
-		const sent = await deps.announceSummary({
+		const delivered = await deps.announceSummary({
 			promotions: promotions.map((p) => ({ displayName: p.entry.displayName, tier: p.tier })),
 			badges: awards.map((a) => ({ displayName: a.displayName, badgeName: a.badgeName })),
 		})
-		if (sent) {
-			for (const award of awards) await recordAward(award)
+		for (const award of awards.slice(0, Math.max(0, delivered - promotions.length))) {
+			await recordAward(award)
 		}
 	} else {
 		for (const promo of promotions) {
