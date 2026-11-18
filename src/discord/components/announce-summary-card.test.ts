@@ -9,7 +9,8 @@ import {
 import type { ContainerBuilder } from "discord.js"
 import { MessageFlags } from "discord.js"
 import { describe, expect, it } from "vitest"
-import { buildAnnounceSummaryCard } from "./announce-summary-card"
+import { buildAnnounceSummaryCards } from "./announce-summary-card"
+import { MAX_MESSAGE_TEXT } from "./limits"
 
 interface TextNode {
 	type: 10
@@ -67,6 +68,12 @@ function entryLines(container: ContainerBuilder): string[] {
 		.filter((line) => line.startsWith("- "))
 }
 
+function single(opts: Parameters<typeof buildAnnounceSummaryCards>[0]) {
+	const [payload, ...rest] = buildAnnounceSummaryCards(opts)
+	if (!payload || rest.length > 0) throw new Error("expected exactly one summary message")
+	return payload
+}
+
 const promotions = [
 	{ displayName: "Sofia", tier: "legendary" },
 	{ displayName: "Milo", tier: "elite" },
@@ -79,7 +86,7 @@ const badges = [
 
 describe("announce summary card", () => {
 	describe("both sections", () => {
-		const payload = buildAnnounceSummaryCard({ promotions, badges })
+		const payload = single({ promotions, badges })
 		const container = payload.components[0] as ContainerBuilder
 
 		it("renders both section labels", () => {
@@ -122,8 +129,7 @@ describe("announce summary card", () => {
 
 	describe("empty sections are omitted", () => {
 		it("omits the promotions section when there are no promotions", () => {
-			const container = buildAnnounceSummaryCard({ promotions: [], badges })
-				.components[0] as ContainerBuilder
+			const container = single({ promotions: [], badges }).components[0] as ContainerBuilder
 			const blob = textBlob(container)
 			expect(blob).not.toContain(announceSummaryPromotionsLabel)
 			expect(blob).toContain(announceSummaryBadgesLabel)
@@ -131,13 +137,58 @@ describe("announce summary card", () => {
 			expect(separators(container)).toHaveLength(1)
 		})
 		it("omits the badges section when there are no badges", () => {
-			const container = buildAnnounceSummaryCard({ promotions, badges: [] })
-				.components[0] as ContainerBuilder
+			const container = single({ promotions, badges: [] }).components[0] as ContainerBuilder
 			const blob = textBlob(container)
 			expect(blob).toContain(announceSummaryPromotionsLabel)
 			expect(blob).not.toContain(announceSummaryBadgesLabel)
 			expect(entryLines(container)).toHaveLength(promotions.length)
 			expect(separators(container)).toHaveLength(1)
+		})
+	})
+
+	describe("long summaries", () => {
+		const manyPromotions = Array.from({ length: 300 }, (_, i) => ({
+			displayName: `curator_${i}`,
+			tier: "lyricist",
+		}))
+		const manyBadges = Array.from({ length: 40 }, (_, i) => ({
+			displayName: `curator_${i}`,
+			badgeName: "Sharp Ear",
+		}))
+		const payloads = buildAnnounceSummaryCards({ promotions: manyPromotions, badges: manyBadges })
+		const containers = payloads.map((p) => p.components[0] as ContainerBuilder)
+
+		it("regression: splits into several messages, each within the message text limit", () => {
+			expect(payloads.length).toBeGreaterThan(1)
+			for (const container of containers) {
+				const length = texts(container).reduce((sum, t) => sum + t.content.length, 0)
+				expect(length).toBeLessThanOrEqual(MAX_MESSAGE_TEXT)
+			}
+		})
+		it("keeps every entry exactly once and in order across the messages", () => {
+			const expected = [
+				...manyPromotions.map((p) => announceSummaryPromotionLine(p)),
+				...manyBadges.map((b) => announceSummaryBadgeLine(b)),
+			]
+			expect(containers.flatMap(entryLines)).toEqual(expected)
+		})
+		it("labels each section again in the message it continues into", () => {
+			for (const container of containers) {
+				const lines = entryLines(container)
+				const blob = textBlob(container)
+				if (lines.some((l) => l.includes(" reached "))) {
+					expect(blob).toContain(announceSummaryPromotionsLabel)
+				}
+				if (lines.some((l) => l.includes(" earned "))) {
+					expect(blob).toContain(announceSummaryBadgesLabel)
+				}
+			}
+		})
+	})
+
+	describe("edge cases", () => {
+		it("returns no messages when there is nothing to announce", () => {
+			expect(buildAnnounceSummaryCards({ promotions: [], badges: [] })).toEqual([])
 		})
 	})
 })

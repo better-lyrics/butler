@@ -145,7 +145,7 @@ import {
 import { handleSeal, handleSealPick, handleSealUnpick, sealCommand } from "@/discord/commands/seal"
 import { handleSetup, setupCommand } from "@/discord/commands/setup"
 import { type SyncTrigger, handleSync, syncCommand } from "@/discord/commands/sync"
-import { buildAnnounceSummaryCard } from "@/discord/components/announce-summary-card"
+import { buildAnnounceSummaryCards } from "@/discord/components/announce-summary-card"
 import {
 	type AvatarOutcome,
 	avatarCardEdit,
@@ -766,14 +766,14 @@ async function runSyncForGuild(
 				if (!gc.announceChannelId) return true
 				const channel = await discord.channels.fetch(gc.announceChannelId).catch(() => null)
 				if (!channel?.isTextBased() || !channel.isSendable()) return true
-				const card = buildAnnounceSummaryCard({
-					promotions: input.promotions,
-					badges: input.badges,
-				})
-				return channel
-					.send(card)
-					.then(() => true)
-					.catch(() => false)
+				for (const card of buildAnnounceSummaryCards(input)) {
+					const sent = await channel
+						.send(card)
+						.then(() => true)
+						.catch(() => false)
+					if (!sent) return false
+				}
+				return true
 			},
 			now: () => Date.now(),
 			tierOrder: TIER_ORDER,
